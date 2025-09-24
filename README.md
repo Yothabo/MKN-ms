@@ -101,3 +101,52 @@ npm run build
 # Preview the production build
 npm run preview
 
+📂 Project Structure
+MKN-ms/
+├── README.md
+├── legacy-packages.md
+├── package.json
+├── vite.config.ts
+├── tsconfig.json
+├── tsconfig.app.json
+├── tsconfig.node.json
+├── tailwind.config.js
+├── postcss.config.js
+├── eslint.config.js
+├── index.html
+├── public/
+├── src/
+│   ├── App.css
+│   ├── App.tsx
+│   ├── main.tsx
+│   ├── assets/
+│   ├── components/
+│   ├── hooks/
+│   ├── utils/
+│   ├── styles/
+│   └── pages/
+│       ├── admin/
+│       │   ├── dashboard/
+│       │   ├── members/
+│       │   ├── duties/
+│       │   ├── attendance/
+│       │   └── ...
+│       └── auth/        # Future
+└── dist/                # Production build output
+
+🧪 Development Notes
+ * ESLint is configured for TypeScript and React best practices.
+ * The project uses TailwindCSS for a utility-first styling approach.
+ * Unused and historical dependencies are documented in legacy-packages.md.
+ * Some UI elements in the MVP are mock placeholders to demonstrate intended behavior.
+👥 Contributing
+ * Fork the repository.
+ * Create a feature branch.
+ * Submit a pull request.
+Please follow coding standards and respect the religious context of Muzi Ka Nkulunkulu.
+📜 License
+This project is licensed under the MIT License. See the LICENSE file for details.
+🧠 About Muzi Ka Nkulunkulu
+Muzi Ka Nkulunkulu is a religion with unique traditions and organizational needs. MKN-MS is built to preserve those values while embracing modern digital tools to support members worldwide.
+
+
