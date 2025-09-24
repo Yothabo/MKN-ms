@@ -1,122 +1,155 @@
 
-# 🌍 Muzi Ka Nkulunkulu Management System (MKN-MS)
+🌍 Muzi Ka Nkulunkulu Management System (MKN-MS)
 
-**Muzi Ka Nkulunkulu Management System (MKN-MS)** is a modern, web-based platform built with React, TypeScript, and Vite.  
-It serves as the **official management tool for the Muzi Ka Nkulunkulu Religion**, enabling digital oversight of members, duties, attendance, and growth analytics across regions and branches.
+Muzi Ka Nkulunkulu Management System (MKN-MS) is a modern, web-based platform built with React, TypeScript, and Vite.
+It serves as the official management tool for the Muzi Ka Nkulunkulu Religion, providing digital oversight of members, duties, attendance, and growth analytics across branches and regions.
 
-The system is designed with scalability in mind — starting with one branch for the MVP, but capable of expanding globally as the religion grows.
+The system starts with a single-branch MVP but is designed to scale globally as the community grows.
 
----
-
-## 🚀 Quickstart Guide for Admins
-
-This guide will help you get started with the Muzi Ka Nkulunkulu Management System (MKN-MS).  
-It covers the most common tasks you will need to perform.
-
-### Step 1: Log In and Navigate
-- Open the application in your web browser.  
-- Enter your admin credentials to log in.  
-- You will land on the **Dashboard**, where you can see an overview of key statistics like total members and RA statuses.  
-- Use the navigation menu at the bottom to move between sections: Dashboard, Attendance, Members, etc.  
-
-### Step 2: Register a New Member
-- Navigate to the **Members** section.  
-- Click the **Add New Member** button.  
-- Fill in details: Full Name, Surname, Card Number, and other relevant info.  
-- Select the correct **Position** and **Main Branch** from the dropdown lists.  
-- Click **Save** to add the new member.  
-
-### Step 3: Mark Attendance
-- Go to the **Attendance** section.  
-- You will see a list of all members.  
-- Locate a member and toggle the button next to their name to mark attendance.  
-- The button will change color to confirm presence.  
-- The system automatically records date/time and finalizes attendance at the end of service.  
-
-### Step 4: Assign Duties
-- Go to the **Roster** section (coming soon in the MVP).  
-- The system enforces rules for duty assignments:
-  - *Izithunywa* → only Messengers.  
-  - *Omele Abavangeli* & *Izaziso* → only Evangelists.  
-  - *Umkhokheli phakathi* & *Umkhokheli phandle* → only female Facilitators.  
-- Select a member → choose an available duty.  
-- Confirm the assignment to update the roster.  
 
 ---
 
-## ✨ Core Features (MVP)
+🚀 Quickstart Guide (Admins)
 
-- 📋 **Member Management**  
-  Register, update, and view member profiles (card number, name, surname, position, branch).
+1. Log In & Navigate
 
-- ⛪ **Duty Roster**  
-  Assign and manage duties according to rules:  
-  - *Izithunywa* → only Messengers (exclusive).  
-  - *Omele Abavangeli* & *Izaziso* → only Evangelists (Evangelists may also hold *Umgcini sihlalo*).  
-  - *Umkhokheli phakathi* & *Umkhokheli phandle* → only female Facilitators.  
-  - Others: *Umgcini sihlalo*, *Obalayo*, *Ofunda imfundiso*.  
+Open the app in your browser.
 
-- 📊 **Attendance Register**  
-  - Toggle presence during service.  
-  - Auto-finalize after service ends.  
-  - RA (Red Alert) system:  
-    - Pre-RA (Orange) → 83–89 days absence.  
-    - RA (Red) → 90 days absence.  
-    - RA requires logged reason for removal.  
-    - 3 RA strikes = permanent removal.  
-  - Guest attendance supported.  
+Enter admin credentials.
 
-- 📈 **Dashboards**  
-  - Total Members  
-  - RA Members  
-  - Pre-RA Members  
-  - Age group insights (future)  
-  - Regional/branch analytics (future)  
+The Dashboard shows stats like total members and RA statuses.
 
----
+Use the bottom navigation menu for sections: Dashboard, Attendance, Members, etc.
 
-## 🔮 Roadmap (Beyond MVP)
 
-- 🌍 Multi-branch support with timezone-based service times.  
-- 📱 NFC attendance check-in.  
-- 📊 Public dashboard for transparency and outreach.  
-- 🛡️ Role-based access control (Admin, Branch Leader, Viewer).  
-- 📑 Export reports (PDF/Excel).  
-- 🔗 Integrations with Yotaabo Smart Projects.  
+2. Register Members
 
----
+Go to Members → Add New Member.
 
-## 🛠️ Tech Stack
+Enter details (Full Name, Surname, Card Number, Position, Branch).
 
-- **Frontend:** React + TypeScript + Vite  
-- **Styling:** TailwindCSS  
-- **State:** React Hooks (scalable to Redux/Context)  
-- **Build Tooling:** Vite, ESLint, TypeScript  
-- **Deployment:** Netlify/Vercel (static) or Docker (optional)  
+Click Save.
+
+
+3. Mark Attendance
+
+Open Attendance.
+
+Toggle presence beside a member’s name.
+
+The system timestamps attendance and auto-finalizes after service.
+
+
+4. Assign Duties
+
+Go to Roster (MVP feature).
+
+Duty rules enforced:
+
+Izithunywa → only Messengers (exclusive).
+
+Omele Abavangeli & Izaziso → only Evangelists (Evangelists may also hold Umgcini sihlalo).
+
+Umkhokheli phakathi & Umkhokheli phandle → only female Facilitators.
+
+
+
 
 ---
 
-## ⚙️ Installation & Setup
+✨ Core Features (MVP)
 
-Clone repository:
-```bash
-git clone
+📋 Member Management
+Profiles with card number, name, surname, position, and branch.
+
+⛪ Duty Roster
+Assign duties with position- and gender-based rules.
+
+📊 Attendance Register
+
+Toggle presence during service.
+
+Auto-finalizes after service ends.
+
+RA system:
+
+Pre-RA (Orange) → 83–89 days absent.
+
+RA (Red) → 90+ days absent.
+
+RA removal requires a logged reason.
+
+3 RA strikes = permanent removal.
+
+
+Guest attendance supported.
+
+
+📈 Dashboards
+
+Total Members
+
+RA Members
+
+Pre-RA Members
+
+Future: Age groups, regional trends
+
+
+
+
+---
+
+🔮 Roadmap (Beyond MVP)
+
+Multi-branch support with timezone-based service windows
+
+NFC attendance check-in
+
+Public dashboards for outreach
+
+Role-based access control (Admin, Branch Leader, Viewer)
+
+Exportable reports (PDF/Excel)
+
+Integrations with Yotaabo Smart Projects
+
+
+
+---
+
+🛠️ Tech Stack
+
+Frontend: React + TypeScript + Vite
+
+Styling: TailwindCSS
+
+State Management: React Hooks (scalable to Context/Redux)
+
+Tooling: ESLint, TypeScript
+
+Deployment: Vercel/Netlify (static) or Docker
+
+
+
+---
+
+⚙️ Installation & Setup
+
+# Clone repo
+git clone https://github.com/Yothabo/MKN-ms.git
 cd MKN-ms
 
-Install dependencies:
-
+# Install dependencies
 npm install
 
-Run in development:
-
+# Run dev server
 npm run dev
 
-Build for production:
-
+# Build for production
 npm run build
 
-Preview production build:
-
+# Preview build
 npm run preview
 
 
@@ -125,58 +158,55 @@ npm run preview
 📂 Project Structure
 
 MKN-ms/
-├── README.md                  # Project documentation
-├── legacy-packages.md         # Archive of unused/removed dependencies
-├── package.json               # Metadata & dependencies
-├── vite.config.ts             # Vite config
-├── tsconfig.json              # Root TS config
-├── tsconfig.app.json          # TS config for app source
-├── tsconfig.node.json         # TS config for node scripts
-├── tailwind.config.js         # Tailwind config
-├── postcss.config.js          # PostCSS config
-├── eslint.config.js           # ESLint config
-├── index.html                 # Main entry
-├── public/                    # Static assets
-├── src/                       # Application source
-│   ├── App.css                # Global styles
-│   ├── App.tsx                # Root component
-│   ├── main.tsx               # Entry point
-│   ├── assets/                # Images/icons
-│   ├── components/            # Reusable components
-│   ├── hooks/                 # Custom hooks
-│   ├── utils/                 # Helpers/constants
-│   ├── styles/                # Styling modules
-│   └── pages/                 # App pages
-│       ├── admin/             
-│       │   ├── dashboard/     # Dashboards
-│       │   ├── members/       # Member management
-│       │   ├── duties/        # Duty roster
-│       │   ├── attendance/    # Attendance
+├── README.md
+├── legacy-packages.md
+├── package.json
+├── vite.config.ts
+├── tsconfig.json
+├── tsconfig.app.json
+├── tsconfig.node.json
+├── tailwind.config.js
+├── postcss.config.js
+├── eslint.config.js
+├── index.html
+├── public/
+├── src/
+│   ├── App.css
+│   ├── App.tsx
+│   ├── main.tsx
+│   ├── assets/
+│   ├── components/
+│   ├── hooks/
+│   ├── utils/
+│   ├── styles/
+│   └── pages/
+│       ├── admin/
+│       │   ├── dashboard/
+│       │   ├── members/
+│       │   ├── duties/
+│       │   ├── attendance/
 │       │   └── ...
-│       └── auth/              # Authentication (future)
-└── dist/                      # Production build
+│       └── auth/        # Future
+└── dist/                # Production build
 
 
 ---
 
 🧪 Development Notes
 
-ESLint set up for TypeScript + React best practices.
+ESLint configured for TypeScript + React best practices.
 
 TailwindCSS for utility-first styling.
 
 Legacy dependencies tracked in legacy-packages.md.
 
-Some MVP UI elements are mock placeholders.
+Some MVP UI elements are placeholders.
 
 
 
 ---
 
 👥 Contributing
-
-Contributions are welcome.
-Steps:
 
 1. Fork the repo
 
@@ -191,14 +221,17 @@ Steps:
 Please follow coding standards and respect the religious context of Muzi Ka Nkulunkulu.
 
 
+---
 
 📜 License
 
-MIT License. See LICENSE for details.
+MIT License. See LICENSE.
 
+
+---
 
 🧠 About Muzi Ka Nkulunkulu
 
-Muzi Ka Nkulunkulu is a Religion with unique traditions, practices, and organizational needs.
-MKN-MS preserves those values while embracing modern digital tools to manage growth and serve members worldwide.
+Muzi Ka Nkulunkulu is a religion with unique traditions and practices.
+MKN-MS is built to preserve those values while embracing modern tools to support members worldwide.
 
