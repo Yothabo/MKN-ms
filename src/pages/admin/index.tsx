@@ -7,7 +7,7 @@ import AdminMembers from './members/index.tsx';
 import AdminRoster from './roster/index.tsx';
 import AdminCongregation from './congregation/index.tsx';
 
-// Replace with your actual auth logic (e.g., from LoginSignupModal.tsx)
+// Authentication check (adjust based on your logic)
 const isAuthenticated = () => {
   return !!localStorage.getItem('authToken'); // Example
 };
