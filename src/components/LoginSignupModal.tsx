@@ -1,3 +1,4 @@
+// src/components/LoginSignupModal.tsx
 import React, { useEffect, useState } from 'react';
 import { FiArrowLeft } from 'react-icons/fi';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -49,13 +50,6 @@ const LoginSignupModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
     }, 700);
   };
 
-  useEffect(() => {
-    if (!isSignup) {
-      setCollapseFields(true);
-      setTimeout(() => setCollapseFields(false), 400);
-    }
-  }, [isSignup]);
-
   const validateLogin = (card: string, pass: string): boolean => {
     return (
       (card === '0001' && pass === 'admin0001') ||
@@ -68,8 +62,10 @@ const LoginSignupModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
     if (!isSignup) {
       if (validateLogin(cardNumber, password)) {
         setError('');
+        // Set authToken in localStorage
+        localStorage.setItem('authToken', cardNumber);
         if (cardNumber === '0001') {
-          handleClose('/admin');
+          handleClose('/admin/dashboard'); // Direct to dashboard
         } else if (cardNumber === '0002') {
           handleClose('/congregation');
         }
