@@ -7,9 +7,8 @@ import AdminMembers from './members/index.tsx';
 import AdminRoster from './roster/index.tsx';
 import AdminCongregation from './congregation/index.tsx';
 
-// Authentication check (adjust based on your logic)
 const isAuthenticated = () => {
-  return !!localStorage.getItem('authToken'); // Example
+  return !!localStorage.getItem('authToken');
 };
 
 const AdminPage = () => {
@@ -27,7 +26,7 @@ const AdminPage = () => {
         <Route path="members" element={<AdminMembers />} />
         <Route path="roster" element={<AdminRoster />} />
         <Route path="congregation" element={<AdminCongregation />} />
-        <Route path="*" element={<Navigate to="/admin/dashboard" replace />} /> {/* Catch-all */}
+        <Route path="*" element={<Navigate to="/admin/dashboard" replace />} />
       </Routes>
       <BottomNavigation />
     </div>
