@@ -15,7 +15,6 @@ const LoginSignupModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
   const [visible, setVisible] = useState(isOpen);
   const [fadeOut, setFadeOut] = useState(false);
   const [isSignup, setIsSignup] = useState(false);
-  const [collapseFields, setCollapseFields] = useState(false);
   const [arrowVisible, setArrowVisible] = useState(true);
   const [circleVisible, setCircleVisible] = useState(true);
   const [modalFadeOut, setModalFadeOut] = useState(false);
@@ -62,10 +61,9 @@ const LoginSignupModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
     if (!isSignup) {
       if (validateLogin(cardNumber, password)) {
         setError('');
-        // Set authToken in localStorage
-        localStorage.setItem('authToken', cardNumber);
+        localStorage.setItem('authToken', cardNumber); // Set authToken
         if (cardNumber === '0001') {
-          handleClose('/admin/dashboard'); // Direct to dashboard
+          handleClose('/admin/dashboard');
         } else if (cardNumber === '0002') {
           handleClose('/congregation');
         }
@@ -270,8 +268,6 @@ const LoginSignupModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
             <motion.form style={styles.form} layout onSubmit={handleSubmit}>
               <motion.div
                 layout
-                animate={{ height: collapseFields ? 0 : 'auto' }}
-                transition={{ duration: 0.4, ease: 'easeInOut' }}
                 style={{ ...styles.fieldGroup, overflow: 'hidden' }}
               >
                 <AnimatePresence mode="wait" initial={false}>
