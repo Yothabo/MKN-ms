@@ -147,6 +147,6 @@ Please follow coding standards and respect the religious context of Muzi Ka Nkul
 📜 License
 This project is licensed under the MIT License. See the LICENSE file for details.
 🧠 About Muzi Ka Nkulunkulu
-Muzi Ka Nkulunkulu is a religion with unique traditions and organizational needs. MKN-MS is built to preserve those values while embracing modern digital tools to support members worldwide.
+Muzi Ka Nkulunkulu(MKN) is a religion with unique traditions and organizational needs. MKN-MS is built to preserve those values while embracing modern digital tools to support members worldwide.
 
 
