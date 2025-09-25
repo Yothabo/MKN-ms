@@ -68,7 +68,7 @@ This guide will get you started with the most common administrative tasks.
 - Public dashboards for transparency and outreach
 - Role-based access control (Admin, Branch Leader, Viewer)
 - Exportable reports (PDF/Excel)
-- Integrations with other Yotaabo Smart Projects
+- Integrations with other MKN  Smart Projects
 
 ---
 
