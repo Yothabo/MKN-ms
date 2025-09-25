@@ -1,8 +1,7 @@
-// src/App.tsx
 import { Routes, Route } from 'react-router-dom';
 import { useRegisterSW } from 'virtual:pwa-register/react';
-import Entry from './pages/entry/index.tsx';
-import AdminLayout from './pages/admin/index.tsx';
+import Entry from './pages/entry';
+import AdminLayout from './pages/admin';
 import NotFound from './components/NotFound';
 
 function App() {

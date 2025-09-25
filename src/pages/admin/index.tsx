@@ -1,11 +1,11 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
-import BottomNavigation from '../../components/bottom-navigation.tsx';
-import AdminDashboard from './dashboard/index.tsx';
-import AdminAnnouncements from './announcements/index.tsx';
-import AdminAttendance from './attendance/index.tsx';
-import AdminMembers from './members/index.tsx';
-import AdminRoster from './roster/index.tsx';
-import AdminCongregation from './congregation/index.tsx';
+import BottomNavigation from '../../components/bottom-navigation';
+import AdminDashboard from './dashboard';
+import AdminAnnouncements from './announcements';
+import AdminAttendance from './attendance';
+import AdminMembers from './members';
+import AdminRoster from './roster';
+import AdminCongregation from './congregation';
 
 const isAuthenticated = () => {
   return !!localStorage.getItem('authToken');
