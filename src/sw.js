@@ -1,8 +1,9 @@
 import { precacheAndRoute } from 'workbox-precaching';
-import { registerRoute } from 'workbox-routing';
+import { registerRoute, setDefaultHandler } from 'workbox-routing';
 import { StaleWhileRevalidate } from 'workbox-strategies';
 import { BackgroundSyncPlugin } from 'workbox-background-sync';
 
+// Precache build assets
 precacheAndRoute(self.__WB_MANIFEST);
 
 // Cache API requests
@@ -12,9 +13,16 @@ registerRoute(
     cacheName: 'api-cache',
     plugins: [
       new BackgroundSyncPlugin('api-queue', {
-        maxRetentionTime: 24 * 60, // Retry for 24 hours
+        maxRetentionTime: 24 * 60, // retry for 24h
       }),
     ],
+  })
+);
+
+// Default: cache everything else (images, fonts, etc.)
+setDefaultHandler(
+  new StaleWhileRevalidate({
+    cacheName: 'general-cache',
   })
 );
 

@@ -4,32 +4,28 @@ import tsconfigPaths from 'vite-tsconfig-paths';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
-  // Base path for the app (ensures correct routing on Vercel)
   base: '/',
-
-  // Plugins for React, TypeScript paths, and PWA
+  
   plugins: [
-    react(),
+    react({
+      jsxRuntime: 'automatic',
+    }),
     tsconfigPaths({ root: './' }),
     VitePWA({
-      // Use injectManifest strategy to customize the service worker
       strategies: 'injectManifest',
       srcDir: 'src',
       filename: 'sw.js',
       injectManifest: {
-        swSrc: './src/sw.js', // Source service worker file
-        swDest: 'dist/sw.js', // Destination after build
-        globPatterns: ['**/*.{js,css,html,png,svg}'], // Files to precache
-        globIgnores: ['**/node_modules/**/*'], // Exclude node_modules
+        swSrc: './src/sw.js',
+        swDest: 'dist/sw.js',
+        globPatterns: ['**/*.{js,css,html,png,svg}'],
+        globIgnores: ['**/node_modules/**/*'],
       },
-      // Automatically inject the registration script
       injectRegister: 'auto',
-      // Enable PWA in dev mode for testing
       devOptions: {
         enabled: true,
-        type: 'module', // Use ES modules in dev
+        type: 'module',
       },
-      // PWA manifest configuration
       manifest: {
         name: 'Muzi Ka Nkulunkulu Management System',
         short_name: 'MKN-MS',
@@ -37,7 +33,7 @@ export default defineConfig({
         background_color: '#ffffff',
         display: 'standalone',
         start_url: '/',
-        scope: '/', // Defines the scope of the PWA
+        scope: '/',
         icons: [
           {
             src: '/icons/icon-192.png',
@@ -51,7 +47,6 @@ export default defineConfig({
           },
         ],
       },
-      // Optional: Workbox configuration for advanced control
       workbox: {
         globPatterns: ['**/*.{js,css,html,png,svg}'],
         cleanupOutdatedCaches: true,
@@ -61,35 +56,36 @@ export default defineConfig({
     }),
   ],
 
-  // Resolve module extensions for TypeScript and JavaScript
   resolve: {
     extensions: ['.js', '.jsx', '.ts', '.tsx'],
   },
 
-  // Server options (e.g., disable HMR overlay for errors)
   server: {
+    host: '0.0.0.0',
+    port: 5173,
+    strictPort: false,
     hmr: {
-      overlay: false, // Disable Vite's error overlay
+      overlay: false,
     },
-    open: true, // Automatically open browser on dev start
+    open: true,
   },
 
-  // Build configuration
   build: {
-    chunkSizeWarningLimit: 1500, // Increase chunk size limit
-    minify: 'esbuild', // Use esbuild for faster minification
+    sourcemap: false,
+    chunkSizeWarningLimit: 1500,
+    minify: 'esbuild',
     rollupOptions: {
       output: {
-        manualChunks: undefined, // Disable manual chunking for simplicity
-        entryFileNames: '[name]-[hash].js', // Unique filenames for cache busting
+        manualChunks: undefined,
+        entryFileNames: '[name]-[hash].js',
         chunkFileNames: '[name]-[hash].js',
         assetFileNames: '[name]-[hash].[ext]',
       },
     },
   },
 
-  // Optimize dependencies for better performance
   optimizeDeps: {
     include: ['react', 'react-dom'],
+    exclude: ['react-svg-worldmap'],
   },
 });

@@ -1,4 +1,5 @@
 // src/types/pwa.d.ts
+
 declare module 'virtual:pwa-register/react' {
   import { Dispatch, SetStateAction } from 'react';
 
@@ -16,4 +17,10 @@ declare module 'virtual:pwa-register' {
     onRegistered?: (registration: ServiceWorkerRegistration) => void;
     onRegisterError?: (error: any) => void;
   }): () => Promise<void>;
+}
+
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt(): Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
 }

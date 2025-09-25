@@ -1,15 +1,5 @@
 {
   "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
-  ],
-  "cleanUrls": true,
-  "trailingSlash": false,
-  "headers": [
-    {
-      "source": "/(.*)",
-      "headers": [
-        { "key": "X-Vercel-Rewrite", "value": "index.html" }
-      ]
-    }
+    { "source": "/(.*)", "destination": "/" }
   ]
 }
