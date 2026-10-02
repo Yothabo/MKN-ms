@@ -38,10 +38,44 @@ These processes read configuration at run time. None of them embeds an organizat
 
 ## The invocation graph
 
-```
+~~~
+11.0 Materialize Occurrences
+          │
+          ▼
+   ServiceOccurrence
+          │
+          ▼
+  5.0 Generate Assignment
+          │
+          ├──────────► 9.0 Dispatch Notification
+          │
+          ▼
+   RosterAssignment
+       │       │
+       │       └────────► 7.0 Manage Confirmation
+       │                         │
+       │                         ├── decline/timeout
+       │                         │        │
+       │                         │        ▼
+       │                         │   re-resolve slot
+       │                         │        │
+       │                         │        ▼
+       │                         └──► RosterAssignment
+       │                                  │
+       │                                  └──► 9.0
+       │
+       └──────────────────────► 10.0 Evaluate Fill Status
+                                      │
+                                      ▼
+                              ServiceOccurrence
+                               FillStatusID
 
-```
 
+6.0 Record Attendance
+          │
+          ▼
+   AttendanceRecord
+~~~
 The two invocation edges (5.0 → 9.0 and 7.0 → 9.0) are the only process-to-process calls in the system. Every other relationship is data-mediated.
 
 ---
