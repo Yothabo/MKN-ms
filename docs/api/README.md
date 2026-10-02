@@ -18,7 +18,7 @@ When the API contract is defined, this directory will hold:
 
 - **`endpoints.md`** — the endpoint list, grouped by the processes they serve.
 - **`request-response.md`** — request and response shapes, error conventions, and any versioning policy.
-- **`process-mapping.md`** — the mapping from endpoints to the eleven processes in `../processes/`.
+- **`process-mapping.md`** — the anticipated process exposure, mapped against the eleven processes in `../processes/`.
 
 ---
 
@@ -26,11 +26,11 @@ When the API contract is defined, this directory will hold:
 
 The API is a presentation of the processes defined in `../processes/`, not an independent layer. Its design is constrained by:
 
-- **The process boundaries.** Each endpoint maps to one or more processes. It does not introduce new behavior.
+- **The process boundaries.** Each endpoint invokes exactly one process or subprocess. No composite endpoints that stitch together behavior from multiple processes.
 - **The store footprints.** An endpoint must not write to a store outside the footprint of the process it invokes.
 - **The invocation model.** Endpoints trigger processes; they do not introduce new invocation edges. The two direct edges (5.0 → 9.0 and 7.0 → 9.0) are internal and do not appear at the API boundary.
 - **The required-setting rule.** Endpoints that trigger processes depending on a required setting must surface the configuration error if the setting is absent.
-- **The 8.0 exception.** An endpoint that links a Program Item to a Service Definition triggers the creation of an event-sourced occurrence; this is the only case where an API call produces an operational record from a configuration-layer action.
+- **The 8.0 exception.** An endpoint that links a Program Item to a Service Definition triggers the creation of an event-sourced occurrence. This is the only case where a configuration-layer action produces an operational record.
 
 ---
 

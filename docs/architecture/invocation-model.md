@@ -10,7 +10,7 @@ The system's default integration mechanism is **shared data**. Processes read fr
 
 Direct process invocation is the exception. It exists in exactly two places, both for the same reason: an outbound message must be sent at the moment an assignment is created, and deferring that to a polling process would require a "notified" flag or a notification queue that the schema deliberately does not have.
 
-Everywhere else, processes are independently executable. No process orchestrates another. No process waits for another. The data stores are the interface.
+Everywhere else, processes are independently executable. No process orchestrates another. The data stores are the interface.
 
 ---
 
@@ -23,11 +23,11 @@ There are exactly two process-to-process invocations in the system:
 | 5.0 Generate Assignment | 9.0 Dispatch Notification | On each new automatic assignment created |
 | 7.0 Manage Confirmation | 9.0 Dispatch Notification | On each replacement assignment created after decline or timeout |
 
-Both invoke 9.0. Both invoke it under the same condition: a new `RosterAssignment` row has been created. Neither invokes 9.0 for any other reason.
+Both invoke 9.0. Both invoke it under the same condition: a new RosterAssignment row has been created. Neither invokes 9.0 for any other reason.
 
 ### Why these exist
 
-An assignment notice must be sent at the moment the assignment is created. A polling model would require either a `Notified` flag or a notification queue — state the schema deliberately does not have. Direct invocation is simpler and bounded: 9.0 is the outbound channel, invoked by the two processes that produce outbound-worthy events.
+An assignment notice must be sent at the moment the assignment is created. A polling model would require either a Notified flag or a notification queue — state the schema deliberately does not have. Direct invocation is simpler and bounded: 9.0 is the outbound channel, invoked by the two processes that produce outbound-worthy events.
 
 ### Why there are no others
 
@@ -44,9 +44,137 @@ No process needs to notify another synchronously, and none does.
 
 ## The full topology
 
-```
+### Visual form
 
-```
+~~~mermaid
+flowchart TB
+    C1["1.0 Configure vocabulary"]
+    C2["2.0 Configure duty rules"]
+    C3["3.0 Manage membership"]
+    C4["4.0 Manage eligibility"]
+    C8["8.0 Manage events and programs"]
+
+    P11["11.0 Materialize occurrences"]
+    P5["5.0 Generate assignment"]
+    P7["7.0 Manage confirmation"]
+    P10["10.0 Evaluate fill status"]
+    P6["6.0 Record attendance"]
+    P9["9.0 Dispatch notification"]
+
+    D1[(D1 Role / Duty)]
+    D2[(D2 Duty Rule)]
+    D3[(D3 Branch / Slot / Service / Occurrence)]
+    D4[(D4 Member)]
+    D5[(D5 Identifier History)]
+    D6[(D6 Eligibility)]
+    D7[(D7 Roster Assignment)]
+    D8[(D8 Attendance Record)]
+    D9[(D9 Event / Program / Item / Event Duty)]
+    D10[(D10 Config Lookups)]
+    D11[(D11 System Setting)]
+    D12[(D12 Materializer Run)]
+
+    C1 -.->|writes| D1
+    C1 -.->|writes| D3
+    C1 -.->|writes| D10
+    C2 -.->|writes| D2
+    C3 -.->|writes| D4
+    C3 -.->|writes| D5
+    C4 -.->|writes| D6
+    C8 -.->|writes| D9
+    C8 -.->|writes event-sourced occurrence| D3
+
+    D3 -.->|reads active schedules| P11
+    D11 -.->|reads horizon| P11
+    P11 -.->|writes| D3
+    P11 -.->|writes run log| D12
+
+    D2 -.->|reads| P5
+    D3 -.->|reads| P5
+    D4 -.->|reads| P5
+    D6 -.->|reads| P5
+    D7 -.->|reads| P5
+    P5 -.->|writes| D7
+    P5 -->|invokes| P9
+
+    D7 -.->|reads / writes| P7
+    D10 -.->|reads| P7
+    D11 -.->|reads| P7
+    P7 -->|invokes on replacement| P9
+
+    D7 -.->|reads| P10
+    D3 -.->|reads| P10
+    D10 -.->|reads| P10
+    D11 -.->|reads| P10
+    P10 -.->|writes FillStatusID| D3
+
+    D4 -.->|reads| P6
+    D3 -.->|reads| P6
+    P6 -.->|writes| D8
+
+    D7 -.->|reads| P9
+    D4 -.->|reads| P9
+    D3 -.->|reads| P9
+    D11 -.->|reads| P9
+~~~
+
+**Legend:** solid arrows (`-->`) are process invocations. Dotted arrows (`-.->`) are data reads or writes. Only two solid arrows exist.
+
+### Exact form
+
+The following topology matches §16 of the System Design Specification. Only connecting arrows are shown.
+
+~~~
+1.0 Configure vocabulary ──┐
+2.0 Configure duty rules ──┤
+3.0 Manage membership ─────┤
+4.0 Manage eligibility ────┤
+8.0 Manage events/programs ┘
+                            │
+                            │ writes
+                            ▼
+        Configuration stores: D1 D2 D3 D4 D5 D6 D9 D10 D11
+        (8.0 additionally creates event-sourced ServiceOccurrence
+         rows when a ProgramItem is linked to a ServiceDefinition)
+                            │
+                            │ read by
+                            ▼
+                  11.0 Materialize Occurrences
+                            │
+                            │ writes
+                            ▼
+                  ServiceOccurrence (D3)
+                            │
+                            │ read by
+                            ▼
+                  5.0 Generate Assignment
+                            │
+                   ┌────────┴────────┐
+                   │ writes          │ invokes
+                   ▼                 ▼
+        RosterAssignment (D7)   9.0 Dispatch Notification
+                   │                 ▲
+                   │ read/written    │
+                   ▼                 │
+        7.0 Manage Confirmation ─────┘
+                   │      invokes (on replacement)
+                   │
+                   │ feeds
+                   ▼
+        10.0 Evaluate Fill Status
+                   │
+                   │ writes
+                   ▼
+        ServiceOccurrence.FillStatusID
+
+
+        6.0 Record Attendance
+                   │
+                   │ writes
+                   ▼
+        AttendanceRecord (D8)
+        (read by 5.0 only when a Branch-Attendance Recency criterion exists)
+~~~
 
 ---
 
@@ -90,9 +218,7 @@ These are two different kinds of coupling, and the distinction matters.
 - 10.0 requires assignments and occurrences (produced by 5.0 and 11.0).
 - 9.0 requires assignments (produced by 5.0 or 7.0).
 
-Data dependencies do not imply process dependencies. A process that requires records another process has produced simply reads them from the store when it runs. It does not call the other process, and it does not wait for the other process to complete.
-
-The system schedules processes close enough together that the data they need is available when they run, but this is a scheduling concern, not a coupling concern.
+Data dependencies do not imply process dependencies. A process that requires records another process has produced simply reads them from the store when it runs. It does not call the other process.
 
 ---
 
@@ -155,9 +281,9 @@ In every case, the reader finds what it needs by querying the store, not by bein
 
 ## What this model preserves
 
-**Independent testability.** Every process can be tested in isolation, because its behavior depends only on the state of the stores it reads and the parameters of its trigger.
+**Independent execution.** Each process can be scheduled or invoked independently. Their data dependencies do not require process-to-process invocation.
 
-**Independent deployability.** Every process can be scheduled, deployed, or invoked on its own. The scheduler can run 11.0 daily and 5.0 hourly without either depending on the other's cadence.
+**Independent testability.** Every process can be tested in isolation, because its behavior depends only on the state of the stores it reads and the parameters of its trigger.
 
 **Independent observability.** Every process's behavior is visible through the stores it writes, except 9.0, whose contract explicitly excludes delivery tracking.
 

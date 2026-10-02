@@ -370,8 +370,1538 @@ This process is independent of Assignment generation. It never sends a notificat
 
 ### Event-sourced occurrences
 
-Occurrences created when an administrator links a Program Item directly to a Service Definition are entirely outside this process. They carry GeneratedBy = Administrator and CreatedBy = the admin who created them, and their uniqueness is governed by the Event/Program process.
+Occurrences created when an administrator links a Program Item directly to a Service Definition are entirely outside this process. Their values are derived from the Program Item, not from a Service Schedule:
+
+- `Date` — the date portion of `ProgramItem.ScheduledStart`
+- `StartTime` — the time portion of `ProgramItem.ScheduledStart`
+- `ServiceTypeID` — inherited from the linked `ServiceDefinition.ServiceTypeID`
+- `EventID` — from the Program Item's Event
+- `ScheduleID` — null
+
+They carry `GeneratedBy = Administrator` and `CreatedBy` = the admin who created them, and their uniqueness is governed by the Event/Program process, not by the (ScheduleID, Date) rule.
+
+This is the opposite of the schedule-sourced case, where `Date`, `StartTime`, and `ServiceTypeID` all derive from `ServiceSchedule` and its associated `ServiceDefinition`.
 
 ### The resulting invariant
 
 The Occurrence Materializer is additive and idempotent. It creates missing schedule-sourced occurrences within the configured horizon and never modifies or deletes an occurrence that already exists.
+
+---
+
+## 8. Occurrence Materialization — Derived Consequences
+
+*This appendix derives, from the locked contract in §7, the concrete schema behavior, data flows, invariants, and indexing the Occurrence Materializer requires. Every consequence traces to a locked decision. Where an implementation choice remains genuinely open, it is named in §8.5 rather than assumed.*
+
+### 8.0 Process Boundary
+
+11.0 Materialize Occurrences is the process that ensures Service Occurrence rows exist for every active Service Schedule up to a configured horizon, expressed in days. Its primary trigger is time; its secondary trigger is an optional manual invocation by an administrator.
+
+It reads configuration and one setting, writes operational records, and invokes no other process. It is placed in Operations rather than Configuration because it produces operational records from configuration data.
+
+**At a glance:**
+
+- **Trigger:** scheduled run (daily); manual administrator action with an explicit horizon.
+- **Reads:** D3 ServiceSchedule (active), D3 BranchTimeSlot, D3 ServiceDefinition, D3 ServiceOccurrence (existence check), D11 SystemSetting (`OccurrenceHorizonDays`).
+- **Writes:** D3 ServiceOccurrence (inserts only), D12 MaterializerRun.
+- **Does not:** modify or delete an existing occurrence, invoke any other process, read any other store.
+
+### 8.1 Derived Schema Behavior
+
+#### 8.1.1 ServiceOccurrence — column semantics under materialization
+
+The ServiceOccurrence table is defined in §4. This section states, for each column, what the Materializer does with it.
+
+| Column | Materializer behavior |
+| --- | --- |
+| OccurrenceID | System-generated. |
+| ScheduleID | Populated with the schedule's ID. Never null for a row this process creates. |
+| EventID | Always null for rows this process creates. |
+| Date | The missing date being materialized. Date-only. |
+| ServiceTypeID (override) | Inherited as a value from the schedule's Service Definition at creation time. |
+| StartTime (override) | Inherited as a value from the schedule at creation time. |
+| FillStatusID | Left null. Populated only by 10.0 Evaluate Fill Status. |
+| GeneratedBy | Set to System. Permanent. |
+| CreatedBy | Left null. Populated only when GeneratedBy = Administrator. |
+| ChangedBy | Left null. Never set at creation. |
+
+#### 8.1.2 Provenance semantics — the four reachable states
+
+| State | GeneratedBy | CreatedBy | ChangedBy | Meaning |
+| --- | --- | --- | --- | --- |
+| Just materialized | System | NULL | NULL | System created it; nothing has touched it since. |
+| Materialized, then admin-edited | System | NULL | Admin | System created it; an admin subsequently changed it. |
+| Admin-created (event-sourced) | Administrator | Admin | NULL | An admin created it; nothing has touched it since. |
+| Admin-created, then admin-edited | Administrator | Admin | Admin | An admin created it; an admin subsequently changed it. |
+
+Two check constraints enforce the only nontrivial relationship among the three columns:
+
+- `GeneratedBy = 'System'` implies `CreatedBy IS NULL`.
+- `GeneratedBy = 'Administrator'` implies `CreatedBy IS NOT NULL`.
+
+Together these establish the equivalence `CreatedBy IS NOT NULL ⇔ GeneratedBy = 'Administrator'`.
+
+#### 8.1.3 Uniqueness
+
+A schedule-sourced occurrence is unique on (ScheduleID, Date). Event-sourced occurrences are excluded — they have ScheduleID = NULL, and their uniqueness is governed by the Event/Program process.
+
+The uniqueness constraint is the database-level correctness guard against duplicate creation. The application-level existence check is a pre-write optimization, not the guarantee.
+
+#### 8.1.4 Schedule eligibility
+
+A schedule is eligible for materialization when the schedule itself, its Service Definition, and its Branch Time Slot are all active.
+
+#### 8.1.5 Materializer Run — the operational record
+
+Each run of the Materializer produces one Materializer Run record. Fields: RunID, TriggerType, TriggeredBy, StartedAt, CompletedAt, SchedulesEvaluated, OccurrencesCreated, Status, ErrorDetail.
+
+Two consistency rules apply: a Manual trigger requires a non-null TriggeredBy; a Scheduled trigger requires a null one. A Materializer Run record is written for both successful and failed runs.
+
+#### 8.1.6 System Setting — required-value semantics
+
+`OccurrenceHorizonDays` is a required System Setting. If unset, the Materializer refuses to run and surfaces a configuration error. It does not idle silently and does not use an assumed default.
+
+### 8.2 Read and Write Footprint
+
+**Reads:**
+
+| # | Source | Purpose |
+| --- | --- | --- |
+| R1 | SystemSetting where Key = 'OccurrenceHorizonDays' | Determine N. |
+| R2 | System/application timezone configuration | Resolve "today" deterministically. |
+| R3 | ServiceSchedule where IsActive = true, joined to BranchTimeSlot and ServiceDefinition | Enumerate schedules needing coverage. |
+| R4 | ServiceOccurrence where ScheduleID = ? and Date in target range | Compute the missing-date set per schedule. |
+
+R3 reads ServiceDefinition.ServiceTypeID as a value to inherit. It does not read the ServiceType lookup table itself. R3 does not read ServiceDefinition.OwningBranchID — OwningBranch enforcement is a configuration-validation concern, not this process's concern.
+
+**Writes:**
+
+| # | Target | Fields | Transaction boundary |
+| --- | --- | --- | --- |
+| W1 | ServiceOccurrence | ScheduleID, Date, ServiceTypeID, StartTime, FillStatusID = NULL, GeneratedBy = 'System', CreatedBy = NULL, ChangedBy = NULL | One transaction per row. |
+| W2 | MaterializerRun | Full record, written at completion whether successful or failed. | One record per run. |
+
+**Stores never touched:** Role, Duty, DutyRule, Member, IdentifierHistory, Eligibility, RosterAssignment, AttendanceRecord, ServiceOccurrenceDuty, Event, Program, ProgramItem, EventDuty, OutcomeState, AssignmentStatus, PermissionTier, ServiceDefinitionDuty, ServiceType, TimeOfDay, Branch, and Admin (except via TriggeredBy on a manual run).
+
+### 8.3 Invariants
+
+**Additivity.** The Materializer issues no UPDATE and no DELETE against ServiceOccurrence, ever.
+
+**Idempotency.** Running the Materializer twice at the same system time with the same horizon produces exactly the same set of ServiceOccurrence rows as running it once.
+
+**Horizon boundedness.** No row created by this process has a Date outside [today, today + N], inclusive.
+
+**Schedule-source attribution.** Every row created by this process has a non-null ScheduleID, GeneratedBy = 'System', CreatedBy = NULL, ChangedBy = NULL, and FillStatusID = NULL.
+
+**Provenance immutability.** Once a row exists, its GeneratedBy value is never altered.
+
+**System-actor consistency.** A row with GeneratedBy = 'System' has a null CreatedBy; a row with GeneratedBy = 'Administrator' has a non-null CreatedBy.
+
+**Schedule deactivation semantics.** Deactivating a ServiceSchedule stops new occurrence creation for that schedule and does not affect any existing occurrence.
+
+**Schedule change semantics.** Changing a ServiceSchedule does not rewrite any occurrence already materialized from it.
+
+**Service Definition change semantics.** Changing a ServiceDefinition's duty composition does not propagate to any existing occurrence.
+
+**Full re-entrancy.** A partially completed run leaves the system in a state that the next run will complete correctly, with no checkpoint state.
+
+**Manual and scheduled equivalence.** For the same horizon and system time, a manual run and a scheduled run produce identical results.
+
+**Required-setting failure.** If OccurrenceHorizonDays is unset, zero occurrences are written and one Materializer Run is recorded with Status = Failure.
+
+**Uniqueness.** No two schedule-sourced rows share the same (ScheduleID, Date) pair.
+
+**Event-sourced exclusion.** The Materializer never creates, modifies, or deletes a row with a non-null EventID.
+
+**Zero-duty occurrence creation.** A schedule whose Service Definition has zero configured duties still produces occurrence rows.
+
+**Timezone determinism.** For a given system timezone and instant, "today" resolves to a single calendar date across all runs.
+
+**No outbound flow.** No notification, no assignment generation, no output to any process or store other than ServiceOccurrence and MaterializerRun.
+
+**Non-propagation of overrides.** An existing ServiceOccurrenceDuty row is never modified by this process, and its presence on an occurrence does not cause the Materializer to skip or recreate that occurrence.
+
+### 8.4 Indexes
+
+**Unique index on ServiceOccurrence (ScheduleID, Date), restricted to rows where ScheduleID IS NOT NULL.**
+
+Serves two purposes: the correctness guard against duplicate creation, and the backing index for the existence check (R4). No separate index is created for the existence check.
+
+Physical expression of "restricted to schedule-sourced rows" is an implementation choice (see §8.5).
+
+**Partial index on ServiceSchedule (IsActive) where IsActive = true.**
+
+Serves R3. The table is small, so the benefit is modest, but the partial index matches the query exactly.
+
+### 8.5 Explicitly Open Implementation Choices
+
+- **Physical column types.** The semantics of GeneratedBy, TriggerType, and Status are fixed. Whether each is a database enum, a short string with a check constraint, or a lookup reference is an implementation choice.
+- **Unique-constraint expression across database engines.** The rule is (ScheduleID, Date) unique, restricted to non-null ScheduleID. The mechanism — filtered unique index, partial unique index, or NULL-distinct composite uniqueness — depends on the target database.
+- **Non-required setting with no value.** The behavior when a Required = false setting has no value is defined per-setting. No such setting currently exists in this contract.
+- **Retention and archival.** Out of scope.
+
+*End of §8. This section derives from §7 and does not extend it.*
+
+---
+
+## 9. Configuration Layer — Derived Consequences
+
+*This appendix derives, from the locked contracts for 1.0 through 4.0 and 8.0, the concrete schema behavior, data flows, invariants, and indexing the configuration layer requires. Every consequence traces to a locked contract. The two items that were decisions — schedule uniqueness (D1) and the OutcomeState mapping (D2) — were explicitly locked before this appendix was written. Where an implementation choice remains genuinely open, it is named in §9.5.*
+
+### 9.0 Configuration Layer Boundary
+
+The configuration layer is the set of processes through which an administrator enters every organizational choice the system is capable of expressing. Its outputs are inert data — rows in D1, D2, D3, D4, D5, D6, D9, and D10 — that operational processes read.
+
+It has one direction of dependency: configuration → operations. Configuration processes do not read operational stores and do not invoke operational processes. They write only to configuration stores, with a single explicit exception: **8.0 Manage Events and Programs is the sole configuration process permitted to create an operational record**, and only because a Program Item has been explicitly linked to a Service Definition. That write produces an event-sourced ServiceOccurrence row and is the only operational write the configuration layer performs.
+
+**At a glance:**
+
+- **Processes:** 1.0 Configure vocabulary, 2.0 Configure duty rules, 3.0 Manage membership, 4.0 Manage eligibility, 8.0 Manage events and programs.
+- **Reads:** configuration stores only.
+- **Writes:** configuration stores only, plus the single 8.0 exception above.
+- **Does not touch:** D7 Roster Assignment, D8 Attendance Record, D12 Materializer Run, and any operational process.
+
+### 9.1 Derived Schema Behavior
+
+#### 9.1.1 Configuration entity lifecycle
+
+Configuration entities whose contracts define lifecycle state use immediate activation and deactivation rather than deletion. Lifecycle semantics are defined per entity in the sections that follow. Entities whose contracts do not define lifecycle state — IdentifierHistory, Eligibility (which uses grant/revoke), SystemSetting, and D10 lookup values — are governed by their own specific rules and do not carry an active/inactive flag unless their contract says so.
+
+For entities that do carry lifecycle state, the rules are uniform:
+
+- **Creation is immediate.** An entity is active from the moment it is created.
+- **Deactivation removes the entity from future use** without altering any record that references it.
+- **Every field is editable, always.** Edits take effect for future use.
+- **No deletion, ever.** Configuration entities are historical facts.
+
+Entities with lifecycle state: Role, Duty, Branch, BranchTimeSlot, ServiceDefinition, ServiceDefinitionDuty, ServiceSchedule, Member, DutyRule, Event, Program, ProgramItem, EventDuty.
+
+Entities without lifecycle state: IdentifierHistory, Eligibility, SystemSetting, Admin, D10 lookup values.
+
+#### 9.1.2 Role and Duty
+
+Role and Duty are pure names plus an active flag. Neither carries any reference to the other. The relationship — when one exists — is created in 2.0 as a DutyRule row, and lives on the Duty side.
+
+- Names are required but not unique.
+- Role and Duty cannot be linked at creation time by any means other than a subsequent DutyRule row.
+- An unreferenced Role or Duty is valid, inert, and harmless.
+
+#### 9.1.3 Branch, Branch Time Slot, Time of Day
+
+Branch carries a required structured Location value. The internal structure of Location is an implementation choice (§9.5).
+
+BranchTimeSlot is the join of Branch × DayOfWeek × TimeOfDay. Multiple slots per (BranchID, DayOfWeek) are permitted. TimeOfDayID references an admin-defined lookup in D10; it is a descriptive classification, not a time.
+
+TimeOfDay is a lookup — an open, administrator-defined list.
+
+#### 9.1.4 Service Definition and Service Definition Duty
+
+ServiceDefinition carries a required ServiceTypeID referencing the ServiceType lookup in D10, an optional OwningBranchID, and a Name. It is not required to have any duties.
+
+ServiceDefinitionDuty is the join of ServiceDefinition × Duty, carrying RequiredSlotCount. It inherits the deactivation model.
+
+#### 9.1.5 Service Schedule
+
+ServiceSchedule is the join of ServiceDefinition × BranchTimeSlot, carrying StartTime and IsActive.
+
+- StartTime lives here, not on ServiceDefinition and not on BranchTimeSlot, because it varies per branch, per slot, and per service simultaneously.
+- IsActive = true at creation.
+- **An active ServiceSchedule is uniquely identified by the pair (ServiceDefID, TimeSlotID). The uniqueness constraint applies only to active rows.**
+
+The uniqueness rule is a locked decision (D1). Inactive schedules are excluded, so a deactivated schedule may be replaced. StartTime does not participate in identity. The database constraint is the correctness guard; duplicate creation fails explicitly rather than silently deduplicating.
+
+#### 9.1.6 OwningBranch enforcement
+
+The OwningBranchID on a ServiceDefinition is enforced at the moment a ServiceSchedule is created or edited, not at ServiceDefinition creation.
+
+- If OwningBranchID is null, any BranchTimeSlot may be used.
+- If OwningBranchID is set, only BranchTimeSlots whose BranchID matches may be used.
+- A later edit to OwningBranchID does not rewrite existing schedules.
+
+#### 9.1.7 Member and Identifier History
+
+Member carries its register fields plus a single BranchID and a single RoleID. Required at creation: JoinDate, DateOfBirth, MembershipStage, Name, Surname, Gender, Phone, BranchID, RoleID. Only Email is optional.
+
+MembershipStage is a free-text value, not a lookup.
+
+IdentifierHistory is a per-member log of identifier assignments. Type is free-text. Number is admin-supplied. AssignedDate and Number are required; UnassignedDate and Reason are optional; AuthorizedBy is a required FK to Admin. No active flag. To retire an identifier, UnassignedDate and optionally Reason are set. Entries are never deleted.
+
+Deactivating a Member excludes them from new roster generation. It does not touch operational records. Changing a Member's BranchID or RoleID affects only future use.
+
+#### 9.1.8 Admin and Permission Tier
+
+Admin links a Member to a PermissionTier. PermissionTier is an admin-defined lookup in D10, deliberately minimal. The capability matrix is not defined by the schema; enforcement is upstream.
+
+#### 9.1.9 Eligibility
+
+Eligibility is a grant/revoke record keyed by EligibilityID. Each grant/revoke cycle is its own row. The applicable ordering rule — most recent grant by chronology, or by EligibilityID — is determined by the process reading the record (5.0), not by the schema. Section 10 of this specification states the rule that process uses.
+
+The absence of a row means the member is not eligible. Eligibility is opt-in.
+
+#### 9.1.10 Duty Rule
+
+DutyRule is a row in D2 carrying DutyID, TierOrder, CriteriaType, CriteriaValue. Multiple rows may share TierOrder for a single Duty; those rows are ANDed. TierOrder gaps are permitted. Deactivated rules are invisible to 5.2.
+
+CriteriaType is fixed to the §5 vocabulary at write time. CriteriaValue is free-text in storage, interpreted per CriteriaType at evaluation time.
+
+#### 9.1.11 Event, Program, Program Item, Event Duty
+
+Event carries the fields listed in §4. Type is free-text.
+
+Program is one per Event. ProgramItem carries SequenceOrder, Title, ScheduledStart, ScheduledEnd, and an optional ServiceDefID. It has no stored status field; live state is computed from scheduled times.
+
+When a ProgramItem links to a ServiceDefinition, an event-sourced ServiceOccurrence is created. It has EventID populated, ScheduleID null, Date and StartTime derived from ProgramItem.ScheduledStart, ServiceTypeID inherited from the linked ServiceDefinition, GeneratedBy = Administrator, and CreatedBy = the admin who performed the action. This is the only write the configuration layer performs to an operational store.
+
+EventDuty carries a free-text Label, a direct AssignedMemberID, and an optional AssignmentStatusID. It does not reference the Duty table.
+
+#### 9.1.12 D10 — Config Lookups
+
+D10 contains admin-defined lookups referenced elsewhere in the schema: Outcome State, Assignment Status, Permission Tier, TimeOfDay, ServiceType.
+
+#### 9.1.13 System Setting — configuration values consumed by other processes
+
+The configuration layer writes SystemSetting rows. Some are consumed only by operational processes:
+
+- OccurrenceHorizonDays — required; consumed by 11.0.
+- InitialAssignmentStatusID — required; consumed by 7.0.
+- OutcomeStateUnfilledID, OutcomeStatePartiallyFilledID, OutcomeStateFilledID — required; consumed by 10.0.
+- OutcomeStateCancelledID — non-required; consumed by 10.0.
+- NotificationChannel — deployment choice; consumed by 9.0.
+- TenureThresholdDays, ReceiptToCardDurationDays, ConfirmationTimeoutHours, age-range bounds — consumed by whichever processes reference them.
+
+A required setting with no value causes the consuming process to refuse to run and surface a configuration error.
+
+### 9.2 Read and Write Footprint
+
+**Reads:**
+
+| # | Process | Reads |
+| --- | --- | --- |
+| R1 | 1.1 | D1 (existing Roles); D10 if it manages lookups |
+| R2 | 1.2 | D1 (existing Duties) |
+| R3 | 1.3 | D3 (Branch) |
+| R4 | 1.4 | D3 (Branch for FK selection); D10 (TimeOfDay) |
+| R5 | 1.5 | D10 (ServiceType); D3 (Branch for OwningBranchID selection) |
+| R6 | 1.6 | D1 (Role/Duty); D3 (ServiceDefinition, BranchTimeSlot); D10 as needed |
+| R7 | 2.0 | D1 (Duty); D2 (existing DutyRules) |
+| R8 | 3.1 | D4 (edit/display); D1 (Role); D3 (Branch) |
+| R9 | 3.2 | D5 (IdentifierHistory); D4 (Member) |
+| R10 | 4.0 | D1 (Duty); D4 (Member); D6 (existing Eligibility) |
+| R11 | 8.0 | D9; D3 (ServiceDefinition); D4 (Member); D10 (AssignmentStatus) |
+
+**Writes:**
+
+| # | Process | Writes |
+| --- | --- | --- |
+| W1 | 1.0 (all subprocesses) | D1, D3, D10 |
+| W2 | 2.0 | D2 |
+| W3 | 3.1 | D4 |
+| W4 | 3.2 | D5 |
+| W5 | 4.0 | D6 |
+| W6 | 8.0 | D9; D3 (ServiceOccurrence for event-sourced occurrences) |
+| W7 | 1.0 and 8.0 as needed | D11 (SystemSetting rows) |
+
+**Stores never touched:** D7, D8, D12. No configuration process invokes 5.0, 6.0, 7.0, 9.0, 10.0, or 11.0.
+
+The only write to an operational store is 8.0's insertion of event-sourced ServiceOccurrence rows into D3.
+
+### 9.3 Invariants
+
+**Rule neutrality.** No configuration process creates a link between Role and Duty except through a DutyRule row written by 2.0.
+
+**Deactivation, not deletion.** Configuration entities whose contracts define lifecycle state are never removed.
+
+**No backward propagation.** Editing any configuration row affects future use only.
+
+**Immediate activation.** Created entities are active from creation, where the entity has lifecycle state.
+
+**Name requirements.** Names are required where the schema declares them; they need not be unique.
+
+**Referential integrity.** Every foreign key references an existing row.
+
+**Schedule uniqueness.** An active ServiceSchedule is uniquely identified by (ServiceDefID, TimeSlotID).
+
+**OwningBranch enforcement point.** Enforced when a ServiceSchedule is created or edited.
+
+**Event-sourced occurrence creation.** When a ProgramItem links to a ServiceDefinition, an event-sourced ServiceOccurrence is written with GeneratedBy = Administrator and CreatedBy = the acting admin. This is the only operational write the configuration layer performs.
+
+**No evaluation.** No configuration process evaluates any rule, threshold, or criterion.
+
+**No orchestration.** No configuration process invokes any other process.
+
+**Authorization upstream.** Configuration processes assume the caller has passed the applicable PermissionTier check.
+
+**Lookup vocabulary.** D10 holds administrator-defined vocabulary.
+
+### 9.4 Indexes
+
+**Required:**
+
+- ServiceSchedule (ServiceDefID, TimeSlotID) — UNIQUE, restricted to active rows.
+- Foreign-key indexes on all FK columns.
+
+**Active-row indexing strategy:** where supported by the target database, a partial or filtered index on active rows may be used for entities whose reads are consistently activity-filtered.
+
+**DutyRule indexing:** a composite index on (DutyID, TierOrder) may be appropriate for 5.2's access pattern.
+
+**Eligibility indexing:** the natural access pattern is by (MemberID, DutyID).
+
+### 9.5 Explicitly Open Implementation Choices
+
+- Physical representation of lifecycle state.
+- Physical structure of Branch.Location.
+- Free-text vs. lookup for MembershipStage, Event.Type, IdentifierHistory.Type.
+- CriteriaValue validation timing.
+- PermissionTier capability matrix — deferred.
+- Deactivation audit columns.
+- SystemSetting keys not yet defined.
+- Active-row indexing strategy.
+- Eligibility and DutyRule composite index shapes.
+- Physical column types.
+- Unique-constraint expression across database engines.
+
+### 9.6 Cross-References
+
+- §7 — Materialization contract.
+- §8 — Occurrence Materialization derivation.
+- §10 — Generate Assignment.
+- §11 — Manage Confirmation.
+- §12 — Evaluate Fill Status.
+- §13 — Record Attendance.
+- §14 — Dispatch Notification.
+- §15 — Consolidated schema amendments.
+- §16 — System-wide invocation model.
+
+*End of §9. This section derives from the locked contracts of 1.0, 2.0, 3.0, 4.0, and 8.0, and from the two decisions locked immediately prior to §8 (D1 schedule uniqueness, D2 OutcomeState mapping).*
+
+---
+
+## 10. Generate Assignment (5.0) — Derived Consequences
+
+*This appendix derives, from the locked 5.0 contract, the concrete schema behavior, data flows, invariants, and indexing the process requires. Every consequence traces to a locked decision. Where an implementation choice remains genuinely open, it is named in §10.5.*
+
+### 10.0 Process Boundary
+
+5.0 Generate Assignment is the process that fills the required duty slots on a ServiceOccurrence by producing RosterAssignment rows. It reads configuration, reads member and eligibility data, reads existing assignments to top up rather than replace, and writes RosterAssignment.
+
+It is one of the two processes in the system that invoke another process directly (the other is 7.0). When 5.0 creates a new RosterAssignment, it invokes 9.0 to dispatch the assignment notice.
+
+**At a glance:**
+
+- **Trigger:** scheduled run; manual administrator action (specific occurrence or date range); never invoked by 11.0.
+- **Reads:** D2, D3, D4, D6, D7, and D8 only when a Branch-Attendance Recency criterion is present.
+- **Writes:** D7 RosterAssignment.
+- **Invokes:** 9.0 Dispatch Notification, on new automatic assignment creation.
+- **Does not:** create occurrences, remove or modify existing assignments, send notifications directly, evaluate fill status, trigger downstream processes.
+
+### 10.1 Derived Schema Behavior
+
+#### 10.1.1 RosterAssignment — columns populated by 5.0
+
+| Column | Value written by 5.0 |
+| --- | --- |
+| AssignmentID | System-generated |
+| MemberID | The selected candidate |
+| DutyID | The duty being filled |
+| OccurrenceID | The occurrence being filled |
+| AssignmentStatusID | NULL — 7.0 owns the lifecycle from this point |
+| ApprovedBy | NULL |
+| AssignmentSource | Automatic |
+| AssignedBy | NULL |
+| CreatedAt | The moment of insertion |
+
+#### 10.1.2 Availability
+
+A member is available for a duty on an occurrence if and only if they do not have a **non-terminal** RosterAssignment on that OccurrenceID. Terminal assignments do not block availability, because they represent slots the member no longer occupies.
+
+This uses AssignmentStatus.IsTerminal, the same boolean used by 7.0's re-resolution logic and 10.0's capacity calculation.
+
+#### 10.1.3 Capacity — the slot-count rule
+
+For each (OccurrenceID, DutyID) pair, the effective slot count is:
+
+- The RequiredSlotCount from ServiceDefinitionDuty for the duty, overridden by ServiceOccurrenceDuty.RequiredSlotCount if an override row exists with Action = Added.
+- If a ServiceOccurrenceDuty row exists with Action = Removed, the duty is not required for that occurrence, and no slots are filled.
+
+5.0 counts existing non-terminal assignments for the pair and fills up to the remaining count. Terminal assignments do not count toward the total.
+
+#### 10.1.4 Eligibility resolution
+
+For each (Member, Duty) pair, 5.0 determines eligibility by resolving the applicable Eligibility row. The rule 5.0 uses:
+
+> The applicable row is the one with the latest GrantedDate whose RevokedDate is either null or in the future. If multiple such rows exist for the same (MemberID, DutyID), the one with the greatest EligibilityID is used as the deterministic tiebreaker. If the resolved row has a RevokedDate in the past, the member is not eligible. If no row exists at all, the member is not eligible.
+
+The tiebreaker (greatest EligibilityID) is the rule 5.0 applies, not a rule the schema enforces.
+
+#### 10.1.5 Duty Rule evaluation
+
+Tiers are evaluated in ascending TierOrder. For each tier, all rules sharing that TierOrder are combined with AND. The first tier that produces at least one eligible, available candidate supplies the candidate set. If no Duty Rules exist for a duty, every eligible member enters as an equal candidate.
+
+Criteria are evaluated per CriteriaType:
+
+| CriteriaType | Evaluation |
+| --- | --- |
+| Role | Member's RoleID matches the rule's CriteriaValue (resolved by name) |
+| Gender | Member's Gender matches |
+| Age Range | Computed from DateOfBirth and today's date, within the range |
+| Tenure | Computed from JoinDate and today's date, meets the threshold |
+| Membership Stage | Member's MembershipStage matches |
+| Branch-Attendance Recency | Member has an AttendanceRecord at the specified branch within the configured window |
+| Eligibility Flag | Member has a current Eligibility grant for the referenced duty |
+
+Reserved criteria types (Acceptance Rate, Duties Carried, Days Since Last Assignment) are not evaluated until a future specification revision activates them. If a tier consists entirely of rules whose criteria types are reserved, the tier is treated as producing no candidates.
+
+#### 10.1.6 Selection within a tier
+
+When a tier produces more candidates than slots, 5.0 fills from the candidate set in a deterministic order. No fairness guarantee is made; no rotation, load-balancing, or recency-based ordering is applied.
+
+#### 10.1.7 Re-entry and uniqueness
+
+RosterAssignment is unique on (MemberID, DutyID, OccurrenceID). This is the database-level guard against duplicate member/duty/occurrence records, regardless of source.
+
+5.0 is fully re-entrant. An interrupted run resumes on the next run.
+
+#### 10.1.8 Interaction with 9.0
+
+When 5.0 creates a new automatic assignment, it invokes 9.0 with that assignment as input. 9.0 sends an assignment notice to the member. 5.0 does not wait for the notification result; the invocation is fire-and-forget, and 9.0's failure does not roll back the assignment.
+
+### 10.2 Read and Write Footprint
+
+**Reads:**
+
+| # | Source | Purpose |
+| --- | --- | --- |
+| R1 | D3 ServiceOccurrence | The occurrence being filled |
+| R2 | D3 ServiceDefinitionDuty | Inherited duty list and slot counts |
+| R3 | D3 ServiceOccurrenceDuty | Per-occurrence overrides |
+| R4 | D4 Member | Candidate member data |
+| R5 | D6 Eligibility | Candidacy gate |
+| R6 | D2 DutyRule | Tier-based ranking |
+| R7 | D7 RosterAssignment | Existing assignments |
+| R8 | D8 AttendanceRecord | Only when a Branch-Attendance Recency criterion is present |
+| R9 | D3 BranchTimeSlot | For time-related criteria evaluation |
+
+**Writes:**
+
+| # | Target | Fields |
+| --- | --- | --- |
+| W1 | D7 RosterAssignment | MemberID, DutyID, OccurrenceID, AssignmentStatusID = NULL, ApprovedBy = NULL, AssignmentSource = Automatic, AssignedBy = NULL, CreatedAt |
+
+**Invocations:**
+
+| # | Process invoked | Trigger |
+| --- | --- | --- |
+| I1 | 9.0 Dispatch Notification | On each new automatic assignment created |
+
+**Stores never touched:** D1, D5, D9, D10, D11, D12. Never modifies ServiceOccurrence, existing RosterAssignment rows, or ServiceOccurrenceDuty.
+
+### 10.3 Invariants
+
+- Eligibility gates candidacy; Duty Rule only ranks.
+- Tiers are evaluated in ascending TierOrder.
+- Same-tier rules are ANDed.
+- No tier → every eligible member is an equal candidate.
+- No candidate in any tier → slot remains unfilled.
+- Fewer candidates than slots → remaining slots unfilled.
+- 5.0 never removes or modifies an existing assignment.
+- 5.0 does not assign a member to more than one duty on the same occurrence.
+- Availability respects terminal statuses.
+- (MemberID, DutyID, OccurrenceID) is unique in RosterAssignment.
+- 5.0 is fully re-entrant.
+- AssignmentStatusID is null at creation.
+- AssignmentSource = Automatic, AssignedBy = null for automatic assignments.
+- 5.0 never writes FillStatusID.
+- 5.0 never modifies ServiceOccurrence.
+- 5.0 invokes only 9.0.
+- 5.0 is independent of 11.0.
+
+### 10.4 Indexes
+
+**Required:**
+
+- RosterAssignment (MemberID, DutyID, OccurrenceID) — UNIQUE. The integrity guard.
+- RosterAssignment (OccurrenceID, DutyID) — non-unique. Serves the capacity-count query and availability check.
+- Eligibility (MemberID, DutyID) — composite, non-unique.
+- DutyRule (DutyID, TierOrder) — composite, non-unique.
+
+**Implementation-dependent:** the composite index shapes for Eligibility and DutyRule. Physical forms depend on the target database and actual query plan.
+
+### 10.5 Explicitly Open Implementation Choices
+
+- The deterministic candidate ordering within a tier.
+- Eligibility resolution query shape.
+- Whether 5.0's scheduled and manual runs share a code path.
+- Batching strategy for filling slots across duties within an occurrence.
+- Failure handling when 9.0 invocation fails.
+
+### 10.6 Cross-References
+
+- §7 — Materialization contract.
+- §8 — Occurrence Materialization derivation.
+- §9 — Configuration layer.
+- §11 — Manage Confirmation.
+- §12 — Evaluate Fill Status.
+- §14 — Dispatch Notification.
+- §15 — Consolidated schema amendments.
+- §16 — System-wide invocation model.
+
+*End of §10. This section derives from the locked 5.0 contract and does not extend it.*
+
+---
+
+## 11. Manage Confirmation (7.0) — Derived Consequences
+
+*This appendix derives, from the locked 7.0 contract, the concrete schema behavior, data flows, invariants, and indexing the process requires. Every consequence traces to a locked decision. Where an implementation choice remains genuinely open, it is named in §11.5.*
+
+### 11.0 Process Boundary
+
+7.0 Manage Confirmation is the process that tracks the response lifecycle of each RosterAssignment. It transitions the assignment's AssignmentStatusID from NULL (as written by 5.0) through the admin-defined statuses, and on decline or timeout it re-resolves only the affected slot.
+
+It is one of the two processes in the system that invoke another process directly (the other is 5.0). When 7.0 creates a replacement assignment after a decline or timeout, it invokes 9.0 to dispatch the assignment notice.
+
+**At a glance:**
+
+- **Trigger:** member response (confirm or decline); scheduled check for timeouts.
+- **Reads:** D7 RosterAssignment, D10 AssignmentStatus, D11 SystemSetting, D4 Member.
+- **Writes:** D7 RosterAssignment — updates AssignmentStatusID; inserts a replacement assignment on decline or timeout.
+- **Invokes:** 9.0 Dispatch Notification, on replacement assignment creation.
+- **Does not:** create the initial assignment (5.0 does), evaluate fill status (10.0 does), record attendance (6.0 does), send notifications directly.
+
+### 11.1 Derived Schema Behavior
+
+#### 11.1.1 RosterAssignment — fields updated by 7.0
+
+On a member response or a timeout detection:
+
+| Column | Action by 7.0 |
+| --- | --- |
+| AssignmentStatusID | Updated to the admin-designated status for the event (confirmed, declined, or timed out) |
+| All other columns | Unchanged |
+
+On a decline or timeout that triggers re-resolution, a **new** RosterAssignment row is inserted for the replacement:
+
+| Column | Value |
+| --- | --- |
+| MemberID | The newly selected candidate |
+| DutyID | The same duty as the vacant slot |
+| OccurrenceID | The same occurrence |
+| AssignmentStatusID | NULL — the lifecycle restarts for the replacement |
+| ApprovedBy | NULL |
+| AssignmentSource | Automatic |
+| AssignedBy | NULL |
+| CreatedAt | The moment of insertion |
+
+7.0 does not create manual assignments. Manual assignment, if it exists as an operational action, belongs to a separate admin operation and writes AssignmentSource = Manual with AssignedBy = <AdminID>.
+
+#### 11.1.2 Terminal vs non-terminal
+
+AssignmentStatus.IsTerminal distinguishes statuses that occupy a required slot from statuses that leave the slot vacant. This is the same boolean used by 5.0's availability rule and by 10.0's capacity calculation. IsTerminal is a capacity concept, not a lifecycle-impermanence concept — a terminal assignment's row remains, and the member may rejoin a slot through a new assignment.
+
+A status marked IsTerminal = true does not count toward the effective required slot count.
+
+#### 11.1.3 Status transitions
+
+The system does not enforce a state machine. Any transition between statuses is permitted at the schema level. The lifecycle semantics — which transitions are meaningful — are the admin's concern. The system records the current AssignmentStatusID and nothing else.
+
+#### 11.1.4 Status lifecycle ownership
+
+5.0 creates automatic assignments with AssignmentStatusID = NULL. 7.0 owns the status transitions for assignments after creation. Other processes — for example, a manual assignment operation — may also create assignments with AssignmentStatusID = NULL, subject to their own contracts.
+
+#### 11.1.5 Initial status designation
+
+7.0 transitions an assignment from NULL to the admin-designated initial status. This status is identified via SystemSetting.InitialAssignmentStatusID, a required setting. If the setting is unset or invalid, 7.0 refuses to run and surfaces a configuration error.
+
+#### 11.1.6 Timeout measurement
+
+An assignment becomes eligible for timeout when its elapsed age reaches the configured ConfirmationTimeoutHours:
+now - CreatedAt >= ConfirmationTimeoutHours
+
+The timeout check runs as a scheduled part of 7.0.
+
+If ConfirmationTimeoutHours is unset and Required = false, no timeout occurs. If Required = true and unset, 7.0 refuses to run and surfaces a configuration error.
+
+#### 11.1.7 Re-resolution on decline or timeout
+
+When a member declines or an assignment times out:
+
+1. The assignment's AssignmentStatusID transitions to the admin-designated declined or timed-out status.
+2. The status must have IsTerminal = true for the slot to be considered vacant; if the admin marks a decline status as non-terminal, the slot remains occupied and 7.0 does not re-resolve.
+3. 7.0 runs the same candidate selection logic 5.0 uses, scoped to the affected (OccurrenceID, DutyID) slot only.
+4. **The declining or timed-out member is explicitly excluded from the replacement candidate set for the affected slot.** Their terminal assignment does not exclude them under the general availability rule — terminal assignments do not block availability. This exclusion is an additional re-resolution rule specific to 7.0.
+5. If a candidate is found, a replacement RosterAssignment row is inserted with AssignmentStatusID = NULL, AssignmentSource = Automatic, AssignedBy = NULL, and 7.0 invokes 9.0 for the notification.
+6. If no candidate is found, the slot remains vacant. No fallback.
+
+The declining or timed-out row is never modified beyond the status transition. Its history is preserved.
+
+#### 11.1.8 Interaction with 9.0
+
+7.0 invokes 9.0 only when it creates a replacement assignment. It does not invoke 9.0 on status changes of existing assignments. The invocation is fire-and-forget. 9.0's failure does not roll back the replacement assignment.
+
+### 11.2 Read and Write Footprint
+
+**Reads:**
+
+| # | Source | Purpose |
+| --- | --- | --- |
+| R1 | D7 RosterAssignment | The assignment being processed |
+| R2 | D10 AssignmentStatus | Resolve designated statuses; check IsTerminal |
+| R3 | D11 SystemSetting | InitialAssignmentStatusID, ConfirmationTimeoutHours |
+| R4 | D4 Member | Member context for confirm/decline |
+| R5 | D2 DutyRule | Only during re-resolution |
+| R6 | D6 Eligibility | Only during re-resolution |
+| R7 | D4, D3 | Only during re-resolution |
+| R8 | D8 AttendanceRecord | Only during re-resolution, if Branch-Attendance Recency is present |
+
+**Writes:**
+
+| # | Target | Action |
+| --- | --- | --- |
+| W1 | D7 RosterAssignment | Update AssignmentStatusID on the existing row |
+| W2 | D7 RosterAssignment | Insert a replacement row |
+
+**Invocations:**
+
+| # | Process invoked | Trigger |
+| --- | --- | --- |
+| I1 | 9.0 Dispatch Notification | On each replacement assignment created |
+
+**Stores never touched:** D1, D5, D9. Never modifies ServiceOccurrence, FillStatusID, ServiceOccurrenceDuty, or AttendanceRecord.
+
+### 11.3 Invariants
+
+- Status lifecycle ownership: 5.0 creates with NULL; 7.0 owns transitions.
+- Status transitions are unrestricted at the schema level.
+- Timeout rule: `now - CreatedAt >= ConfirmationTimeoutHours`.
+- Required-setting failure: missing InitialAssignmentStatusID or required ConfirmationTimeoutHours → 7.0 refuses to run.
+- Terminal statuses leave slots vacant.
+- Replacement is additive; the declined/timed-out row is not modified beyond the status transition.
+- History preserved.
+- Re-resolution scoped to the affected slot only.
+- Declining member explicitly excluded from the replacement candidate set.
+- No automatic re-resolution when no candidate is found.
+- 9.0 invoked only on replacement creation.
+- Fire-and-forget notification.
+- No downstream trigger besides 9.0.
+- No fill-status evaluation.
+- No occurrence modification.
+- No attendance record.
+- Slot capacity preserved under concurrency (transactional control required).
+
+### 11.4 Indexes
+
+**Candidate access patterns:**
+
+- RosterAssignment (CreatedAt) — natural access pattern for timeout detection.
+- RosterAssignment (OccurrenceID, DutyID, AssignmentStatusID) — natural access pattern for affected-slot resolution.
+
+**Implementation-dependent:** whether either index is created, and its exact physical shape.
+
+### 11.5 Explicitly Open Implementation Choices
+
+- Whether status transitions are logged.
+- Timeout check cadence.
+- Candidate ordering during re-resolution.
+- Concurrency control mechanism — row-level locking, serializable isolation, or application-level mutex. The invariant to preserve: a duty's non-terminal assignment count does not exceed its effective required slot count.
+- Whether 7.0 transitions a fresh assignment from NULL to the initial status as part of a scheduled sweep, or on demand.
+- Physical shape of the timeout index.
+
+### 11.6 Cross-References
+
+- §7 — Materialization contract.
+- §8 — Occurrence Materialization derivation.
+- §9 — Configuration layer.
+- §10 — Generate Assignment.
+- §12 — Evaluate Fill Status.
+- §13 — Record Attendance.
+- §14 — Dispatch Notification.
+- §15 — Consolidated schema amendments.
+- §16 — System-wide invocation model.
+
+*End of §11. This section derives from the locked 7.0 contract and does not extend it.*
+
+---
+
+## 12. Evaluate Fill Status (10.0) — Derived Consequences
+
+*This appendix derives, from the locked 10.0 contract, the concrete schema behavior, data flows, invariants, and indexing the process requires. Every consequence traces to a locked decision. Where an implementation choice remains genuinely open, it is named in §12.5.*
+
+### 12.0 Process Boundary
+
+10.0 Evaluate Fill Status is the process that computes each occurrence's fill state and writes it to ServiceOccurrence.FillStatusID. It reads the occurrence's assignments, the occurrence's required duty list, the three OutcomeState mapping settings, and (optionally) the cancelled-state designation.
+
+It does not create assignments, does not modify assignments, does not modify any occurrence field other than FillStatusID, and does not invoke any other process.
+
+**At a glance:**
+
+- **Trigger:** after assignment changes (5.0 writes, 7.0 status transitions, 7.0 replacements); on a scheduled sweep.
+- **Reads:** D7 RosterAssignment, D3 ServiceDefinitionDuty, D3 ServiceOccurrenceDuty, D10 OutcomeState, D11 SystemSetting.
+- **Writes:** D3 ServiceOccurrence.FillStatusID.
+- **Does not:** invoke any process; modify any field other than FillStatusID; assign cancellation.
+
+### 12.1 Derived Schema Behavior
+
+#### 12.1.1 FillStatusID — the only field written
+
+10.0 writes only ServiceOccurrence.FillStatusID. No other column of ServiceOccurrence is touched. No other store is written.
+
+#### 12.1.2 The mechanical classification
+
+For each occurrence, 10.0 computes the count of **active** assignments (non-null, non-terminal AssignmentStatusID) across all required duties, and compares it against the **effective required count** (the sum of RequiredSlotCount for each duty, after applying ServiceOccurrenceDuty overrides).
+
+Three mechanical conditions result:
+
+| Condition | Mechanical meaning |
+| --- | --- |
+| Unfilled | Zero active assignments across all required duties |
+| Partially Filled | Active assignments exist, but fewer than the effective required count |
+| Filled | Active assignments meet or exceed the effective required count |
+
+**Zero-duty occurrence.** If the effective required count is zero (no required duties for the occurrence, or all duties removed via ServiceOccurrenceDuty overrides), the occurrence is mechanically classified as **Filled**, because the active assignment count (zero) meets the effective required count (zero). This is a consequence of the mechanical rule, not a special case. It is consistent with the locked zero-duty rule from the 11.0 contract.
+
+The classification is mechanical. The names are admin-defined. The mapping between them is via SystemSetting.
+
+#### 12.1.3 OutcomeState mapping — locked via SystemSetting
+
+Three required settings map the three mechanical conditions to admin-defined OutcomeState entries:
+
+- OutcomeStateUnfilledID — the OutcomeStateID to write when the condition is Unfilled
+- OutcomeStatePartiallyFilledID — when Partially Filled
+- OutcomeStateFilledID — when Filled
+
+If any of the three is unset or invalid, 10.0 refuses to run entirely — it does not partially evaluate occurrences. The run fails with a configuration error.
+
+#### 12.1.4 Cancellation exclusion — locked via SystemSetting
+
+Cancellation is outside the three mechanical fill classifications. 10.0 does not assign the cancelled state and does not replace an existing cancelled FillStatusID.
+
+The cancelled state is identified via SystemSetting.OutcomeStateCancelledID:
+
+- Required = false — cancellation is optional in the operational model.
+- Holds an OutcomeStateID.
+- If configured, 10.0 skips any occurrence whose current FillStatusID equals that ID.
+- If absent, no automatic cancellation exclusion applies and 10.0 evaluates every occurrence.
+- 10.0 never writes the cancelled state.
+
+#### 12.1.5 Idempotency
+
+10.0 is idempotent. Running it multiple times on the same occurrence produces the same FillStatusID as long as the underlying assignments haven't changed.
+
+#### 12.1.6 No downstream trigger
+
+10.0 does not invoke any process. The FillStatusID it writes is read by admin dashboards and by any future process that consumes it. No notification is triggered by fill status changes.
+
+### 12.2 Read and Write Footprint
+
+**Reads:**
+
+| # | Source | Purpose |
+| --- | --- | --- |
+| R1 | D3 ServiceOccurrence | The occurrence being evaluated, and its current FillStatusID |
+| R2 | D3 ServiceDefinitionDuty | Inherited duty list and slot counts |
+| R3 | D3 ServiceOccurrenceDuty | Per-occurrence overrides |
+| R4 | D7 RosterAssignment | Active assignments per duty |
+| R5 | D10 OutcomeState | Resolve the OutcomeStateID values |
+| R6 | D11 SystemSetting | OutcomeStateUnfilledID, OutcomeStatePartiallyFilledID, OutcomeStateFilledID, OutcomeStateCancelledID (optional) |
+
+**Writes:**
+
+| # | Target | Fields |
+| --- | --- | --- |
+| W1 | D3 ServiceOccurrence | FillStatusID only |
+
+**Invocations:** None. 10.0 does not invoke any process.
+
+**Stores never touched:** D1, D2, D4, D5, D6, D8, D9, D12. Never modifies RosterAssignment, ServiceOccurrenceDuty, or any field of ServiceOccurrence other than FillStatusID.
+
+### 12.3 Invariants
+
+- Mechanical classification: Unfilled, Partially Filled, or Filled, based on active assignment counts and effective required counts.
+- Active means non-null, non-terminal AssignmentStatusID.
+- Effective required count includes ServiceOccurrenceDuty overrides.
+- Zero-required-count occurrence is Filled.
+- Required-setting failure: any of the three mechanical mapping settings unset or invalid → 10.0 refuses to run entirely. No partial evaluation.
+- Cancellation exclusion is optional. If OutcomeStateCancelledID is configured, 10.0 skips occurrences whose FillStatusID equals that ID. If absent, no exclusion applies.
+- 10.0 never writes cancellation.
+- Idempotent.
+- Single field written: ServiceOccurrence.FillStatusID.
+- No downstream trigger.
+- No notification.
+- No assignment modification.
+- No occurrence field other than FillStatusID.
+
+### 12.4 Indexes
+
+**Candidate access patterns:**
+
+- RosterAssignment (OccurrenceID, DutyID) — natural access pattern for fill-state computation. The existing index from §10 covers this.
+- A composite extension including AssignmentStatusID may be appropriate depending on the target database and observed query plans.
+- ServiceOccurrence (FillStatusID) — natural access pattern for "which occurrences are unfilled" queries.
+
+**Implementation-dependent:** whether any additional index beyond the existing (OccurrenceID, DutyID) is created.
+
+### 12.5 Explicitly Open Implementation Choices
+
+- Scheduled sweep cadence.
+- Batch vs per-occurrence processing.
+- Physical shape of the fill-state index.
+- Whether 10.0's write updates FillStatusID even when the new value equals the old value.
+
+### 12.6 Cross-References
+
+- §7 — Materialization contract.
+- §8 — Occurrence Materialization derivation.
+- §9 — Configuration layer.
+- §10 — Generate Assignment.
+- §11 — Manage Confirmation.
+- §13 — Record Attendance.
+- §14 — Dispatch Notification.
+- §15 — Consolidated schema amendments.
+- §16 — System-wide invocation model.
+
+*End of §12. This section derives from the locked 10.0 contract and from the two decisions locked immediately prior to §11 (E1 timeout boundary, E2 cancellation designation).*
+
+---
+
+## 13. Record Attendance (6.0) — Derived Consequences
+
+*This appendix derives, from the locked 6.0 contract, the concrete schema behavior, data flows, invariants, and indexing the process requires. Every consequence traces to a locked decision. Where an implementation choice remains genuinely open, it is named in §13.5.*
+
+### 13.0 Process Boundary
+
+6.0 Record Attendance is the process that writes AttendanceRecord rows when a member's presence at an occurrence is registered. It is the narrowest process in the system — it reads two stores, writes one, and has no downstream consequences within the system's own logic.
+
+Attendance is a raw fact. 6.0 does not interpret it, does not condition it on assignment, does not affect fill status, does not affect assignment status, and does not trigger any other process.
+
+**At a glance:**
+
+- **Trigger:** member action at an occurrence (NFC tap or configured channel); admin manual entry.
+- **Reads:** D4 Member, D3 ServiceOccurrence.
+- **Writes:** D8 AttendanceRecord.
+- **Does not:** evaluate, interpret, notify, trigger, or condition on assignment.
+- **Idempotent per (MemberID, OccurrenceID).**
+
+### 13.1 Derived Schema Behavior
+
+#### 13.1.1 AttendanceRecord — fields written by 6.0
+
+| Column | Value |
+| --- | --- |
+| RecordID | System-generated |
+| MemberID | The member whose presence is recorded |
+| OccurrenceID | The occurrence at which presence is recorded |
+| Timestamp | The moment the record is written |
+
+No other columns. The row is the raw fact.
+
+#### 13.1.2 Uniqueness — one recorded fact per member per occurrence
+
+AttendanceRecord permits at most one recorded attendance fact for a given (MemberID, OccurrenceID) pair. The uniqueness constraint is the integrity guard. A subsequent tap for an existing pair is a no-op — it does not create a second row.
+
+This makes 6.0 idempotent per (MemberID, OccurrenceID). Re-running the same tap produces no new row.
+
+#### 13.1.3 Independence from assignment
+
+6.0 does not check whether the member is assigned to the occurrence. A member may be rostered and attend, rostered and not attend, not rostered and attend, or not rostered and not attend. All four are valid states. Attendance is a fact; assignment is a plan.
+
+The branch-agnostic attendance default is realized here: a member attending at a branch other than their home branch produces an attendance record against that occurrence, with no reference to Member.BranchID.
+
+#### 13.1.4 Admin manual entry
+
+An admin may add an attendance record directly. The row is identical to a tap-initiated one: same columns, same uniqueness rule. The schema has no field distinguishing manual entry from tap entry.
+
+#### 13.1.5 No interpretation layer
+
+6.0 does not compute attendance recency. It does not update any cache or derived field. The Branch-Attendance Recency criterion used by DutyRule evaluation (5.0) reads AttendanceRecord at evaluation time, not from any precomputed state.
+
+### 13.2 Read and Write Footprint
+
+**Reads:**
+
+| # | Source | Purpose |
+| --- | --- | --- |
+| R1 | D4 Member | Validate the member identity |
+| R2 | D3 ServiceOccurrence | Identify which occurrence the record applies to |
+
+**Writes:**
+
+| # | Target | Action |
+| --- | --- | --- |
+| W1 | D8 AttendanceRecord | Insert a new row on the first recorded attendance for a (MemberID, OccurrenceID) pair |
+
+A subsequent tap for an existing pair is a no-op. The uniqueness constraint is the integrity guard.
+
+**Invocations:** None. 6.0 does not invoke any process.
+
+**Stores never touched:** D1, D2, D5, D6, D7, D9, D10, D11, D12. Never modifies ServiceOccurrence, FillStatusID, or any assignment.
+
+### 13.3 Invariants
+
+- Raw fact. Attendance is a fact of presence, not an interpretation.
+- Uniqueness. AttendanceRecord permits at most one recorded attendance fact for a given (MemberID, OccurrenceID) pair.
+- Idempotent per member per occurrence.
+- Independence from assignment.
+- Branch-agnostic.
+- No attendance-window enforcement.
+- No interpretation. 6.0 does not compute recency, streaks, or any derived value.
+- No downstream trigger.
+- No notification.
+- No assignment or fill-status side effect.
+
+### 13.4 Indexes
+
+**Integrity requirement:**
+
+- AttendanceRecord (MemberID, OccurrenceID) — UNIQUE.
+
+**Candidate access patterns:**
+
+- AttendanceRecord (OccurrenceID) — natural access pattern for "who attended this occurrence" queries.
+- AttendanceRecord (MemberID, Timestamp) — natural access pattern for Branch-Attendance Recency evaluation and for member-facing attendance history.
+
+**Implementation-dependent:** the physical shape of the (MemberID, Timestamp) index.
+
+**Deliberately not indexed:** standalone Timestamp; additional index for Branch-Attendance Recency.
+
+### 13.5 Explicitly Open Implementation Choices
+
+- Whether manual admin entry is distinguished from tap entry.
+- Attendance window enforcement — not performed by 6.0 or the schema.
+- Whether attendance records are retained indefinitely.
+- Physical shape of the (MemberID, Timestamp) index.
+
+### 13.6 Cross-References
+
+- §7 — Materialization contract.
+- §8 — Occurrence Materialization derivation.
+- §9 — Configuration layer.
+- §10 — Generate Assignment.
+- §11 — Manage Confirmation.
+- §12 — Evaluate Fill Status.
+- §14 — Dispatch Notification.
+- §15 — Consolidated schema amendments.
+- §16 — System-wide invocation model.
+
+*End of §13. This section derives from the locked 6.0 contract and does not extend it.*
+
+---
+
+## 14. Dispatch Notification (9.0) — Derived Consequences
+
+*This appendix derives, from the locked 9.0 contract, the concrete schema behavior, data flows, invariants, and indexing the process requires. Every consequence traces to a locked decision. Where an implementation choice remains genuinely open, it is named in §14.5.*
+
+### 14.0 Process Boundary
+
+9.0 Dispatch Notification is the outbound process that sends assignment notices to members. It is invoked by 5.0 and 7.0 when they create new automatic assignments. 9.0 is the system's only process whose primary effect is an external side effect rather than a write to an internal data store.
+
+It reads the assignment, the member, the occurrence, and the configured channel, composes a message, sends it, and stops. It does not write to any store, does not track delivery, does not retry, and does not invoke any other process.
+
+**At a glance:**
+
+- **Trigger:** 5.0 creates an automatic assignment; 7.0 creates a replacement assignment.
+- **Reads:** D7 RosterAssignment, D4 Member, D3 ServiceOccurrence, D11 SystemSetting.
+- **Writes:** none.
+- **Does not:** track delivery, retry, log, invoke any other process.
+- **Fire-and-forget.**
+
+### 14.1 Derived Schema Behavior
+
+#### 14.1.1 No writes
+
+9.0 does not write to any store. It has no persistence side effect. The notification is composed, sent, and forgotten — from the system's perspective.
+
+This is a deliberate design choice: introducing a notification log, retry table, or delivery-status field would be new infrastructure. No delivery outcome is observable by the system. If a member does not respond to an assignment, 7.0 may eventually time it out according to its normal timeout rules, regardless of whether the absence of response resulted from notification failure.
+
+#### 14.1.2 Channel selection
+
+9.0 reads SystemSetting.NotificationChannel. If the setting is absent or otherwise invalid, 9.0 follows the system setting's configured validity behavior; no channel-specific fallback is defined by this contract.
+
+The setting names the channel — SMS, email, push, or another mechanism — and the actual credentials and transport live outside the schema.
+
+Whether NotificationChannel.Required is true or false is a configuration choice, not fixed by the 9.0 contract.
+
+The current scope assumes a single global channel. Per-member channel preferences are not modeled.
+
+#### 14.1.3 Trigger boundary
+
+9.0 is invoked by exactly two processes, and only under one condition each:
+
+| Invoked by | When |
+| --- | --- |
+| 5.0 Generate Assignment | On each new automatic assignment created |
+| 7.0 Manage Confirmation | On each replacement assignment created after decline or timeout |
+
+9.0 is **not** invoked on:
+
+- Status changes to an existing assignment.
+- Fill status changes by 10.0.
+- Attendance records by 6.0.
+- Any configuration change.
+- Any occurrence materialization.
+
+#### 14.1.4 No delivery tracking
+
+The system does not record that a notification was sent, when, through which channel, or whether it was delivered. There is no NotificationLog.
+
+#### 14.1.5 No retry
+
+If the underlying channel fails, the notification is lost from the system's perspective. 9.0 does not retry.
+
+#### 14.1.6 Content
+
+The notification carries enough information for the member to understand what they are being asked to respond to: the occurrence date and time, the duty, and (implicitly) the expectation of a response. The exact format is channel-dependent and outside the schema.
+
+The notification does not contain a confirmation token or other schema-defined response identifier. Assignment-response correlation is handled by the 7.0 response mechanism and is outside 9.0's schema contract.
+
+### 14.2 Read and Write Footprint
+
+**Reads:**
+
+| # | Source | Purpose |
+| --- | --- | --- |
+| R1 | D7 RosterAssignment | The assignment being notified |
+| R2 | D4 Member | Contact details |
+| R3 | D3 ServiceOccurrence | Occurrence date and time |
+| R4 | D11 SystemSetting | NotificationChannel |
+
+**Writes:** None. 9.0 does not write to any store.
+
+**Invocations:** None. 9.0 does not invoke any process.
+
+**Stores never touched (write):** All stores. 9.0 is read-only on every store it touches.
+
+### 14.3 Invariants
+
+- Outbound only. 9.0's only product is a message sent to a member.
+- Read-only on all stores.
+- Trigger is bounded. Invoked only by 5.0 and 7.0, only on new assignment creation.
+- No invocation on status change.
+- No invocation on any other event.
+- Channel selected by setting. Follows the setting's configured validity behavior.
+- Fire-and-forget.
+- No retry.
+- No delivery log.
+- No token.
+- Channel-agnostic contract. SMS, email, push, and others are acceptable implementations behind the same contract.
+
+### 14.4 Indexes
+
+9.0 does not require any indexes. It reads by primary key from RosterAssignment, Member, and ServiceOccurrence, and by key from SystemSetting. All are served by existing primary-key or foreign-key indexes.
+
+No index is prescribed at specification level for 9.0.
+
+### 14.5 Explicitly Open Implementation Choices
+
+- The channel mechanism.
+- The message format.
+- Per-member channel preferences.
+- Delivery tracking.
+- Retry policy.
+- Confirmation token or deep-link mechanism.
+- Whether 9.0's invocation is synchronous or asynchronous from the invoking process's perspective.
+- Whether NotificationChannel.Required is true or false.
+
+### 14.6 Cross-References
+
+- §7 — Materialization contract.
+- §8 — Occurrence Materialization derivation.
+- §9 — Configuration layer.
+- §10 — Generate Assignment.
+- §11 — Manage Confirmation.
+- §12 — Evaluate Fill Status.
+- §13 — Record Attendance.
+- §15 — Consolidated schema amendments.
+- §16 — System-wide invocation model.
+
+*End of §14. This section derives from the locked 9.0 contract and does not extend it.*
+
+---
+
+## 15. Consolidated Schema Amendments
+
+*This section consolidates every schema addition, constraint, and configuration setting implied by the locked contracts for §7 through §14. It is the single reference an implementer reads against the physical schema. Every item traces to a locked decision in an earlier section. Nothing here is new.*
+
+### 15.0 Purpose
+
+Across §7 through §14, the locked contracts implied a set of additions to the schema described in §4: columns, constraints, and configuration settings. This section gathers them in one place.
+
+The additions fall into four categories:
+
+1. New columns
+2. New constraints
+3. New settings
+4. Nullability clarifications
+
+No new entities are introduced. No new tables. Fifteen amendments total.
+
+### 15.1 New Columns
+
+#### 15.1.1 RosterAssignment.CreatedAt
+
+| Property | Value |
+| --- | --- |
+| Table | RosterAssignment |
+| Column | CreatedAt |
+| Type | timestamp |
+| Nullable | No |
+| Set by | Every newly inserted row sets CreatedAt to its creation time. The creating process supplies it. |
+| Purpose | Basis for 7.0's timeout calculation: now - CreatedAt >= ConfirmationTimeoutHours |
+| Source | §11 |
+
+#### 15.1.2 AssignmentStatus.IsTerminal
+
+| Property | Value |
+| --- | --- |
+| Table | AssignmentStatus |
+| Column | IsTerminal |
+| Type | boolean |
+| Nullable | No |
+| Set by | Configured by the Administrator when defining the status |
+| Purpose | Distinguishes statuses that occupy a required slot from statuses that leave the slot vacant |
+| Source | §11 |
+
+**Semantic note:** IsTerminal is a capacity concept, not a lifecycle-impermanence concept. A terminal assignment's row remains; the member may rejoin a slot through a new assignment.
+
+#### 15.1.3 ServiceOccurrence columns — no amendments
+
+The materialization contract (§7, §8) references ten columns of ServiceOccurrence: OccurrenceID, ScheduleID, EventID, Date, ServiceTypeID (override), StartTime (override), FillStatusID, GeneratedBy, CreatedBy, ChangedBy. All ten are defined in §4. The contract fixed their semantics and the values the Materializer writes; it did not require new columns. No amendment to ServiceOccurrence columns is implied by §7 through §14.
+
+### 15.2 New Constraints
+
+#### 15.2.1 RosterAssignment (MemberID, DutyID, OccurrenceID) unique
+
+| Property | Value |
+| --- | --- |
+| Table | RosterAssignment |
+| Constraint | UNIQUE on (MemberID, DutyID, OccurrenceID) |
+| Purpose | Prevent duplicate member/duty/occurrence records |
+| Source | §10 |
+
+#### 15.2.2 AttendanceRecord (MemberID, OccurrenceID) unique
+
+| Property | Value |
+| --- | --- |
+| Table | AttendanceRecord |
+| Constraint | UNIQUE on (MemberID, OccurrenceID) |
+| Purpose | At most one recorded attendance fact per member per occurrence |
+| Source | §13 |
+
+#### 15.2.3 ServiceSchedule (ServiceDefID, TimeSlotID) active-row unique
+
+| Property | Value |
+| --- | --- |
+| Table | ServiceSchedule |
+| Constraint | UNIQUE on (ServiceDefID, TimeSlotID), restricted to active rows |
+| Purpose | An active ServiceSchedule is uniquely identified by the pair |
+| Source | §9 |
+
+#### 15.2.4 ServiceOccurrence (ScheduleID, Date) schedule-sourced unique
+
+| Property | Value |
+| --- | --- |
+| Table | ServiceOccurrence |
+| Constraint | UNIQUE on (ScheduleID, Date), restricted to rows where ScheduleID IS NOT NULL |
+| Purpose | One occurrence per schedule per date; correctness guard for 11.0 idempotency |
+| Source | §7, §8 |
+
+Event-sourced occurrences are excluded. Their uniqueness is governed by the 8.0 process.
+
+### 15.3 New Settings
+
+#### 15.3.1 OccurrenceHorizonDays
+
+| Property | Value |
+| --- | --- |
+| Type | integer, unit days |
+| Minimum | 0 |
+| Required | true |
+| Consumed by | 11.0 |
+| Behavior if absent | 11.0 refuses to run and surfaces a configuration error |
+| Source | §7, §8 |
+
+#### 15.3.2 InitialAssignmentStatusID
+
+| Property | Value |
+| --- | --- |
+| Type | integer — an AssignmentStatusID |
+| Required | true |
+| Consumed by | 7.0 |
+| Behavior if absent | 7.0 refuses to run and surfaces a configuration error |
+| Source | §11 |
+
+#### 15.3.3 ConfirmationTimeoutHours
+
+| Property | Value |
+| --- | --- |
+| Type | integer, unit hours |
+| Required | Configurable |
+| Consumed by | 7.0 |
+| Behavior if absent | If Required = false, no timeout occurs; if Required = true, 7.0 refuses to run |
+| Timeout rule | now - CreatedAt >= ConfirmationTimeoutHours |
+| Source | §11 |
+
+#### 15.3.4 OutcomeStateUnfilledID
+
+| Property | Value |
+| --- | --- |
+| Type | integer — an OutcomeStateID |
+| Required | true |
+| Consumed by | 10.0 |
+| Behavior if absent | 10.0 refuses to run and surfaces a configuration error |
+| Source | §12 |
+
+#### 15.3.5 OutcomeStatePartiallyFilledID
+
+| Property | Value |
+| --- | --- |
+| Type | integer — an OutcomeStateID |
+| Required | true |
+| Consumed by | 10.0 |
+| Behavior if absent | 10.0 refuses to run and surfaces a configuration error |
+| Source | §12 |
+
+#### 15.3.6 OutcomeStateFilledID
+
+| Property | Value |
+| --- | --- |
+| Type | integer — an OutcomeStateID |
+| Required | true |
+| Consumed by | 10.0 |
+| Behavior if absent | 10.0 refuses to run and surfaces a configuration error |
+| Source | §12 |
+
+#### 15.3.7 OutcomeStateCancelledID
+
+| Property | Value |
+| --- | --- |
+| Type | integer — an OutcomeStateID |
+| Required | false |
+| Consumed by | 10.0 |
+| Behavior if absent | No automatic cancellation exclusion applies |
+| Behavior if present | 10.0 skips occurrences whose FillStatusID equals that ID |
+| Note | 10.0 never writes the cancelled state |
+| Source | §12 |
+
+#### 15.3.8 NotificationChannel
+
+| Property | Value |
+| --- | --- |
+| Type | string or enum |
+| Required | Not fixed by the specification; a deployment choice |
+| Consumed by | 9.0 |
+| Validation | If no valid channel is configured, 9.0 does not send. No channel-specific fallback is defined by the 9.0 contract. |
+| Source | §14 |
+
+### 15.4 Nullability Clarifications
+
+#### 15.4.1 RosterAssignment.AssignmentStatusID — nullable
+
+| Property | Value |
+| --- | --- |
+| Table | RosterAssignment |
+| Column | AssignmentStatusID |
+| Nullable | Yes |
+| Source | §10 |
+
+5.0 creates assignments with AssignmentStatusID = NULL; 7.0 transitions to the initial status.
+
+### 15.5 Physical Expression Choices
+
+- Filtered/partial unique constraints — the "restricted to active rows" and "restricted to non-null ScheduleID" conditions.
+- Column types — enum vs. string vs. lookup.
+- Timestamp precision.
+- Composite index shapes.
+
+### 15.6 What Is Deliberately Not Added
+
+- No NotificationLog or delivery-tracking table.
+- No AssignmentRun or equivalent log for 5.0.
+- No status-history table for RosterAssignment.
+- No attendance-event table.
+- No retry table.
+- No orchestration entity.
+- No DeactivatedBy / DeactivatedAt columns on configuration entities.
+- No AttendanceSource field.
+- No confirmation-token or deep-link field.
+- No attendance-window engine or configuration.
+- No cross-service time-conflict engine.
+- No MemberRole or MemberBranch join tables.
+- No reserved criteria activation.
+
+### 15.7 Summary Table
+
+| # | Amendment | Type | Source |
+| --- | --- | --- | --- |
+| 15.1.1 | RosterAssignment.CreatedAt | New column | §11 |
+| 15.1.2 | AssignmentStatus.IsTerminal | New column | §11 |
+| 15.2.1 | RosterAssignment (MemberID, DutyID, OccurrenceID) unique | New constraint | §10 |
+| 15.2.2 | AttendanceRecord (MemberID, OccurrenceID) unique | New constraint | §13 |
+| 15.2.3 | ServiceSchedule (ServiceDefID, TimeSlotID) active-row unique | New constraint | §9 |
+| 15.2.4 | ServiceOccurrence (ScheduleID, Date) schedule-sourced unique | New constraint | §7, §8 |
+| 15.3.1 | OccurrenceHorizonDays | New setting | §7, §8 |
+| 15.3.2 | InitialAssignmentStatusID | New setting | §11 |
+| 15.3.3 | ConfirmationTimeoutHours | New setting | §11 |
+| 15.3.4 | OutcomeStateUnfilledID | New setting | §12 |
+| 15.3.5 | OutcomeStatePartiallyFilledID | New setting | §12 |
+| 15.3.6 | OutcomeStateFilledID | New setting | §12 |
+| 15.3.7 | OutcomeStateCancelledID | New setting | §12 |
+| 15.3.8 | NotificationChannel | New setting | §14 |
+| 15.4.1 | RosterAssignment.AssignmentStatusID nullable | Nullability clarification | §10 |
+
+Fifteen amendments. Two new columns, four new constraints, eight new settings, one nullability clarification.
+
+---
+
+## 16. System-Wide Invocation Model
+
+*This section formalizes the system's process topology: which processes invoke which other processes, and which communicate only by shared data. It states the two — and only two — direct process-invocation edges in the system.*
+
+### 16.0 The Integration Principle
+
+The system's default integration mechanism is **shared data**. Processes read from and write to common data stores. When one process's output needs to reach another process, it does so through a store, not through a call.
+
+Direct process invocation is the exception. It exists in exactly two places, both for the same reason: an outbound message must be sent at the moment an assignment is created.
+
+### 16.1 The Full Topology
+                 ┌─────────────────────────────┐
+                 │   1.0 Configure vocabulary  │
+                 │   2.0 Configure duty rules  │
+                 │   3.0 Manage membership     │
+                 │   4.0 Manage eligibility    │
+                 │   8.0 Manage events/programs│
+                 └──────────────┬──────────────┘
+                                │ writes
+                                ▼
+┌───────────────────────────────────────────────────────────┐
+│  Configuration stores:  D1 D2 D3 D4 D5 D6 D9 D10 D11      │
+│  (8.0 additionally creates event-sourced ServiceOccurrence │
+│   rows when a ProgramItem is linked to a ServiceDefinition)│
+└───────────────────────────────────────────────────────────┘
+                                │ read by
+                                ▼
+                 ┌─────────────────────────────┐
+                 │  11.0 Materialize           │
+                 │       Occurrences           │
+                 └──────────────┬──────────────┘
+                                │ writes
+                                ▼
+                 ┌─────────────────────────────┐
+                 │   ServiceOccurrence (D3)    │
+                 └──────────────┬──────────────┘
+                                │ read by
+                                ▼
+                 ┌─────────────────────────────┐
+                 │  5.0 Generate Assignment    │
+                 └──────┬────────────────┬─────┘
+                        │ writes         │ invokes
+                        ▼                ▼
+            ┌───────────────────┐   ┌───────────────────┐
+            │  RosterAssignment │   │  9.0 Dispatch     │
+            │  (D7)             │   │  Notification     │
+            └────────┬──────────┘   └───────────────────┘
+                     │                        ▲
+                     │ read/written by        │
+                     ▼                        │
+            ┌───────────────────┐             │
+            │  7.0 Manage       │─────────────┘
+            │  Confirmation     │   invokes (on replacement)
+            └────────┬──────────┘
+                     │
+                     │ feeds
+                     ▼
+            ┌───────────────────┐
+            │  10.0 Evaluate    │
+            │  Fill Status      │
+            └────────┬──────────┘
+                     │ writes
+                     ▼
+            ┌───────────────────┐
+            │  ServiceOccurrence│
+            │  .FillStatusID    │
+            └───────────────────┘
+
+
+┌──────────────────────────────────────────────────┐
+│  6.0 Record Attendance                           │
+│      │ writes                                    │
+│      ▼                                           │
+│  AttendanceRecord (D8)                           │
+│                                                  │
+│  Read by 5.0 only when a Branch-Attendance       │
+│  Recency criterion exists.                       │
+└──────────────────────────────────────────────────┘
+
+### 16.2 The Two Direct Invocation Edges
+
+| # | From | To | Trigger |
+| --- | --- | --- | --- |
+| I1 | 5.0 Generate Assignment | 9.0 Dispatch Notification | On each new automatic assignment created |
+| I2 | 7.0 Manage Confirmation | 9.0 Dispatch Notification | On each replacement assignment created after decline or timeout |
+
+Both invoke 9.0. Both invoke it under the same condition: a new RosterAssignment row has been created.
+
+### 16.3 Complete Invocation Matrix
+
+| Process | Invokes | Invoked by |
+| --- | --- | --- |
+| 1.0 Configure vocabulary | — | — |
+| 2.0 Configure duty rules | — | — |
+| 3.0 Manage membership | — | — |
+| 4.0 Manage eligibility | — | — |
+| 5.0 Generate assignment | 9.0 | — |
+| 6.0 Record attendance | — | — |
+| 7.0 Manage confirmation | 9.0 | — |
+| 8.0 Manage events and programs | — | — |
+| 9.0 Dispatch notification | — | 5.0, 7.0 |
+| 10.0 Evaluate fill status | — | — |
+| 11.0 Materialize occurrences | — | — |
+
+### 16.4 Trigger Summary
+
+| Process | Triggers |
+| --- | --- |
+| 1.0 Configure vocabulary | Administrator action |
+| 2.0 Configure duty rules | Administrator action |
+| 3.0 Manage membership | Administrator action |
+| 4.0 Manage eligibility | Administrator action |
+| 5.0 Generate assignment | Scheduled run; manual admin trigger |
+| 6.0 Record attendance | Member action; manual admin entry |
+| 7.0 Manage confirmation | Member response; scheduled timeout check |
+| 8.0 Manage events and programs | Administrator action |
+| 9.0 Dispatch notification | Invocation by 5.0 or 7.0 |
+| 10.0 Evaluate fill status | After assignment changes; scheduled sweep |
+| 11.0 Materialize occurrences | Scheduled run; manual admin trigger |
+
+Every process has an independent trigger mechanism except 9.0. Operational data dependencies remain: a process may require records produced by another process to exist before meaningful work can be performed. These are data dependencies, not process dependencies.
+
+### 16.5 Data Store Mediation
+
+| Process | Reads | Writes |
+| --- | --- | --- |
+| 5.0 Generate assignment | D2, D3, D4, D6, D7, D8 (conditional) | D7 |
+| 6.0 Record attendance | D3, D4 | D8 |
+| 7.0 Manage confirmation | D2 (re-res), D3 (re-res), D4, D6 (re-res), D7, D8 (re-res), D10, D11 | D7 |
+| 9.0 Dispatch notification | D3, D4, D7, D11 | — |
+| 10.0 Evaluate fill status | D3, D7, D10, D11 | D3 |
+| 11.0 Materialize occurrences | D3, D11 | D3, D12 |
+
+### 16.6 Invariants of the Invocation Model
+
+- **Two direct invocation edges only.** 5.0 → 9.0 and 7.0 → 9.0.
+- **Shared data is the default integration mechanism.**
+- **No orchestration.** No process orchestrates another.
+- **No process depends on another process's successful completion for its own persisted business result.** 5.0 and 7.0 invoke 9.0 fire-and-forget; whether the invocation is technically synchronous or asynchronous is an implementation choice and does not create a semantic dependency.
+- **Every process has an independent trigger except 9.0.**
+- **Fire-and-forget notification.**
+- **No feedback loops.** The invocation graph is acyclic and terminates at 9.0.
+
+### 16.7 What This Preserves
+
+- **Independent execution.** Each process can be scheduled or invoked independently. Their data dependencies do not require process-to-process invocation.
+- **Independent testability.** Every process can be tested in isolation.
+- **Independent observability.** Every process's behavior is visible through the stores it writes, except 9.0, whose contract explicitly excludes delivery tracking.
+
+### 16.8 Cross-References
+
+- §7 through §14 — the process contracts whose invocations are formalized here.
+- §15 — the schema amendments.
+
+*End of §16. This section formalizes the invocation topology implied by §7 through §14 and does not extend it.*

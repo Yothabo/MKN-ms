@@ -1,4 +1,3 @@
-
 # Data Model
 
 *The entities of the system and the relationships between them. Derived from the System Design Specification §4 and §15. Where this document conflicts with the specification, the specification wins.*
@@ -34,11 +33,64 @@ The system groups its data into twelve conceptual stores. Each holds a distinct 
 
 ## The entity relationships
 
-```
+The diagram shows the primary relationships. Direction of the arrows is from the referencing entity to the referenced entity. The full set of foreign keys and their targets is in `entity-reference.md`.
 
-```
+~~~mermaid
+erDiagram
+    Branch ||--o{ BranchTimeSlot : has
+    Branch ||--o{ Member : "home for"
+    Branch ||--o{ ServiceDefinition : "may own"
 
-The diagram shows the primary relationships. The full set of foreign keys and their targets is in `entity-reference.md`.
+    TimeOfDay ||--o{ BranchTimeSlot : classifies
+
+    ServiceType ||--o{ ServiceDefinition : classifies
+
+    ServiceDefinition ||--o{ ServiceDefinitionDuty : requires
+    Duty ||--o{ ServiceDefinitionDuty : "required by"
+
+    ServiceDefinition ||--o{ ServiceSchedule : "scheduled as"
+    BranchTimeSlot ||--o{ ServiceSchedule : "scheduled at"
+
+    ServiceSchedule ||--o{ ServiceOccurrence : "materializes to"
+
+    ServiceOccurrence ||--o{ ServiceOccurrenceDuty : "overrides"
+    Duty ||--o{ ServiceOccurrenceDuty : "overridden by"
+
+    ServiceOccurrence ||--o{ RosterAssignment : "assigned on"
+    ServiceOccurrence ||--o{ AttendanceRecord : "attended at"
+
+    OutcomeState ||--o{ ServiceOccurrence : "fill status"
+
+    Role ||--o{ Member : "held by"
+    Role ||--o{ DutyRule : "referenced by"
+
+    Duty ||--o{ DutyRule : ranks
+    Duty ||--o{ Eligibility : "granted for"
+    Duty ||--o{ RosterAssignment : "assigned as"
+
+    Member ||--o{ IdentifierHistory : has
+    Member ||--o{ Eligibility : "granted to"
+    Member ||--o{ RosterAssignment : "assigned as"
+    Member ||--o{ AttendanceRecord : attends
+    Member ||--o| Admin : "may be"
+
+    PermissionTier ||--o{ Admin : classifies
+
+    AssignmentStatus ||--o{ RosterAssignment : "status of"
+
+    Event ||--o| Program : "has one"
+    Program ||--o{ ProgramItem : contains
+    ProgramItem ||--o{ EventDuty : "carries"
+    ProgramItem }o--o| ServiceDefinition : "may link to"
+    Member ||--o{ EventDuty : "directly assigned"
+
+    Event ||--o{ ServiceOccurrence : "event-sourced"
+
+    Admin ||--o{ IdentifierHistory : authorizes
+    Admin ||--o{ Eligibility : grants
+    Admin ||--o{ MaterializerRun : "may trigger"
+    Admin ||--o{ ServiceOccurrence : "may create"
+~~~
 
 ---
 
@@ -142,14 +194,14 @@ The uniqueness constraint on (MemberID, OccurrenceID) makes attendance a single 
 
 The base schema is defined in §4 of the System Design Specification. A small set of additions is defined in §15 — two columns, four constraints, eight settings, one nullability clarification. The amendments are:
 
-- `RosterAssignment.CreatedAt` — a new required timestamp.
-- `AssignmentStatus.IsTerminal` — a new required boolean.
-- `RosterAssignment (MemberID, DutyID, OccurrenceID)` unique.
-- `AttendanceRecord (MemberID, OccurrenceID)` unique.
-- `ServiceSchedule (ServiceDefID, TimeSlotID)` unique for active rows.
-- `ServiceOccurrence (ScheduleID, Date)` unique for schedule-sourced rows.
-- Eight `SystemSetting` keys.
-- `RosterAssignment.AssignmentStatusID` — nullable clarification.
+- RosterAssignment.CreatedAt — a new required timestamp.
+- AssignmentStatus.IsTerminal — a new required boolean.
+- RosterAssignment (MemberID, DutyID, OccurrenceID) unique.
+- AttendanceRecord (MemberID, OccurrenceID) unique.
+- ServiceSchedule (ServiceDefID, TimeSlotID) unique for active rows.
+- ServiceOccurrence (ScheduleID, Date) unique for schedule-sourced rows.
+- Eight SystemSetting keys.
+- RosterAssignment.AssignmentStatusID — nullable clarification.
 
 The full list, with sources, is in `../database/amendments.md`.
 

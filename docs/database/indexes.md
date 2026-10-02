@@ -18,7 +18,7 @@ The distinction is deliberate. The specification leaves some physical choices im
 
 ## Category 1 — Required logical constraints
 
-These are correctness constraints, not performance indexes. Their physical form includes a backing index automatically in every mainstream RDBMS.
+These are correctness constraints, not performance indexes. Their physical implementation — including whether a backing index is created automatically — is database-dependent.
 
 | Table | Constraint | Source |
 | --- | --- | --- |
@@ -27,7 +27,7 @@ These are correctness constraints, not performance indexes. Their physical form 
 | RosterAssignment | UNIQUE (MemberID, DutyID, OccurrenceID) | §10.4.1, §15.2.1 |
 | AttendanceRecord | UNIQUE (MemberID, OccurrenceID) | §13.4.1, §15.2.2 |
 
-Each of these is required. Each creates its own backing index automatically. No separate index is created for the same purpose.
+Each of these is required as a rule. Whether it creates a backing index, and how, depends on the target database and on how the constraint is expressed.
 
 ---
 
@@ -67,7 +67,7 @@ None. 9.0 reads by primary key from RosterAssignment, Member, and ServiceOccurre
 
 ### Serves configuration reads
 
-- **Foreign-key indexes** on every FK column, standard. These serve joins throughout the configuration layer and are effectively required.
+- **Foreign-key indexes** on every FK column, standard. These serve joins throughout the configuration layer.
 
 ---
 
@@ -75,7 +75,7 @@ None. 9.0 reads by primary key from RosterAssignment, Member, and ServiceOccurre
 
 The physical indexes actually chosen during implementation. These depend on:
 
-- **Target database engine.** Whether filtered/partial indexes are supported; whether NULL-distinct behavior is guaranteed; whether the planner benefits from composite forms.
+- **Target database engine.** Whether filtered or partial indexes are supported; whether NULL-distinct behavior is available; whether the planner benefits from composite forms.
 - **Observed query plans.** Whether a candidate index is actually used; whether a different shape would be better.
 - **Data volume.** At small scale, some candidate indexes are not worth their maintenance cost. At larger scale, they become necessary.
 
@@ -85,21 +85,14 @@ Physical indexes are chosen during implementation, against the actual load and q
 
 ## Notes on specific shapes
 
-### Filtered/partial unique constraints
+### Filtered and partial unique constraints
 
 The ServiceOccurrence (ScheduleID, Date) and ServiceSchedule (ServiceDefID, TimeSlotID) uniqueness rules apply only to a subset of rows:
 
 - ServiceOccurrence: only rows where ScheduleID IS NOT NULL.
 - ServiceSchedule: only rows where IsActive = true.
 
-How this is expressed depends on the target database:
-
-- **PostgreSQL, SQLite:** partial unique index with a WHERE clause.
-- **SQL Server:** filtered unique index.
-- **MySQL/InnoDB:** the NULL-distinct behavior of a composite unique constraint handles ServiceOccurrence naturally; for ServiceSchedule, a generated column or application-level guard may be needed.
-- **Oracle:** varies by version and design.
-
-The logical rule is fixed. The physical form is a target-database choice.
+How this is expressed depends on the target database. The logical rule is fixed. The physical form is a target-database choice.
 
 ### Composite index ordering
 
@@ -125,7 +118,7 @@ The following are not candidates for indexing at the specification level:
 
 ## Summary
 
-**Required (Category 1):** four uniqueness constraints. Each creates its backing index.
+**Required (Category 1):** four uniqueness constraints. Each is a rule; physical enforcement is database-dependent.
 
 **Candidate (Category 2):** approximately ten indexes across the operational and configuration tables, each tied to a specific access pattern.
 
