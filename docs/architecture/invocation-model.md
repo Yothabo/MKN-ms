@@ -38,7 +38,7 @@ Every other relationship between processes is expressed through shared data:
 - 7.0 writes status changes; 10.0 reads them.
 - 6.0 writes attendance; 5.0 reads it only when required by a criterion.
 
-No process needs to notify another synchronously, and none does.
+No process depends on another process's successful completion for its own persisted business result. 5.0 and 7.0 invoke 9.0 as fire-and-forget; whether that invocation is technically synchronous or asynchronous is an implementation choice and does not create a semantic dependency.
 
 ---
 
