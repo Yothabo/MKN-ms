@@ -118,8 +118,8 @@ Then move outward into the derived documentation:
 8. **`architecture/system-overview.md`** — the top-down view.
 9. **`architecture/core-design-principle.md`** — the fixed/configurable separation, in full.
 10. **`architecture/data-model.md`** and **`entity-reference.md`** — the entities.
-11. **`architecture/process-model.md`** — the eleven processes.
-12. **`architecture/invocation-model.md`** — the two invocation edges and the data-mediated relationships.
+11. **`architecture/process-model.md`** — the twelve processes.
+12. **`architecture/invocation-model.md`** — the direct invocation edges and the data-mediated relationships.
 13. **`processes/configuration/README.md`** and **`processes/operations/README.md`** — the two process layers.
 14. **The individual process documents** — one per process.
 15. **`database/`** — the implementation-facing reference.
@@ -150,7 +150,7 @@ Any change to the system's architecture begins in `spec/`, not in a derived docu
 
 The three authoritative documents:
 
-- **`system-design-spec.md`** — the System Design Specification. §1 through §16. Architecture-only.
+- **`system-design-spec.md`** — the System Design Specification. §1 through §17. Architecture-only.
 - **`dfd.md`** — the Data Flow Diagrams. The same architecture from a data-flow perspective.
 - **`config-reference.md`** — the MKN Configuration Reference. What MKN has actually configured. Not architecture.
 
@@ -166,15 +166,15 @@ Eight documents describing the system as a whole:
 - **`fixed-vs-configurable.md`** — what the system knows vs. what administrators decide.
 - **`data-model.md`** — the entities and their relationships.
 - **`entity-reference.md`** — every table, every column.
-- **`process-model.md`** — the eleven processes, grouped by layer.
-- **`invocation-model.md`** — the two invocation edges and the data-mediated relationships.
+- **`process-model.md`** — the twelve processes, grouped by layer.
+- **`invocation-model.md`** — the direct invocation edges and the data-mediated relationships.
 
 ### `processes/`
 
-The eleven processes, split into two layers:
+The twelve processes, split into two layers:
 
 - **`configuration/`** — the five processes that create and maintain administrator-entered values.
-- **`operations/`** — the six processes that produce operational records.
+- **`operations/`** — the seven processes that produce operational records.
 
 Each subdirectory has a README describing the layer, plus one document per process.
 
@@ -260,7 +260,7 @@ When the API contract is defined, this directory will hold:
 
 - **`endpoints.md`** — the endpoint list, grouped by the processes they serve.
 - **`request-response.md`** — request and response shapes, error conventions, and any versioning policy.
-- **`process-mapping.md`** — the anticipated process exposure, mapped against the eleven processes in `../processes/`.
+- **`process-mapping.md`** — the anticipated process exposure, mapped against the twelve processes in `../processes/`.
 
 ---
 
@@ -270,7 +270,7 @@ The API is a presentation of the processes defined in `../processes/`, not an in
 
 - **The process boundaries.** Each endpoint invokes exactly one process or subprocess. No composite endpoints that stitch together behavior from multiple processes.
 - **The store footprints.** An endpoint must not write to a store outside the footprint of the process it invokes.
-- **The invocation model.** Endpoints trigger processes; they do not introduce new invocation edges. The two direct edges (5.0 → 9.0 and 7.0 → 9.0) are internal and do not appear at the API boundary.
+- **The invocation model.** Endpoints trigger processes; they do not introduce new invocation edges. The three direct edges (5.0 → 9.0, 7.0 → 9.0, and 12.0 → 9.0) are internal and do not appear at the API boundary.
 - **The required-setting rule.** Endpoints that trigger processes depending on a required setting must surface the configuration error if the setting is absent.
 - **The 8.0 exception.** An endpoint that links a Program Item to a Service Definition triggers the creation of an event-sourced occurrence. This is the only case where a configuration-layer action produces an operational record.
 
@@ -297,7 +297,7 @@ Until then, the files in this directory stay as placeholders.
 
 ==============================================================================
 FILE: docs/api/endpoints.md
-LINES: 94
+LINES: 95
 ==============================================================================
 
 # Endpoints
@@ -333,6 +333,7 @@ The anticipated groups, mirroring `../processes/`:
 - Manage Confirmation (7.0)
 - Evaluate Fill Status (10.0)
 - Materialize Occurrences (11.0)
+- Create Manual Assignment (12.0)
 
 The Notification Dispatcher (9.0) is invoked internally by 5.0 and 7.0; it does not require an externally exposed endpoint.
 
@@ -397,7 +398,7 @@ The specific format will be finalised once the stack is chosen.
 
 ==============================================================================
 FILE: docs/api/process-mapping.md
-LINES: 112
+LINES: 113
 ==============================================================================
 
 # Process Mapping
@@ -408,7 +409,7 @@ LINES: 112
 
 ## Status
 
-This document describes the **anticipated** mapping from the eventual API endpoints to the system's eleven processes. It is not a finalized API design contract — the API contract does not exist yet, and it will not until the technology stack is chosen.
+This document describes the **anticipated** mapping from the eventual API endpoints to the system's twelve processes. It is not a finalized API design contract — the API contract does not exist yet, and it will not until the technology stack is chosen.
 
 What this document does establish is the shape of the mapping: every endpoint will invoke exactly one process or subprocess, and no endpoint will introduce behavior beyond what the process defines. Those constraints come from the process model, not from any API design choice, and they hold regardless of stack.
 
@@ -431,6 +432,7 @@ Each process is anticipated to be exposed (or not exposed) through the API accor
 | 9.0 | Dispatch Notification | Invoked by 5.0 / 7.0 | Not exposed — internal |
 | 10.0 | Evaluate Fill Status | After assignment changes; scheduled | Not exposed — runs internally |
 | 11.0 | Materialize Occurrences | Scheduled; manual admin | Admin-facing endpoint for manual trigger; also runs on schedule |
+| 12.0 | Create Manual Assignment | Administrator action | Admin-facing endpoint |
 
 The term "anticipated" is used deliberately: these are the natural exposures given each process's trigger and external-actor relationship. Whether each is actually exposed, and in what form, is an API design decision still to be made.
 
@@ -472,7 +474,7 @@ Each trigger maps to a natural exposure style:
 | Invocation by another process | Not exposed; internal |
 | After-assignment-change trigger | Not exposed; runs internally |
 
-The two internal invocation edges (5.0 → 9.0 and 7.0 → 9.0) do not appear at the API boundary. They happen inside the system.
+The three internal invocation edges (5.0 → 9.0, 7.0 → 9.0, and 12.0 → 9.0) do not appear at the API boundary. They happen inside the system.
 
 ---
 
@@ -583,7 +585,7 @@ LINES: 134
 
 ## The components
 
-The system is composed of eleven named components. Each has a defined responsibility, and each respects the core design principle — none of them embeds an organization's rules.
+The system is composed of eleven named components — a count distinct from the number of processes; components describe the system's conceptual building blocks, not its process inventory. Each component has a defined responsibility, and each respects the core design principle — none of them embeds an organization's rules.
 
 | Component | Responsibility |
 | --- | --- |
@@ -687,7 +689,7 @@ Each component has a defined boundary — what it does and does not do. These bo
 - **Does:** send messages through whichever channel is configured.
 - **Does not:** track delivery, retry, or log.
 - **Does not:** invoke any other process.
-- **Is invoked only by:** Assignment (5.0) and Confirmation (7.0), on new assignment creation.
+- **Is invoked by:** Assignment (5.0) and Confirmation (7.0) on every new assignment they create; and by Create Manual Assignment (12.0), only when the manual assignment is created with no status (AssignmentStatusID = NULL).
 
 ### Program
 
@@ -704,7 +706,7 @@ Every component in the system:
 - Reads its configuration at run time; none has it embedded.
 - Respects the required-setting rule — if it depends on a setting that is absent, it fails loudly rather than proceeding.
 - Writes only to the stores it is contractually allowed to write to; it never modifies a store outside its footprint.
-- Does not orchestrate another component, except for the two locked invocation edges (5.0 → 9.0 and 7.0 → 9.0).
+- Does not orchestrate another component, except for the three locked invocation edges (5.0 → 9.0, 7.0 → 9.0, and 12.0 → 9.0).
 
 ---
 
@@ -856,7 +858,7 @@ The core principle forbids the following, without exception:
 - **§4** defines the categories — the fixed vocabulary.
 - **§5** defines the configuration language — what an administrator can express.
 - **§7** resolves the one process that most clearly needed the fixed/configurable distinction applied: Occurrence Materialization, which is a mechanical operation on configuration, not a configuration choice.
-- **§8–§14** derive the operational contracts, each respecting the separation.
+- **§8–§17** derive the operational contracts, each respecting the separation.
 - **§15** consolidates the schema amendments, all of which are vocabulary, not rules.
 - **§16** states the invocation topology, which is a mechanical property, not an organizational choice.
 
@@ -1086,7 +1088,7 @@ The full list, with sources, is in `../database/amendments.md`.
 - No notification log. Notifications are fire-and-forget.
 - No attendance-event table. One row per member per occurrence.
 - No tombstone table. Configuration entities are deactivated, not deleted.
-- No orchestration entity. The two invocation edges are process-to-process, not mediated.
+- No orchestration entity. The three invocation edges are process-to-process, not mediated.
 
 Each of these is a deliberate decision, not an oversight.
 
@@ -1673,11 +1675,11 @@ Three process-to-process invocation edges currently exist. All three terminate a
 | 7.0 Manage Confirmation | 9.0 Dispatch Notification | On each replacement assignment created after decline or timeout |
 | 12.0 Create Manual Assignment | 9.0 Dispatch Notification | Only when the created manual assignment has AssignmentStatusID = NULL at creation |
 
-Both invoke 9.0. Both invoke it under the same condition: a new RosterAssignment row has been created. Neither invokes 9.0 for any other reason.
+All three invoke 9.0. I1 and I2 fire on any new RosterAssignment row. I3 fires only when the manually-created row has no status — meaning a response is genuinely being requested. No invoker calls 9.0 for any other reason.
 
 ### Why these exist
 
-An assignment notice must be sent at the moment the assignment is created. A polling model would require either a Notified flag or a notification queue — state the schema deliberately does not have. Direct invocation is simpler and bounded: 9.0 is the outbound channel, invoked by the two processes that produce outbound-worthy events.
+An assignment notice must be sent at the moment the assignment is created. A polling model would require either a Notified flag or a notification queue — state the schema deliberately does not have. Direct invocation is simpler and bounded: 9.0 is the outbound channel, invoked by the processes that produce response-requiring assignments (5.0, 7.0, and 12.0).
 
 ### Why there are no others
 
@@ -1887,7 +1889,7 @@ Every process has an independent trigger mechanism except 9.0.
 | 6.0 | Member action at an occurrence; manual admin entry |
 | 7.0 | Member response; scheduled timeout check |
 | 8.0 | Administrator action |
-| 9.0 | Invocation by 5.0 or 7.0 |
+| 9.0 | Invocation by 5.0, 7.0, or 12.0 |
 | 10.0 | After assignment changes; scheduled sweep |
 | 11.0 | Scheduled run; manual admin trigger |
 | 12.0 | Administrator action |
@@ -2074,7 +2076,7 @@ Tracks each Roster Assignment's response lifecycle. On decline or timeout, re-re
 
 Sends assignment notices to members through the configured channel.
 
-**Trigger:** Invocation by 5.0 or 7.0, on new assignment creation.
+**Trigger:** Invocation by 5.0, 7.0, or 12.0, on new assignment creation. 5.0 and 7.0 invoke it unconditionally for every assignment they create; 12.0 invokes it only when the manual assignment is created with AssignmentStatusID = NULL.
 
 **Reads:** D7, D4, D3, D11.
 
@@ -2139,7 +2141,7 @@ Directly creates a Roster Assignment from an administrator's selection, bypassin
 
 ## Trigger summary
 
-Every process has at least one trigger. Only 9.0 has no independent trigger — it exists solely to be invoked by 5.0 and 7.0.
+Every process has at least one trigger. Only 9.0 has no independent trigger — it exists solely to be invoked by 5.0, 7.0, and 12.0.
 
 | Trigger type | Processes |
 | --- | --- |
@@ -2321,7 +2323,7 @@ This is why processes like the Occurrence Materializer refuse to run when `Occur
 - **`fixed-vs-configurable.md`** — what the system knows vs. what administrators decide.
 - **`data-model.md`** — the entities and their relationships.
 - **`entity-reference.md`** — every table, every column.
-- **`process-model.md`** — the eleven processes.
+- **`process-model.md`** — the twelve processes.
 - **`invocation-model.md`** — how processes communicate.
 
 ---
@@ -6001,7 +6003,7 @@ LINES: 163
 
 ## Responsibility
 
-9.0 Dispatch Notification is the outbound process that sends assignment notices to members. It is invoked by 5.0 and 7.0 when they create new automatic assignments, and it is the only process in the system whose primary effect is an external side effect rather than a write to an internal data store.
+9.0 Dispatch Notification is the outbound process that sends assignment notices to members. It is invoked by 5.0, 7.0, and 12.0 when they create assignments that require a response — meaning an assignment created with no status. It is the only process in the system whose primary effect is an external side effect rather than a write to an internal data store.
 
 It reads the assignment, the member, the occurrence, and the configured channel, composes a message, sends it, and stops. It does not write to any store, does not track delivery, does not retry, and does not invoke any other process.
 
@@ -6048,7 +6050,7 @@ This is the narrowest possible trigger boundary.
 
 ## The trigger boundary
 
-9.0's trigger is bounded to exactly one condition: a new RosterAssignment row has been created. It is invoked by the two processes that create assignments (5.0 for automatic, 7.0 for replacements).
+9.0's trigger is bounded to exactly one condition: a new RosterAssignment row has been created that requires a response. It is invoked by the three processes that create such assignments (5.0 for automatic, 7.0 for replacements, 12.0 for manual assignments created with no status).
 
 Status changes on an existing assignment do not trigger 9.0. Fill status changes do not trigger 9.0. Attendance records do not trigger 9.0.
 
@@ -6122,7 +6124,7 @@ Whether the invocation is synchronous or asynchronous from the invoking process'
 
 - Outbound only. 9.0's only product is a message sent to a member.
 - Read-only on all stores. 9.0 reads what it needs; it writes nothing.
-- Trigger is bounded. Invoked only by 5.0 and 7.0, only on new assignment creation.
+- Trigger is bounded. Invoked only by 5.0, 7.0, and 12.0, only on new assignment creation that requires a response.
 - No invocation on status change.
 - No invocation on any other event.
 - Channel selected by setting. Follows the setting's configured validity behavior; no channel-specific fallback.
@@ -6159,7 +6161,7 @@ No index is prescribed at specification level for 9.0.
 
 ==============================================================================
 FILE: docs/processes/operations/README.md
-LINES: 137
+LINES: 139
 ==============================================================================
 
 
@@ -6212,10 +6214,12 @@ These processes read configuration at run time. None of them embeds an organizat
           ▼
   5.0 Generate Assignment
           │
-          ├──────────► 9.0 Dispatch Notification
-          │
-          ▼
-   RosterAssignment
+          ├──────────► 9.0 Dispatch Notification ◄────────── 12.0 Create Manual Assignment
+          │                          ▲                         (only when AssignmentStatusID = NULL)
+          ▼                          │
+   RosterAssignment                  │
+                                     │
+                                     └─────────────────────── 7.0 Manage Confirmation invokes on replacement
        │       │
        │       └────────► 7.0 Manage Confirmation
        │                         │
@@ -6241,7 +6245,7 @@ These processes read configuration at run time. None of them embeds an organizat
           ▼
    AttendanceRecord
 ~~~
-The two invocation edges (5.0 → 9.0 and 7.0 → 9.0) are the only process-to-process calls in the system. Every other relationship is data-mediated.
+The three invocation edges (5.0 → 9.0, 7.0 → 9.0, and 12.0 → 9.0) are the only process-to-process calls in the system. Every other relationship is data-mediated.
 
 ---
 
@@ -6252,7 +6256,7 @@ The two invocation edges (5.0 → 9.0 and 7.0 → 9.0) are the only process-to-p
 | 5.0 Generate Assignment | Scheduled run; manual administrator action |
 | 6.0 Record Attendance | Member action; manual administrator entry |
 | 7.0 Manage Confirmation | Member response; scheduled timeout check |
-| 9.0 Dispatch Notification | Invocation by 5.0 or 7.0 |
+| 9.0 Dispatch Notification | Invocation by 5.0, 7.0, or 12.0 |
 | 10.0 Evaluate Fill Status | After assignment changes; scheduled sweep |
 | 11.0 Materialize Occurrences | Scheduled run (daily); manual administrator action |
 | 12.0 Create Manual Assignment | Administrator action |
@@ -6463,7 +6467,7 @@ Wednesday's Branch Time Slot start time changes between school term and school h
 
 ==============================================================================
 FILE: docs/spec/dfd.md
-LINES: 280
+LINES: 290
 ==============================================================================
 
 
@@ -6493,7 +6497,7 @@ flowchart TB
 
 Level 1 — Process Decomposition
 
-Eleven processes. 11.0 Materialize Occurrences is system/time-triggered, with an optional manual trigger from Administrator — it is the only process without a required external-entity input on its primary trigger path.
+Twelve processes. 11.0 Materialize Occurrences is system/time-triggered, with an optional manual trigger from Administrator. 12.0 Create Manual Assignment is administrator-triggered, with no scheduled component. These are the only two processes without a required external-entity input on their primary trigger path.
 
 ```mermaid
 flowchart TB
@@ -6518,6 +6522,7 @@ flowchart TB
         P9((9.0 Dispatch notification))
         P10((10.0 Evaluate fill status))
         P11((11.0 Materialize occurrences))
+        P12((12.0 Create manual assignment))
     end
 
     D1[(D1 Role / Duty)]
@@ -6582,6 +6587,15 @@ flowchart TB
     Admin -->|Create event, program, item, duty| P8
     P8 --> D9
     P8 -.->|Creates event-sourced occurrence directly| D3
+
+    Admin -->|Create manual assignment| P12
+    D2 -.->|Reads Eligibility Flag tiers| P12
+    D3 -.->|Reads occurrence| P12
+    D4 -.->|Reads member| P12
+    D6 -.->|Reads eligibility grant| P12
+    D7 -.->|Uniqueness check| P12
+    P12 -->|Creates manual assignment| D7
+    P12 -.->|Invokes only when AssignmentStatusID is NULL| P9
 ```
 
 ---
@@ -8228,7 +8242,7 @@ The notification does not contain a confirmation token or other schema-defined r
 
 - Outbound only. 9.0's only product is a message sent to a member.
 - Read-only on all stores.
-- Trigger is bounded. Invoked only by 5.0 and 7.0, only on new assignment creation.
+- Trigger is bounded. Invoked only by 5.0, 7.0, and 12.0, only on new assignment creation that requires a response.
 - No invocation on status change.
 - No invocation on any other event.
 - Channel selected by setting. Follows the setting's configured validity behavior.
@@ -8508,7 +8522,7 @@ Fifteen amendments. Two new columns, four new constraints, eight new settings, o
 
 ## 16. System-Wide Invocation Model
 
-*This section formalizes the system's process topology: which processes invoke which other processes, and which communicate only by shared data. It states the two — and only two — direct process-invocation edges in the system.*
+*This section formalizes the system's process topology: which processes invoke which other processes, and which communicate only by shared data. It states the current direct process-invocation edges in the system, and the durable invariant that underlies them.*
 
 ### 16.0 The Integration Principle
 
@@ -8613,7 +8627,7 @@ Conditionality is not a property of any specific edge. 7.0's edge (I2) and 12.0'
 | 6.0 Record attendance | — | — |
 | 7.0 Manage confirmation | 9.0 | — |
 | 8.0 Manage events and programs | — | — |
-| 9.0 Dispatch notification | — | 5.0, 7.0 |
+| 9.0 Dispatch notification | — | 5.0, 7.0, 12.0 |
 | 10.0 Evaluate fill status | — | — |
 | 11.0 Materialize occurrences | — | — |
 | 12.0 Create manual assignment | 9.0 | — |
@@ -8630,7 +8644,7 @@ Conditionality is not a property of any specific edge. 7.0's edge (I2) and 12.0'
 | 6.0 Record attendance | Member action; manual admin entry |
 | 7.0 Manage confirmation | Member response; scheduled timeout check |
 | 8.0 Manage events and programs | Administrator action |
-| 9.0 Dispatch notification | Invocation by 5.0 or 7.0 |
+| 9.0 Dispatch notification | Invocation by 5.0, 7.0, or 12.0 |
 | 10.0 Evaluate fill status | After assignment changes; scheduled sweep |
 | 11.0 Materialize occurrences | Scheduled run; manual admin trigger |
 | 12.0 Create manual assignment | Administrator action |

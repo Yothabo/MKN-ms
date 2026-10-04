@@ -48,10 +48,12 @@ These processes read configuration at run time. None of them embeds an organizat
           ▼
   5.0 Generate Assignment
           │
-          ├──────────► 9.0 Dispatch Notification
-          │
-          ▼
-   RosterAssignment
+          ├──────────► 9.0 Dispatch Notification ◄────────── 12.0 Create Manual Assignment
+          │                          ▲                         (only when AssignmentStatusID = NULL)
+          ▼                          │
+   RosterAssignment                  │
+                                     │
+                                     └─────────────────────── 7.0 Manage Confirmation invokes on replacement
        │       │
        │       └────────► 7.0 Manage Confirmation
        │                         │
@@ -77,7 +79,7 @@ These processes read configuration at run time. None of them embeds an organizat
           ▼
    AttendanceRecord
 ~~~
-The two invocation edges (5.0 → 9.0 and 7.0 → 9.0) are the only process-to-process calls in the system. Every other relationship is data-mediated.
+The three invocation edges (5.0 → 9.0, 7.0 → 9.0, and 12.0 → 9.0) are the only process-to-process calls in the system. Every other relationship is data-mediated.
 
 ---
 
@@ -88,7 +90,7 @@ The two invocation edges (5.0 → 9.0 and 7.0 → 9.0) are the only process-to-p
 | 5.0 Generate Assignment | Scheduled run; manual administrator action |
 | 6.0 Record Attendance | Member action; manual administrator entry |
 | 7.0 Manage Confirmation | Member response; scheduled timeout check |
-| 9.0 Dispatch Notification | Invocation by 5.0 or 7.0 |
+| 9.0 Dispatch Notification | Invocation by 5.0, 7.0, or 12.0 |
 | 10.0 Evaluate Fill Status | After assignment changes; scheduled sweep |
 | 11.0 Materialize Occurrences | Scheduled run (daily); manual administrator action |
 | 12.0 Create Manual Assignment | Administrator action |

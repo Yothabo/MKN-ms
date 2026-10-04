@@ -1474,7 +1474,7 @@ The notification does not contain a confirmation token or other schema-defined r
 
 - Outbound only. 9.0's only product is a message sent to a member.
 - Read-only on all stores.
-- Trigger is bounded. Invoked only by 5.0 and 7.0, only on new assignment creation.
+- Trigger is bounded. Invoked only by 5.0, 7.0, and 12.0, only on new assignment creation that requires a response.
 - No invocation on status change.
 - No invocation on any other event.
 - Channel selected by setting. Follows the setting's configured validity behavior.
@@ -1754,7 +1754,7 @@ Fifteen amendments. Two new columns, four new constraints, eight new settings, o
 
 ## 16. System-Wide Invocation Model
 
-*This section formalizes the system's process topology: which processes invoke which other processes, and which communicate only by shared data. It states the two — and only two — direct process-invocation edges in the system.*
+*This section formalizes the system's process topology: which processes invoke which other processes, and which communicate only by shared data. It states the current direct process-invocation edges in the system, and the durable invariant that underlies them.*
 
 ### 16.0 The Integration Principle
 
@@ -1859,7 +1859,7 @@ Conditionality is not a property of any specific edge. 7.0's edge (I2) and 12.0'
 | 6.0 Record attendance | — | — |
 | 7.0 Manage confirmation | 9.0 | — |
 | 8.0 Manage events and programs | — | — |
-| 9.0 Dispatch notification | — | 5.0, 7.0 |
+| 9.0 Dispatch notification | — | 5.0, 7.0, 12.0 |
 | 10.0 Evaluate fill status | — | — |
 | 11.0 Materialize occurrences | — | — |
 | 12.0 Create manual assignment | 9.0 | — |
@@ -1876,7 +1876,7 @@ Conditionality is not a property of any specific edge. 7.0's edge (I2) and 12.0'
 | 6.0 Record attendance | Member action; manual admin entry |
 | 7.0 Manage confirmation | Member response; scheduled timeout check |
 | 8.0 Manage events and programs | Administrator action |
-| 9.0 Dispatch notification | Invocation by 5.0 or 7.0 |
+| 9.0 Dispatch notification | Invocation by 5.0, 7.0, or 12.0 |
 | 10.0 Evaluate fill status | After assignment changes; scheduled sweep |
 | 11.0 Materialize occurrences | Scheduled run; manual admin trigger |
 | 12.0 Create manual assignment | Administrator action |

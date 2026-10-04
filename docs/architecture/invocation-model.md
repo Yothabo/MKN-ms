@@ -24,11 +24,11 @@ Three process-to-process invocation edges currently exist. All three terminate a
 | 7.0 Manage Confirmation | 9.0 Dispatch Notification | On each replacement assignment created after decline or timeout |
 | 12.0 Create Manual Assignment | 9.0 Dispatch Notification | Only when the created manual assignment has AssignmentStatusID = NULL at creation |
 
-Both invoke 9.0. Both invoke it under the same condition: a new RosterAssignment row has been created. Neither invokes 9.0 for any other reason.
+All three invoke 9.0. I1 and I2 fire on any new RosterAssignment row. I3 fires only when the manually-created row has no status — meaning a response is genuinely being requested. No invoker calls 9.0 for any other reason.
 
 ### Why these exist
 
-An assignment notice must be sent at the moment the assignment is created. A polling model would require either a Notified flag or a notification queue — state the schema deliberately does not have. Direct invocation is simpler and bounded: 9.0 is the outbound channel, invoked by the two processes that produce outbound-worthy events.
+An assignment notice must be sent at the moment the assignment is created. A polling model would require either a Notified flag or a notification queue — state the schema deliberately does not have. Direct invocation is simpler and bounded: 9.0 is the outbound channel, invoked by the processes that produce response-requiring assignments (5.0, 7.0, and 12.0).
 
 ### Why there are no others
 
@@ -238,7 +238,7 @@ Every process has an independent trigger mechanism except 9.0.
 | 6.0 | Member action at an occurrence; manual admin entry |
 | 7.0 | Member response; scheduled timeout check |
 | 8.0 | Administrator action |
-| 9.0 | Invocation by 5.0 or 7.0 |
+| 9.0 | Invocation by 5.0, 7.0, or 12.0 |
 | 10.0 | After assignment changes; scheduled sweep |
 | 11.0 | Scheduled run; manual admin trigger |
 | 12.0 | Administrator action |

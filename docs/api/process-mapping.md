@@ -6,7 +6,7 @@
 
 ## Status
 
-This document describes the **anticipated** mapping from the eventual API endpoints to the system's eleven processes. It is not a finalized API design contract — the API contract does not exist yet, and it will not until the technology stack is chosen.
+This document describes the **anticipated** mapping from the eventual API endpoints to the system's twelve processes. It is not a finalized API design contract — the API contract does not exist yet, and it will not until the technology stack is chosen.
 
 What this document does establish is the shape of the mapping: every endpoint will invoke exactly one process or subprocess, and no endpoint will introduce behavior beyond what the process defines. Those constraints come from the process model, not from any API design choice, and they hold regardless of stack.
 
@@ -29,6 +29,7 @@ Each process is anticipated to be exposed (or not exposed) through the API accor
 | 9.0 | Dispatch Notification | Invoked by 5.0 / 7.0 | Not exposed — internal |
 | 10.0 | Evaluate Fill Status | After assignment changes; scheduled | Not exposed — runs internally |
 | 11.0 | Materialize Occurrences | Scheduled; manual admin | Admin-facing endpoint for manual trigger; also runs on schedule |
+| 12.0 | Create Manual Assignment | Administrator action | Admin-facing endpoint |
 
 The term "anticipated" is used deliberately: these are the natural exposures given each process's trigger and external-actor relationship. Whether each is actually exposed, and in what form, is an API design decision still to be made.
 
@@ -70,7 +71,7 @@ Each trigger maps to a natural exposure style:
 | Invocation by another process | Not exposed; internal |
 | After-assignment-change trigger | Not exposed; runs internally |
 
-The two internal invocation edges (5.0 → 9.0 and 7.0 → 9.0) do not appear at the API boundary. They happen inside the system.
+The three internal invocation edges (5.0 → 9.0, 7.0 → 9.0, and 12.0 → 9.0) do not appear at the API boundary. They happen inside the system.
 
 ---
 

@@ -25,7 +25,7 @@ flowchart TB
 
 Level 1 — Process Decomposition
 
-Eleven processes. 11.0 Materialize Occurrences is system/time-triggered, with an optional manual trigger from Administrator — it is the only process without a required external-entity input on its primary trigger path.
+Twelve processes. 11.0 Materialize Occurrences is system/time-triggered, with an optional manual trigger from Administrator. 12.0 Create Manual Assignment is administrator-triggered, with no scheduled component. These are the only two processes without a required external-entity input on their primary trigger path.
 
 ```mermaid
 flowchart TB
@@ -50,6 +50,7 @@ flowchart TB
         P9((9.0 Dispatch notification))
         P10((10.0 Evaluate fill status))
         P11((11.0 Materialize occurrences))
+        P12((12.0 Create manual assignment))
     end
 
     D1[(D1 Role / Duty)]
@@ -114,6 +115,15 @@ flowchart TB
     Admin -->|Create event, program, item, duty| P8
     P8 --> D9
     P8 -.->|Creates event-sourced occurrence directly| D3
+
+    Admin -->|Create manual assignment| P12
+    D2 -.->|Reads Eligibility Flag tiers| P12
+    D3 -.->|Reads occurrence| P12
+    D4 -.->|Reads member| P12
+    D6 -.->|Reads eligibility grant| P12
+    D7 -.->|Uniqueness check| P12
+    P12 -->|Creates manual assignment| D7
+    P12 -.->|Invokes only when AssignmentStatusID is NULL| P9
 ```
 
 ---

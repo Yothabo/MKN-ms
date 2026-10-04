@@ -123,7 +123,7 @@ Tracks each Roster Assignment's response lifecycle. On decline or timeout, re-re
 
 Sends assignment notices to members through the configured channel.
 
-**Trigger:** Invocation by 5.0 or 7.0, on new assignment creation.
+**Trigger:** Invocation by 5.0, 7.0, or 12.0, on new assignment creation. 5.0 and 7.0 invoke it unconditionally for every assignment they create; 12.0 invokes it only when the manual assignment is created with AssignmentStatusID = NULL.
 
 **Reads:** D7, D4, D3, D11.
 
@@ -188,7 +188,7 @@ Directly creates a Roster Assignment from an administrator's selection, bypassin
 
 ## Trigger summary
 
-Every process has at least one trigger. Only 9.0 has no independent trigger — it exists solely to be invoked by 5.0 and 7.0.
+Every process has at least one trigger. Only 9.0 has no independent trigger — it exists solely to be invoked by 5.0, 7.0, and 12.0.
 
 | Trigger type | Processes |
 | --- | --- |

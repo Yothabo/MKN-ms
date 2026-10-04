@@ -48,8 +48,8 @@ Then move outward into the derived documentation:
 8. **`architecture/system-overview.md`** — the top-down view.
 9. **`architecture/core-design-principle.md`** — the fixed/configurable separation, in full.
 10. **`architecture/data-model.md`** and **`entity-reference.md`** — the entities.
-11. **`architecture/process-model.md`** — the eleven processes.
-12. **`architecture/invocation-model.md`** — the two invocation edges and the data-mediated relationships.
+11. **`architecture/process-model.md`** — the twelve processes.
+12. **`architecture/invocation-model.md`** — the direct invocation edges and the data-mediated relationships.
 13. **`processes/configuration/README.md`** and **`processes/operations/README.md`** — the two process layers.
 14. **The individual process documents** — one per process.
 15. **`database/`** — the implementation-facing reference.
@@ -80,7 +80,7 @@ Any change to the system's architecture begins in `spec/`, not in a derived docu
 
 The three authoritative documents:
 
-- **`system-design-spec.md`** — the System Design Specification. §1 through §16. Architecture-only.
+- **`system-design-spec.md`** — the System Design Specification. §1 through §17. Architecture-only.
 - **`dfd.md`** — the Data Flow Diagrams. The same architecture from a data-flow perspective.
 - **`config-reference.md`** — the MKN Configuration Reference. What MKN has actually configured. Not architecture.
 
@@ -96,15 +96,15 @@ Eight documents describing the system as a whole:
 - **`fixed-vs-configurable.md`** — what the system knows vs. what administrators decide.
 - **`data-model.md`** — the entities and their relationships.
 - **`entity-reference.md`** — every table, every column.
-- **`process-model.md`** — the eleven processes, grouped by layer.
-- **`invocation-model.md`** — the two invocation edges and the data-mediated relationships.
+- **`process-model.md`** — the twelve processes, grouped by layer.
+- **`invocation-model.md`** — the direct invocation edges and the data-mediated relationships.
 
 ### `processes/`
 
-The eleven processes, split into two layers:
+The twelve processes, split into two layers:
 
 - **`configuration/`** — the five processes that create and maintain administrator-entered values.
-- **`operations/`** — the six processes that produce operational records.
+- **`operations/`** — the seven processes that produce operational records.
 
 Each subdirectory has a README describing the layer, plus one document per process.
 

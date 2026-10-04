@@ -139,7 +139,7 @@ The core principle forbids the following, without exception:
 - **§4** defines the categories — the fixed vocabulary.
 - **§5** defines the configuration language — what an administrator can express.
 - **§7** resolves the one process that most clearly needed the fixed/configurable distinction applied: Occurrence Materialization, which is a mechanical operation on configuration, not a configuration choice.
-- **§8–§14** derive the operational contracts, each respecting the separation.
+- **§8–§17** derive the operational contracts, each respecting the separation.
 - **§15** consolidates the schema amendments, all of which are vocabulary, not rules.
 - **§16** states the invocation topology, which is a mechanical property, not an organizational choice.
 

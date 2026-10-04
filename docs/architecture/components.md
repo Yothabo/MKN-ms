@@ -6,7 +6,7 @@
 
 ## The components
 
-The system is composed of eleven named components. Each has a defined responsibility, and each respects the core design principle — none of them embeds an organization's rules.
+The system is composed of eleven named components — a count distinct from the number of processes; components describe the system's conceptual building blocks, not its process inventory. Each component has a defined responsibility, and each respects the core design principle — none of them embeds an organization's rules.
 
 | Component | Responsibility |
 | --- | --- |
@@ -110,7 +110,7 @@ Each component has a defined boundary — what it does and does not do. These bo
 - **Does:** send messages through whichever channel is configured.
 - **Does not:** track delivery, retry, or log.
 - **Does not:** invoke any other process.
-- **Is invoked only by:** Assignment (5.0) and Confirmation (7.0), on new assignment creation.
+- **Is invoked by:** Assignment (5.0) and Confirmation (7.0) on every new assignment they create; and by Create Manual Assignment (12.0), only when the manual assignment is created with no status (AssignmentStatusID = NULL).
 
 ### Program
 
@@ -127,7 +127,7 @@ Every component in the system:
 - Reads its configuration at run time; none has it embedded.
 - Respects the required-setting rule — if it depends on a setting that is absent, it fails loudly rather than proceeding.
 - Writes only to the stores it is contractually allowed to write to; it never modifies a store outside its footprint.
-- Does not orchestrate another component, except for the two locked invocation edges (5.0 → 9.0 and 7.0 → 9.0).
+- Does not orchestrate another component, except for the three locked invocation edges (5.0 → 9.0, 7.0 → 9.0, and 12.0 → 9.0).
 
 ---
 

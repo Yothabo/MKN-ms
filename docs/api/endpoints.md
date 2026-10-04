@@ -31,6 +31,7 @@ The anticipated groups, mirroring `../processes/`:
 - Manage Confirmation (7.0)
 - Evaluate Fill Status (10.0)
 - Materialize Occurrences (11.0)
+- Create Manual Assignment (12.0)
 
 The Notification Dispatcher (9.0) is invoked internally by 5.0 and 7.0; it does not require an externally exposed endpoint.
 
