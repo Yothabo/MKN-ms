@@ -250,6 +250,7 @@ Process Dictionary
 10.0 Evaluate fill status D7, D3, D10, D11 D3
 
 11.0 Materialize occurrences D11, D3 D3, D12
+12.0 Create manual assignment D2, D3, D4, D6, D7 D7
 
 Data Store Dictionary
 

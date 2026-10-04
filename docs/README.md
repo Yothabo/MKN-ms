@@ -143,10 +143,11 @@ Full details in **`database/amendments.md`** and **`spec/system-design-spec.md` 
 
 ## The invocation model at a glance
 
-The system has exactly two process-to-process invocation edges:
+The system has three process-to-process invocation edges, all terminating at 9.0 Dispatch Notification:
 
 - **5.0 Generate Assignment → 9.0 Dispatch Notification**, on each new automatic assignment.
 - **7.0 Manage Confirmation → 9.0 Dispatch Notification**, on each replacement assignment.
+- **12.0 Create Manual Assignment → 9.0 Dispatch Notification**, only when the created manual assignment has `AssignmentStatusID = NULL` at creation.
 
 Everything else is data-mediated. No other process invokes or is invoked by anything.
 

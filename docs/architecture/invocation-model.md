@@ -8,20 +8,21 @@
 
 The system's default integration mechanism is **shared data**. Processes read from and write to common data stores. When one process's output needs to reach another process, it does so through a store, not through a call.
 
-Direct process invocation is the exception. It exists in exactly two places, both for the same reason: an outbound message must be sent at the moment an assignment is created, and deferring that to a polling process would require a "notified" flag or a notification queue that the schema deliberately does not have.
+Direct process invocation is the exception. It exists only where a process has just created a new RosterAssignment row that requires a response from a member — meaning 9.0 Dispatch Notification must be invoked at that moment, rather than deferred to a polling process. No other process is ever invoked by another process.
 
 Everywhere else, processes are independently executable. No process orchestrates another. The data stores are the interface.
 
 ---
 
-## The two direct invocation edges
+## The direct invocation edges
 
-There are exactly two process-to-process invocations in the system:
+Three process-to-process invocation edges currently exist. All three terminate at 9.0:
 
 | From | To | Trigger |
 | --- | --- | --- |
 | 5.0 Generate Assignment | 9.0 Dispatch Notification | On each new automatic assignment created |
 | 7.0 Manage Confirmation | 9.0 Dispatch Notification | On each replacement assignment created after decline or timeout |
+| 12.0 Create Manual Assignment | 9.0 Dispatch Notification | Only when the created manual assignment has AssignmentStatusID = NULL at creation |
 
 Both invoke 9.0. Both invoke it under the same condition: a new RosterAssignment row has been created. Neither invokes 9.0 for any other reason.
 
@@ -193,13 +194,14 @@ The following topology matches §16 of the System Design Specification. Only con
 | 9.0 Dispatch Notification | — | 5.0, 7.0 |
 | 10.0 Evaluate Fill Status | — | — |
 | 11.0 Materialize Occurrences | — | — |
+| 12.0 Create Manual Assignment | 9.0 | — |
 
 **Confirmation of the two-edge claim:**
 
 - 5.0 invokes 9.0. Nothing invokes 5.0.
 - 7.0 invokes 9.0. Nothing invokes 7.0.
 - 9.0 invokes nothing. It is invoked by 5.0 and 7.0.
-- No other process invokes or is invoked by anything.
+- No other process invokes another, and 9.0 is the only process any process invokes.
 
 This is the entire invocation topology of the system.
 
@@ -209,7 +211,7 @@ This is the entire invocation topology of the system.
 
 These are two different kinds of coupling, and the distinction matters.
 
-**Process dependency** — one process invoking another. The system has exactly two process-dependency edges (5.0 → 9.0 and 7.0 → 9.0).
+**Process dependency** — one process invoking another. The system has three process-dependency edges, all terminating at 9.0: 5.0 → 9.0, 7.0 → 9.0, and 12.0 → 9.0.
 
 **Data dependency** — one process requiring records another process has produced. The system has many of these:
 
@@ -239,6 +241,7 @@ Every process has an independent trigger mechanism except 9.0.
 | 9.0 | Invocation by 5.0 or 7.0 |
 | 10.0 | After assignment changes; scheduled sweep |
 | 11.0 | Scheduled run; manual admin trigger |
+| 12.0 | Administrator action |
 
 No process has a trigger that is another process's invocation, except 9.0. This preserves the independently-executable property: each process can be triggered by the administrator, the scheduler, or the member without depending on any other process running first.
 
@@ -256,6 +259,7 @@ Cross-process communication happens through stores, not through calls. The follo
 | 9.0 Dispatch Notification | D3, D4, D7, D11 | — |
 | 10.0 Evaluate Fill Status | D3, D7, D10, D11 | D3 |
 | 11.0 Materialize Occurrences | D3, D11 | D3, D12 |
+| 12.0 Create Manual Assignment | D2, D3, D4, D6, D7 | D7 |
 
 The overlap pattern shows the mediation clearly:
 
@@ -269,7 +273,7 @@ In every case, the reader finds what it needs by querying the store, not by bein
 
 ## Invariants of the invocation model
 
-- **Two direct invocation edges only.** 5.0 → 9.0 and 7.0 → 9.0.
+- **9.0 Dispatch Notification is the sole process any other process is permitted to invoke.** The current count of invoking processes is three (5.0, 7.0, 12.0). This invariant is stated without a count so it survives future growth.
 - **Shared data is the default integration mechanism.** Every other relationship is expressed by one process writing to a store and another reading from it.
 - **No orchestration.** No process orchestrates another.
 - **No process depends on another process's successful completion for its own persisted business result.** 5.0 and 7.0 invoke 9.0 as fire-and-forget; whether the invocation is synchronous or asynchronous is an implementation choice and does not create a semantic dependency.

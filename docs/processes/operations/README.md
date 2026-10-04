@@ -1,7 +1,7 @@
 
 # Operations Layer
 
-*The six processes that produce operational records from configuration and stored facts. Derived from the System Design Specification §9–§14. Where this document conflicts with the specification, the specification wins.*
+*The seven processes that produce operational records from configuration and stored facts. Derived from the System Design Specification §9–§14. Where this document conflicts with the specification, the specification wins.*
 
 ---
 
@@ -23,6 +23,7 @@ These processes read configuration at run time. None of them embeds an organizat
 | 9.0 | Dispatch Notification | Sends assignment notices to members |
 | 10.0 | Evaluate Fill Status | Computes each occurrence's fill state and writes FillStatusID |
 | 11.0 | Materialize Occurrences | Generates Service Occurrences from active Service Schedules on a rolling horizon |
+| 12.0 | Create Manual Assignment | Directly creates a Roster Assignment from an administrator's selection |
 
 ---
 
@@ -90,6 +91,7 @@ The two invocation edges (5.0 → 9.0 and 7.0 → 9.0) are the only process-to-p
 | 9.0 Dispatch Notification | Invocation by 5.0 or 7.0 |
 | 10.0 Evaluate Fill Status | After assignment changes; scheduled sweep |
 | 11.0 Materialize Occurrences | Scheduled run (daily); manual administrator action |
+| 12.0 Create Manual Assignment | Administrator action |
 
 ---
 
@@ -103,13 +105,14 @@ The two invocation edges (5.0 → 9.0 and 7.0 → 9.0) are the only process-to-p
 | 9.0 | D3, D4, D7, D11 | — |
 | 10.0 | D3, D7, D10, D11 | D3 |
 | 11.0 | D3, D11 | D3, D12 |
+| 12.0 | D2, D3, D4, D6, D7 | D7 |
 
 ---
 
 ## Universal invariants
 
 - **No process writes outside its footprint.** Each process writes only to the stores it is contractually allowed to write to.
-- **No process invokes another except the two locked edges.** 5.0 → 9.0 and 7.0 → 9.0.
+- **No process invokes another except the three locked edges.** 5.0 → 9.0, 7.0 → 9.0, and 12.0 → 9.0.
 - **Required-setting discipline.** Each process that depends on a required `SystemSetting` refuses to run if the setting is absent, and surfaces a configuration error.
 - **Lifecycle ownership is clean.** 5.0 creates assignments with `AssignmentStatusID = NULL`; 7.0 owns the status lifecycle. 11.0 creates occurrences with `FillStatusID = NULL`; 10.0 owns the fill status lifecycle.
 - **Additivity.** 5.0 is additive (never modifies or removes an existing assignment). 11.0 is additive and idempotent (never modifies or deletes an existing occurrence).
@@ -127,6 +130,7 @@ For a reader new to the operations layer:
 5. **`10.0-evaluate-fill-status.md`** — the fill state evaluation.
 6. **`6.0-record-attendance.md`** — the raw presence fact.
 7. **`9.0-dispatch-notification.md`** — the outbound channel.
+8. **`12.0-manual-assignment.md`** — the direct admin override.
 
 ---
 

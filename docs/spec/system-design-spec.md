@@ -828,7 +828,7 @@ For each (OccurrenceID, DutyID) pair, the effective slot count is:
 
 For each (Member, Duty) pair, 5.0 determines eligibility by resolving the applicable Eligibility row. The rule 5.0 uses:
 
-> The applicable row is the one with the latest GrantedDate whose RevokedDate is either null or in the future. If multiple such rows exist for the same (MemberID, DutyID), the one with the greatest EligibilityID is used as the deterministic tiebreaker. If the resolved row has a RevokedDate in the past, the member is not eligible. If no row exists at all, the member is not eligible.
+> The applicable row is the one with the latest GrantedDate whose RevokedDate is null. If multiple such rows exist for the same (MemberID, DutyID), the one with the greatest EligibilityID is used as the deterministic tiebreaker. If the resolved row has a RevokedDate set (non-null), the member is not eligible. If no row exists at all, the member is not eligible.
 
 The tiebreaker (greatest EligibilityID) is the rule 5.0 applies, not a rule the schema enforces.
 
@@ -1026,11 +1026,11 @@ When a member declines or an assignment times out:
 1. The assignment's AssignmentStatusID transitions to the admin-designated declined or timed-out status.
 2. The status must have IsTerminal = true for the slot to be considered vacant; if the admin marks a decline status as non-terminal, the slot remains occupied and 7.0 does not re-resolve.
 3. 7.0 runs the same candidate selection logic 5.0 uses, scoped to the affected (OccurrenceID, DutyID) slot only.
-4. **The declining or timed-out member is explicitly excluded from the replacement candidate set for the affected slot.** Their terminal assignment does not exclude them under the general availability rule — terminal assignments do not block availability. This exclusion is an additional re-resolution rule specific to 7.0.
+4. **Any member who has previously declined or timed out for this specific (OccurrenceID, DutyID) slot is excluded from the replacement candidate set.** The exclusion is cumulative: it is not limited to the member whose assignment just became terminal. A member who declined this slot earlier in the occurrence's lifecycle — and was replaced — remains excluded from all subsequent replacement attempts for that slot. Their terminal assignment does not exclude them under the general availability rule; this is an additional re-resolution rule specific to 7.0.
 5. If a candidate is found, a replacement RosterAssignment row is inserted with AssignmentStatusID = NULL, AssignmentSource = Automatic, AssignedBy = NULL, and 7.0 invokes 9.0 for the notification.
 6. If no candidate is found, the slot remains vacant. No fallback.
 
-The declining or timed-out row is never modified beyond the status transition. Its history is preserved.
+The declining or timed-out row is never modified beyond the status transition. Its history is preserved. The cumulative exclusion is derived from those preserved rows: any member holding a terminal assignment on this (OccurrenceID, DutyID) is excluded from the replacement candidate set, permanently for this slot. No new field or table is required — the Roster Assignment rows already carry the information needed.
 
 #### 11.1.8 Interaction with 9.0
 
@@ -1076,7 +1076,7 @@ The declining or timed-out row is never modified beyond the status transition. I
 - Replacement is additive; the declined/timed-out row is not modified beyond the status transition.
 - History preserved.
 - Re-resolution scoped to the affected slot only.
-- Declining member explicitly excluded from the replacement candidate set.
+- Members who have previously declined or timed out on this (OccurrenceID, DutyID) slot are cumulatively excluded from all subsequent replacement candidate sets for that slot.
 - No automatic re-resolution when no candidate is found.
 - 9.0 invoked only on replacement creation.
 - Fire-and-forget notification.
@@ -1244,6 +1244,7 @@ The cancelled state is identified via SystemSetting.OutcomeStateCancelledID:
 - Batch vs per-occurrence processing.
 - Physical shape of the fill-state index.
 - Whether 10.0's write updates FillStatusID even when the new value equals the old value.
+- **Admin-facing distinction between a filled occurrence and a zero-duty occurrence.** Both classify mechanically as Filled (active assignments meet or exceed effective required count, which is 0 for a zero-duty occurrence). An admin-facing dashboard may label them differently — e.g. "Filled" versus "Filled (no duties required)" — so the two facts are distinguishable at a glance. This is a presentation concern, not a schema or process concern; the mechanical classification remains unchanged.
 
 ### 12.6 Cross-References
 
@@ -1422,12 +1423,13 @@ The current scope assumes a single global channel. Per-member channel preference
 
 #### 14.1.3 Trigger boundary
 
-9.0 is invoked by exactly two processes, and only under one condition each:
+9.0 is invoked by three processes, under the conditions described below:
 
 | Invoked by | When |
 | --- | --- |
 | 5.0 Generate Assignment | On each new automatic assignment created |
 | 7.0 Manage Confirmation | On each replacement assignment created after decline or timeout |
+| 12.0 Create Manual Assignment | Only when the created manual assignment has AssignmentStatusID = NULL at creation |
 
 9.0 is **not** invoked on:
 
@@ -1758,7 +1760,9 @@ Fifteen amendments. Two new columns, four new constraints, eight new settings, o
 
 The system's default integration mechanism is **shared data**. Processes read from and write to common data stores. When one process's output needs to reach another process, it does so through a store, not through a call.
 
-Direct process invocation is the exception. It exists in exactly two places, both for the same reason: an outbound message must be sent at the moment an assignment is created.
+Direct process invocation is the exception. It exists only where a process has just created a new RosterAssignment row that requires a response from a member — meaning 9.0 Dispatch Notification must be invoked at that moment, rather than deferred to a polling process. No other process is ever invoked by another process.
+
+The durable invariant is stated as: **9.0 Dispatch Notification is the sole process any other process is permitted to invoke.** The number of processes that invoke it may change as the system grows; the invariant does not.
 
 ### 16.1 The Full Topology
                  ┌─────────────────────────────┐
@@ -1829,14 +1833,19 @@ Direct process invocation is the exception. It exists in exactly two places, bot
 │  Recency criterion exists.                       │
 └──────────────────────────────────────────────────┘
 
-### 16.2 The Two Direct Invocation Edges
+### 16.2 The Direct Invocation Edges
 
-| # | From | To | Trigger |
-| --- | --- | --- | --- |
-| I1 | 5.0 Generate Assignment | 9.0 Dispatch Notification | On each new automatic assignment created |
-| I2 | 7.0 Manage Confirmation | 9.0 Dispatch Notification | On each replacement assignment created after decline or timeout |
+Three direct invocation edges currently exist. All three terminate at 9.0 Dispatch Notification.
 
-Both invoke 9.0. Both invoke it under the same condition: a new RosterAssignment row has been created.
+| # | From | To | Trigger | Conditionality |
+| --- | --- | --- | --- | --- |
+| I1 | 5.0 Generate Assignment | 9.0 Dispatch Notification | On each new automatic assignment created | Unconditional — fires on every new automatic assignment |
+| I2 | 7.0 Manage Confirmation | 9.0 Dispatch Notification | On each replacement assignment created after decline or timeout | Conditional — does not fire on status changes of existing assignments |
+| I3 | 12.0 Create Manual Assignment | 9.0 Dispatch Notification | Only when the created manual assignment has AssignmentStatusID = NULL at creation | Conditional — does not fire when the admin sets a non-null status directly |
+
+The **durable invariant** is not the count. It is: **9.0 Dispatch Notification is the sole process any other process is permitted to invoke.** The count may grow as the system grows; the invariant does not.
+
+Conditionality is not a property of any specific edge. 7.0's edge (I2) and 12.0's edge (I3) are both conditional by design — each fires only when a response is genuinely being requested from a member. 5.0's edge (I1) is unconditional only because every automatic assignment it creates requires a response by definition.
 
 ### 16.3 Complete Invocation Matrix
 
@@ -1853,6 +1862,7 @@ Both invoke 9.0. Both invoke it under the same condition: a new RosterAssignment
 | 9.0 Dispatch notification | — | 5.0, 7.0 |
 | 10.0 Evaluate fill status | — | — |
 | 11.0 Materialize occurrences | — | — |
+| 12.0 Create manual assignment | 9.0 | — |
 
 ### 16.4 Trigger Summary
 
@@ -1869,6 +1879,7 @@ Both invoke 9.0. Both invoke it under the same condition: a new RosterAssignment
 | 9.0 Dispatch notification | Invocation by 5.0 or 7.0 |
 | 10.0 Evaluate fill status | After assignment changes; scheduled sweep |
 | 11.0 Materialize occurrences | Scheduled run; manual admin trigger |
+| 12.0 Create manual assignment | Administrator action |
 
 Every process has an independent trigger mechanism except 9.0. Operational data dependencies remain: a process may require records produced by another process to exist before meaningful work can be performed. These are data dependencies, not process dependencies.
 
@@ -1882,10 +1893,12 @@ Every process has an independent trigger mechanism except 9.0. Operational data 
 | 9.0 Dispatch notification | D3, D4, D7, D11 | — |
 | 10.0 Evaluate fill status | D3, D7, D10, D11 | D3 |
 | 11.0 Materialize occurrences | D3, D11 | D3, D12 |
+| 12.0 Create manual assignment | D2, D3, D4, D6, D7 | D7 |
 
 ### 16.6 Invariants of the Invocation Model
 
-- **Two direct invocation edges only.** 5.0 → 9.0 and 7.0 → 9.0.
+- **9.0 Dispatch Notification is the sole process any other process is permitted to invoke.** This is the durable form of the invariant; the current count of invoking processes is three (5.0, 7.0, 12.0), but the invariant is stated without a count so it survives future growth.
+- **Three direct invocation edges currently exist.** 5.0 → 9.0 (unconditional), 7.0 → 9.0 (conditional, on replacement only), 12.0 → 9.0 (conditional, only when AssignmentStatusID is NULL at creation). All three terminate at 9.0.
 - **Shared data is the default integration mechanism.**
 - **No orchestration.** No process orchestrates another.
 - **No process depends on another process's successful completion for its own persisted business result.** 5.0 and 7.0 invoke 9.0 fire-and-forget; whether the invocation is technically synchronous or asynchronous is an implementation choice and does not create a semantic dependency.
@@ -1905,3 +1918,168 @@ Every process has an independent trigger mechanism except 9.0. Operational data 
 - §15 — the schema amendments.
 
 *End of §16. This section formalizes the invocation topology implied by §7 through §14 and does not extend it.*
+
+---
+
+## 17. Create Manual Assignment (12.0) — Locked Contract and Derived Consequences
+
+*Originates the process contract referenced but never defined elsewhere in this specification — by RosterAssignment.AssignmentSource = Manual, by AssignmentStatus.AssignedBy, and by §11.1.1's explicit statement that manual assignment "belongs to a separate admin operation." No prior lock exists for this process; this section is that lock.*
+
+### 17.1 Locked Decisions
+
+#### A. Trigger and scope
+
+**A1.** Trigger is a direct administrator action — no scheduled component. This is a point-in-time operation, not a batch or recurring process.
+
+**A2.** Applies to any Service Occurrence — schedule-sourced or event-sourced, no restriction.
+
+**A3.** No ordering dependency on 5.0. A manual assignment can be created whether or not 5.0 has already run against the occurrence.
+
+#### B. Rule enforcement
+
+**B1.** Manual assignment bypasses Duty Rule tiers whose criteria type is Role, Gender, Age Range, Tenure, Membership Stage, or Branch-Attendance Recency. The admin may select any member for any duty, including one that would produce zero candidates under 5.0's automatic resolution.
+
+**B2.** Manual assignment does **not** bypass a Duty Rule tier whose criteria type is Eligibility Flag. If any configured tier for the duty references an Eligibility Flag, the selected member must hold a current, valid Eligibility grant for that duty — regardless of assignment source. Eligibility Flag is not a ranking preference like the others; it represents a separate, accountable determination made by a specific authority, built with its own grant/revoke audit trail specifically so it could not be reduced to a bypassable preference. Letting manual assignment route around it would quietly undo that protection. Everywhere else, admin discretion is real discretion; here, it is not — because the discretion being protected belongs to whoever grants the Eligibility, not to whoever is creating the roster assignment.
+
+**B3.** Manual assignment does not enforce the effective required slot count (RequiredSlotCount, as adjusted by Service Occurrence Duty overrides). An admin may create a manual assignment even when the duty is already at or above its configured count.
+
+**B4.** Manual assignment does not enforce 5.0's per-occurrence availability rule. An admin may knowingly assign the same member to a second duty on the same occurrence.
+
+**B5.** Manual assignment **does** enforce the (MemberID, DutyID, OccurrenceID) uniqueness constraint. A manual assignment duplicating an existing combination is rejected. This is a data-integrity rule, not a business rule.
+
+#### C. Status and lifecycle
+
+**C1.** The administrator explicitly sets AssignmentStatusID at creation, to either a specific admin-defined status or NULL.
+
+**C2.** 9.0 Dispatch Notification is invoked only when the manually-created assignment's AssignmentStatusID is NULL at creation. A notification asking someone to confirm something the admin already recorded as confirmed would be actively confusing.
+
+**C3.** Once created with AssignmentStatusID = NULL, a manual assignment is indistinguishable from an automatic one to every downstream process. 7.0 owns its lifecycle exactly as it would for a 5.0-created row; AssignmentSource = Manual and AssignedBy remain as permanent provenance but do not alter 7.0's or 10.0's behavior in any way.
+
+**C4.** A manual assignment created with a non-null AssignmentStatusID is never picked up by 7.0's timeout sweep. Timeout is measured from CreatedAt for assignments awaiting a response; an assignment that was never awaiting one has nothing to time out.
+
+#### D. Replacement interaction
+
+**D1.** If a manual assignment later enters 7.0's lifecycle (because it started NULL) and is declined or times out, 7.0's existing re-resolution logic applies without modification, and the replacement it creates is AssignmentSource = Automatic — the same as any other 7.0-created replacement.
+
+#### E. Authorization
+
+**E1.** This process assumes the caller has already passed the applicable PermissionTier check. It does not itself define who is allowed to create a manual assignment.
+
+#### F. Audit
+
+**F1.** No separate audit or history table is introduced. The row's own fields — AssignmentSource, AssignedBy, CreatedAt — are the complete audit trail.
+
+#### G. Duplicate submission
+
+**G1.** A duplicate manual-assignment submission for the same (MemberID, DutyID, OccurrenceID) is rejected by the existing unique constraint — the same protection an automatic assignment already has. No additional idempotency mechanism is introduced.
+
+#### H. Downstream effects
+
+**H1.** Creating a manual assignment is an assignment change like any other, and is picked up by 10.0's existing "after assignment changes" trigger with no new invocation edge required.
+
+### What this contract deliberately does not decide
+
+Editing or removing an existing assignment (manual or automatic) is a different operation from creating one, and is out of scope here. If and when that capability is needed, it gets its own contract rather than being folded into this one.
+
+### 17.2 Process Boundary
+
+12.0 Create Manual Assignment is the process by which an administrator directly creates a Roster Assignment, bypassing 5.0's tiered candidate selection while still respecting Eligibility Flag criteria and the uniqueness constraint. It is the only process other than 5.0 that writes a new Roster Assignment row from scratch.
+
+**At a glance:**
+
+- **Trigger:** administrator action. No scheduled component.
+- **Reads:** D4 Member, D3 Service Occurrence, D2 Duty Rule (Eligibility Flag tiers only), D6 Eligibility, D7 Roster Assignment (uniqueness check).
+- **Writes:** D7 Roster Assignment.
+- **Invokes:** 9.0 Dispatch Notification, only when the created row's AssignmentStatusID is NULL.
+- **Does not:** enforce Duty Rule's non-Eligibility criteria, enforce slot capacity, enforce per-occurrence availability, create a second audit table, modify any existing row.
+
+### 17.3 Derived Schema Behavior
+
+#### 17.3.1 Roster Assignment — columns populated by 12.0
+
+| Column | Value written by 12.0 |
+| --- | --- |
+| AssignmentID | System-generated |
+| MemberID | Administrator-selected |
+| DutyID | Administrator-selected |
+| OccurrenceID | Administrator-selected |
+| AssignmentStatusID | Administrator-selected — any admin-defined status, or NULL |
+| ApprovedBy | NULL at creation |
+| AssignmentSource | Manual |
+| AssignedBy | The administrator performing the action |
+| CreatedAt | The moment of insertion |
+
+#### 17.3.2 Eligibility Flag enforcement
+
+For each Duty Rule row attached to the target duty where CriteriaType = Eligibility Flag, 12.0 resolves the applicable Eligibility row using the same rule 5.0 uses (§10.1.4): the row with the latest GrantedDate whose RevokedDate is null, tiebroken by the greatest EligibilityID. If no such row exists, or the resolved row's RevokedDate is set, the manual assignment is rejected.
+
+If the duty has no Duty Rule row with CriteriaType = Eligibility Flag, there is nothing to check, and 12.0 proceeds without consulting Eligibility at all.
+
+#### 17.3.3 What is not checked
+
+12.0 does not evaluate Role, Gender, Age Range, Tenure, Membership Stage, or Branch-Attendance Recency criteria. It does not compute or compare against the effective required slot count. It does not check whether the selected member already holds a non-terminal assignment elsewhere on the same occurrence.
+
+#### 17.3.4 Interaction with 9.0
+
+When 12.0 creates a row with AssignmentStatusID = NULL, it invokes 9.0 with that assignment, identically to 5.0's invocation. When it creates a row with a non-null AssignmentStatusID, it does not invoke 9.0.
+
+### 17.4 Read and Write Footprint
+
+**Reads:**
+
+| # | Source | Purpose |
+| --- | --- | --- |
+| R1 | D3 Service Occurrence | The occurrence being assigned against |
+| R2 | D4 Member | The selected member |
+| R3 | D2 Duty Rule | Identify any Eligibility Flag criteria for the duty |
+| R4 | D6 Eligibility | Resolve the applicable grant, only when R3 finds an Eligibility Flag criterion |
+| R5 | D7 Roster Assignment | Uniqueness check on (MemberID, DutyID, OccurrenceID) |
+
+**Writes:**
+
+| # | Target | Fields |
+| --- | --- | --- |
+| W1 | D7 Roster Assignment | MemberID, DutyID, OccurrenceID, AssignmentStatusID (admin-selected or NULL), ApprovedBy = NULL, AssignmentSource = Manual, AssignedBy, CreatedAt |
+
+**Invocations:**
+
+| # | Process invoked | Trigger |
+| --- | --- | --- |
+| I1 | 9.0 Dispatch Notification | Only when the created row's AssignmentStatusID is NULL |
+
+**Stores never touched:** D1, D5, D9, D10 (except the Eligibility Flag lookup path through D2/D6), D11, D12. Never modifies Service Occurrence, Service Occurrence Duty, or any existing Roster Assignment row.
+
+### 17.5 Invariants
+
+- Duty Rule's Role, Gender, Age Range, Tenure, Membership Stage, and Branch-Attendance Recency criteria do not gate manual assignment.
+- Duty Rule's Eligibility Flag criterion does gate manual assignment, identically to how it gates automatic assignment.
+- Slot capacity is not enforced.
+- Per-occurrence availability is not enforced.
+- (MemberID, DutyID, OccurrenceID) uniqueness is enforced, without exception.
+- AssignmentStatusID is administrator-selected, not forced to NULL.
+- 9.0 is invoked only when AssignmentStatusID is NULL at creation.
+- Once in 7.0's lifecycle, a manually-created assignment is governed identically to an automatically-created one.
+- AssignmentSource = Manual and AssignedBy are permanent provenance; they do not alter any downstream process's behavior.
+- 12.0 never modifies an existing row.
+- 12.0 never writes to Service Occurrence.
+- No new audit table is introduced.
+
+### 17.6 Indexes
+
+No new index is required. The uniqueness check (R5) is served by the existing RosterAssignment (MemberID, DutyID, OccurrenceID) unique constraint from §15.2.1. The Eligibility lookup (R4) is served by the existing Eligibility (MemberID, DutyID) composite index from §10.4.
+
+### 17.7 Explicitly Open Implementation Choices
+
+- Whether the admin-facing interface warns when a selection would not satisfy Duty Rule's non-Eligibility criteria, versus allowing it silently. The contract permits the bypass either way; the warning is a UI choice, not a schema or process concern.
+- Whether a confirmation step exists between an admin's selection and the write (e.g., a review screen). Not defined by this contract.
+- Editing or removing an existing assignment — explicitly out of scope.
+
+### 17.8 Cross-References
+
+- §10 — Generate Assignment, whose Eligibility-resolution rule this process reuses exactly.
+- §11 — Manage Confirmation, which governs a manually-created assignment identically to an automatic one once it enters the NULL-status lifecycle.
+- §14 — Dispatch Notification, invoked under the same condition 5.0 and 7.0 already use.
+- §15 — the existing constraints this process relies on rather than duplicating.
+- §16 — the invocation model; this process adds no new invocation edge.
+
+*End of §17. This section originates a new locked contract; it does not derive from a prior one, since none existed.*

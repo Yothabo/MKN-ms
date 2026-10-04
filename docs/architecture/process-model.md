@@ -1,12 +1,12 @@
 # Process Model
 
-*The eleven processes that make up the system, grouped by layer. Derived from the System Design Specification §3 and the Data Flow Diagrams. Where this document conflicts with the specification, the specification wins.*
+*The twelve processes that make up the system, grouped by layer. Derived from the System Design Specification §3 and the Data Flow Diagrams. Where this document conflicts with the specification, the specification wins.*
 
 ---
 
 ## Overview
 
-The system is composed of eleven processes. Each has a defined trigger, a defined boundary, a defined read and write footprint, and a defined set of invariants. No process embeds an organization's rules; each reads configuration at run time.
+The system is composed of twelve processes. Each has a defined trigger, a defined boundary, a defined read and write footprint, and a defined set of invariants. No process embeds an organization's rules; each reads configuration at run time.
 
 The processes divide into two layers:
 
@@ -81,7 +81,7 @@ Creates and maintains Event, Program, Program Item, and Event Duty records. When
 
 ## Operations layer
 
-Six processes produce operational records from configuration and stored facts.
+Seven processes produce operational records from configuration and stored facts.
 
 ### 5.0 Generate Assignment
 
@@ -153,6 +153,18 @@ Generates Service Occurrence records from active Service Schedules on a rolling 
 
 **Subprocesses:** 11.1 Read horizon, 11.2 Resolve system today, 11.3 Find active schedules, 11.4 Generate candidate dates, 11.5 Check existing occurrence, 11.6 Create occurrence if missing, 11.7 Record run result.
 
+### 12.0 Create Manual Assignment
+
+Directly creates a Roster Assignment from an administrator's selection, bypassing 5.0's tiered candidate ranking while respecting Eligibility Flag criteria and the uniqueness constraint.
+
+**Trigger:** Administrator action. No scheduled component.
+
+**Reads:** D2 (DutyRule — Eligibility Flag tiers only), D3 (ServiceOccurrence), D4 (Member), D6 (Eligibility), D7 (RosterAssignment).
+
+**Writes:** D7.
+
+**Invokes:** 9.0 Dispatch Notification, only when the created row's AssignmentStatusID is NULL.
+
 ---
 
 ## The full process list
@@ -170,6 +182,7 @@ Generates Service Occurrence records from active Service Schedules on a rolling 
 | 9.0 | Dispatch Notification | Operations | Invoked by 5.0 / 7.0 | Outbound message to member |
 | 10.0 | Evaluate Fill Status | Operations | After assignment changes / Scheduled | Occurrence FillStatusID |
 | 11.0 | Materialize Occurrences | Operations | Scheduled / Manual | Service Occurrences, Materializer Run records |
+| 12.0 | Create Manual Assignment | Operations | Admin | Manually-created Roster Assignment |
 
 ---
 
@@ -203,6 +216,7 @@ Each process reads from and writes to a defined set of stores. No process writes
 | 9.0 | D3, D4, D7, D11 | — |
 | 10.0 | D3, D7, D10, D11 | D3 |
 | 11.0 | D3, D11 | D3, D12 |
+| 12.0 | D2, D3, D4, D6, D7 | D7 |
 
 ---
 
@@ -219,7 +233,7 @@ Every process obeys a set of invariants that are locked in the specification and
 **Boundary respect:**
 - No process writes to a store outside its footprint.
 - No configuration process reads an operational store, except 8.0's event-sourced occurrence write.
-- No process invokes another process except 5.0 → 9.0 and 7.0 → 9.0.
+- No process invokes another process except 5.0 → 9.0, 7.0 → 9.0, and 12.0 → 9.0.
 
 **Required-setting discipline:**
 - 11.0 refuses to run if `OccurrenceHorizonDays` is unset.
