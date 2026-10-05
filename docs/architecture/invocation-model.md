@@ -24,7 +24,7 @@ Three process-to-process invocation edges currently exist. All three terminate a
 | 7.0 Manage Confirmation | 9.0 Dispatch Notification | On each replacement assignment created after decline or timeout |
 | 12.0 Create Manual Assignment | 9.0 Dispatch Notification | Only when the created manual assignment has AssignmentStatusID = NULL at creation |
 
-All three invoke 9.0. I1 and I2 fire on any new RosterAssignment row. I3 fires only when the manually-created row has no status — meaning a response is genuinely being requested. No invoker calls 9.0 for any other reason.
+All three invoke 9.0. 5.0's and 7.0's edges fire on any new RosterAssignment row they create. 12.0's edge fires only when the manually-created row has no status — meaning a response is genuinely being requested. No invoker calls 9.0 for any other reason.
 
 ### Why these exist
 
@@ -60,6 +60,7 @@ flowchart TB
     P7["7.0 Manage confirmation"]
     P10["10.0 Evaluate fill status"]
     P6["6.0 Record attendance"]
+    P12["12.0 Create manual assignment"]
     P9["9.0 Dispatch notification"]
 
     D1[(D1 Role / Duty)]
@@ -113,13 +114,21 @@ flowchart TB
     D3 -.->|reads| P6
     P6 -.->|writes| D8
 
+    D2 -.->|reads Eligibility Flag tiers| P12
+    D3 -.->|reads| P12
+    D4 -.->|reads| P12
+    D6 -.->|reads| P12
+    D7 -.->|uniqueness check| P12
+    P12 -.->|writes| D7
+    P12 -->|invokes, conditional| P9
+
     D7 -.->|reads| P9
     D4 -.->|reads| P9
     D3 -.->|reads| P9
     D11 -.->|reads| P9
 ~~~
 
-**Legend:** solid arrows (`-->`) are process invocations. Dotted arrows (`-.->`) are data reads or writes. Only two solid arrows exist.
+**Legend:** solid arrows (`-->`) are process invocations. Dotted arrows (`-.->`) are data reads or writes. Only three solid arrows exist.
 
 ### Exact form
 
@@ -175,6 +184,16 @@ The following topology matches §16 of the System Design Specification. Only con
                    ▼
         AttendanceRecord (D8)
         (read by 5.0 only when a Branch-Attendance Recency criterion exists)
+
+
+        12.0 Create Manual Assignment
+                   │
+                   │ reads: D2 (Eligibility Flag tiers), D3, D4, D6, D7
+                   │ writes: D7 (RosterAssignment, AssignmentSource = Manual)
+                   │
+                   ├── AssignmentStatusID = NULL  ──►  invokes 9.0 Dispatch Notification
+                   │
+                   └── AssignmentStatusID set     ──►  no invocation
 ~~~
 
 ---
@@ -196,11 +215,12 @@ The following topology matches §16 of the System Design Specification. Only con
 | 11.0 Materialize Occurrences | — | — |
 | 12.0 Create Manual Assignment | 9.0 | — |
 
-**Confirmation of the two-edge claim:**
+**Confirmation of the three-edge claim:**
 
-- 5.0 invokes 9.0. Nothing invokes 5.0.
-- 7.0 invokes 9.0. Nothing invokes 7.0.
-- 9.0 invokes nothing. It is invoked by 5.0 and 7.0.
+- 5.0 invokes 9.0, unconditionally. Nothing invokes 5.0.
+- 7.0 invokes 9.0, on replacement only. Nothing invokes 7.0.
+- 12.0 invokes 9.0, only when the created assignment's AssignmentStatusID is NULL. Nothing invokes 12.0.
+- 9.0 invokes nothing. It is invoked by 5.0, 7.0, and 12.0.
 - No other process invokes another, and 9.0 is the only process any process invokes.
 
 This is the entire invocation topology of the system.

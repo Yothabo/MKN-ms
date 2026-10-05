@@ -1646,7 +1646,7 @@ These are deliberately excluded. They are not the absence of a decision; they ar
 
 ==============================================================================
 FILE: docs/architecture/invocation-model.md
-LINES: 296
+LINES: 316
 ==============================================================================
 
 # Invocation Model
@@ -1675,7 +1675,7 @@ Three process-to-process invocation edges currently exist. All three terminate a
 | 7.0 Manage Confirmation | 9.0 Dispatch Notification | On each replacement assignment created after decline or timeout |
 | 12.0 Create Manual Assignment | 9.0 Dispatch Notification | Only when the created manual assignment has AssignmentStatusID = NULL at creation |
 
-All three invoke 9.0. I1 and I2 fire on any new RosterAssignment row. I3 fires only when the manually-created row has no status — meaning a response is genuinely being requested. No invoker calls 9.0 for any other reason.
+All three invoke 9.0. 5.0's and 7.0's edges fire on any new RosterAssignment row they create. 12.0's edge fires only when the manually-created row has no status — meaning a response is genuinely being requested. No invoker calls 9.0 for any other reason.
 
 ### Why these exist
 
@@ -1711,6 +1711,7 @@ flowchart TB
     P7["7.0 Manage confirmation"]
     P10["10.0 Evaluate fill status"]
     P6["6.0 Record attendance"]
+    P12["12.0 Create manual assignment"]
     P9["9.0 Dispatch notification"]
 
     D1[(D1 Role / Duty)]
@@ -1764,13 +1765,21 @@ flowchart TB
     D3 -.->|reads| P6
     P6 -.->|writes| D8
 
+    D2 -.->|reads Eligibility Flag tiers| P12
+    D3 -.->|reads| P12
+    D4 -.->|reads| P12
+    D6 -.->|reads| P12
+    D7 -.->|uniqueness check| P12
+    P12 -.->|writes| D7
+    P12 -->|invokes, conditional| P9
+
     D7 -.->|reads| P9
     D4 -.->|reads| P9
     D3 -.->|reads| P9
     D11 -.->|reads| P9
 ~~~
 
-**Legend:** solid arrows (`-->`) are process invocations. Dotted arrows (`-.->`) are data reads or writes. Only two solid arrows exist.
+**Legend:** solid arrows (`-->`) are process invocations. Dotted arrows (`-.->`) are data reads or writes. Only three solid arrows exist.
 
 ### Exact form
 
@@ -1826,6 +1835,16 @@ The following topology matches §16 of the System Design Specification. Only con
                    ▼
         AttendanceRecord (D8)
         (read by 5.0 only when a Branch-Attendance Recency criterion exists)
+
+
+        12.0 Create Manual Assignment
+                   │
+                   │ reads: D2 (Eligibility Flag tiers), D3, D4, D6, D7
+                   │ writes: D7 (RosterAssignment, AssignmentSource = Manual)
+                   │
+                   ├── AssignmentStatusID = NULL  ──►  invokes 9.0 Dispatch Notification
+                   │
+                   └── AssignmentStatusID set     ──►  no invocation
 ~~~
 
 ---
@@ -1847,11 +1866,12 @@ The following topology matches §16 of the System Design Specification. Only con
 | 11.0 Materialize Occurrences | — | — |
 | 12.0 Create Manual Assignment | 9.0 | — |
 
-**Confirmation of the two-edge claim:**
+**Confirmation of the three-edge claim:**
 
-- 5.0 invokes 9.0. Nothing invokes 5.0.
-- 7.0 invokes 9.0. Nothing invokes 7.0.
-- 9.0 invokes nothing. It is invoked by 5.0 and 7.0.
+- 5.0 invokes 9.0, unconditionally. Nothing invokes 5.0.
+- 7.0 invokes 9.0, on replacement only. Nothing invokes 7.0.
+- 12.0 invokes 9.0, only when the created assignment's AssignmentStatusID is NULL. Nothing invokes 12.0.
+- 9.0 invokes nothing. It is invoked by 5.0, 7.0, and 12.0.
 - No other process invokes another, and 9.0 is the only process any process invokes.
 
 This is the entire invocation topology of the system.
@@ -8851,4 +8871,116 @@ No new index is required. The uniqueness check (R5) is served by the existing Ro
 - §16 — the invocation model; this process adds no new invocation edge.
 
 *End of §17. This section originates a new locked contract; it does not derive from a prior one, since none existed.*
+
+==============================================================================
+FILE: scripts/consistency_check.py
+LINES: 106
+==============================================================================
+
+#!/usr/bin/env python3
+"""Consistency check for the MKN-MS documentation tree.
+
+Scans every markdown file under docs/ for stale references to counts and
+invocation-edge descriptions that have drifted since the last architectural
+change. Exits 0 if clean, 1 if any violation is found.
+
+Run from the repository root:
+
+    python3 scripts/consistency_check.py
+
+The check is deliberately pattern-based. It catches the actual forms that
+have drifted historically — process counts, edge counts, section ranges —
+regardless of surrounding context. New patterns are added to STALE_PATTERNS
+as new drift risks are identified.
+"""
+
+import re
+import sys
+from pathlib import Path
+
+# The list of stale patterns.
+# Each entry is (regex, human-readable label). When a pattern matches any
+# line in any markdown file under docs/, the check fails and reports the
+# file, line number, and matched text.
+STALE_PATTERNS = [
+    # Process counts
+    (re.compile(r"\beleven processes\b", re.IGNORECASE), "eleven processes (should be twelve)"),
+    (re.compile(r"\bsix processes\b", re.IGNORECASE), "six processes (operations should be seven)"),
+
+    # Invocation edge counts and descriptions
+    (re.compile(r"\btwo direct invocation edges\b", re.IGNORECASE), "two direct invocation edges (should be three)"),
+    (re.compile(r"\btwo invocation edges\b", re.IGNORECASE), "two invocation edges (should be three)"),
+    (re.compile(r"\btwo locked edges\b", re.IGNORECASE), "two locked edges (should be three)"),
+    (re.compile(r"\btwo locked invocation edges\b", re.IGNORECASE), "two locked invocation edges (should be three)"),
+    (re.compile(r"\btwo process-to-process invocation edges\b", re.IGNORECASE), "two process-to-process invocation edges (should be three)"),
+    (re.compile(r"\btwo process-dependency edges\b", re.IGNORECASE), "two process-dependency edges (should be three)"),
+    (re.compile(r"\bThe two invocation edges\b"), "The two invocation edges (should be three)"),
+    (re.compile(r"\bthe two internal invocation edges\b", re.IGNORECASE), "the two internal invocation edges (should be three)"),
+    (re.compile(r"\bIt states the two — and only two — direct process-invocation edges\b"), "two-and-only-two direct edges (should be three)"),
+
+    # Specific 9.0 invocation descriptions
+    (re.compile(r"Only 9\.0 has no independent trigger — it exists solely to be invoked by 5\.0 and 7\.0"), "trigger summary lists 5.0 and 7.0 only"),
+    (re.compile(r"\bInvocation by 5\.0 or 7\.0\b"), "trigger table lists 5.0 and 7.0 only"),
+    (re.compile(r"\bInvoked by exactly two processes\b"), "invoked by exactly two processes"),
+    (re.compile(r"\bInvoked only by 5\.0 and 7\.0\b"), "invoked only by 5.0 and 7.0"),
+    (re.compile(r"\bInvoked by 5\.0 and 7\.0\b"), "invoked by 5.0 and 7.0"),
+    (re.compile(r"\bBoth invoke 9\.0\b"), "both invoke 9.0"),
+    (re.compile(r"\binvoked by the two processes\b", re.IGNORECASE), "invoked by the two processes"),
+    (re.compile(r"\bthe two processes that create assignments\b", re.IGNORECASE), "the two processes that create assignments"),
+    (re.compile(r"\bthe two processes that produce outbound-worthy events\b", re.IGNORECASE), "the two processes that produce outbound-worthy events"),
+
+    # Section ranges
+    (re.compile(r"Only two solid arrows"), "Mermaid legend says 'Only two solid arrows'"),
+    (re.compile(r"Confirmation of the two-edge claim"), "confirmation block says 'two-edge claim'"),
+    (re.compile(r"\b§1 through §16\b"), "§1 through §16 (spec now reaches §17)"),
+    (re.compile(r"\b§8–§14 derive\b"), "§8–§14 derive (spec now reaches §17)"),
+    (re.compile(r"\b§8–§14\b"), "§8–§14 (spec now reaches §17)"),
+]
+
+# The root of the documentation tree, relative to the repository root.
+# The script assumes it is run from the repository root.
+DOCS_ROOT = Path("docs")
+
+
+def scan() -> list:
+    """Return a list of (path, line_number, label, line_text) tuples for every violation."""
+    violations = []
+    for md in sorted(DOCS_ROOT.rglob("*.md")):
+        # Skip anything inside a .git directory (shouldn't happen, but defensive).
+        if ".git" in md.parts:
+            continue
+        try:
+            lines = md.read_text(encoding="utf-8").splitlines()
+        except UnicodeDecodeError:
+            # Not UTF-8; skip silently. The docs tree is expected to be UTF-8.
+            continue
+        for i, line in enumerate(lines, 1):
+            for pattern, label in STALE_PATTERNS:
+                if pattern.search(line):
+                    violations.append((md, i, label, line.strip()[:140]))
+    return violations
+
+
+def main() -> int:
+    if not DOCS_ROOT.exists():
+        print(f"ERROR: docs/ not found at {DOCS_ROOT}. Run this script from the repository root.")
+        return 2
+
+    violations = scan()
+
+    if not violations:
+        print("✓ No stale references found. Repository is consistent.")
+        return 0
+
+    print(f"✗ {len(violations)} stale reference(s) found:\n")
+    for path, lineno, label, snippet in violations:
+        print(f"  {path}:{lineno}  [{label}]")
+        print(f"    {snippet}")
+    print()
+    print("Fix the stale references, then re-run this check.")
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
 

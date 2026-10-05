@@ -51,6 +51,8 @@ STALE_PATTERNS = [
     (re.compile(r"\bthe two processes that produce outbound-worthy events\b", re.IGNORECASE), "the two processes that produce outbound-worthy events"),
 
     # Section ranges
+    (re.compile(r"Only two solid arrows"), "Mermaid legend says 'Only two solid arrows'"),
+    (re.compile(r"Confirmation of the two-edge claim"), "confirmation block says 'two-edge claim'"),
     (re.compile(r"\b§1 through §16\b"), "§1 through §16 (spec now reaches §17)"),
     (re.compile(r"\b§8–§14 derive\b"), "§8–§14 derive (spec now reaches §17)"),
     (re.compile(r"\b§8–§14\b"), "§8–§14 (spec now reaches §17)"),
