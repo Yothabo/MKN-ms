@@ -22,7 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\MknMs.Api\MknMs.Api.csproj" />
-    <ProjectReference Include="..\..\src\MknMs.Infrastructure\MknMs.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\MknMs.Persistence\MknMs.Persistence.csproj" />
   </ItemGroup>
 
 </Project>
