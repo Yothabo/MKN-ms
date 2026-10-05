@@ -1,0 +1,22 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+
+namespace MknMs.Infrastructure.Persistence.Configurations;
+
+/// <summary>
+/// EF Core mapping for the TimeOfDay lookup.
+/// </summary>
+/// <remarks>
+/// Specification: §4 (lookups), §9.1.12.
+/// </remarks>
+public class TimeOfDayConfiguration : IEntityTypeConfiguration<TimeOfDay>
+{
+    public void Configure(EntityTypeBuilder<TimeOfDay> builder)
+    {
+        builder.HasKey(e => e.TimeOfDayId);
+
+        builder.Property(e => e.Name)
+            .IsRequired()
+            .HasMaxLength(200);
+    }
+}

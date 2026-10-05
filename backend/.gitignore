@@ -1,0 +1,36 @@
+# Build outputs
+bin/
+obj/
+out/
+
+# User-specific files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Test results
+[Tt]est[Rr]esult*/
+*.trx
+
+# NuGet
+*.nupkg
+*.snupkg
+packages/
+.nuget/
+
+# Rider / VS
+.idea/
+.vs/
+
+# EF Core local state
+*.db
+*.db-shm
+*.db-wal
+
+# Local settings
+appsettings.Development.local.json
+
+# Local development settings (may contain connection strings)
+appsettings.Development.json
+appsettings.*.Local.json
