@@ -1,4 +1,20 @@
 using MknMs.Api.Endpoints;
+using MknMs.Application.Processes.Configuration.ConfigureBranch;
+using MknMs.Application.Processes.Configuration.ConfigureDuty;
+using MknMs.Application.Processes.Configuration.ConfigureDutyRules;
+using MknMs.Application.Processes.Configuration.ConfigureRole;
+using MknMs.Application.Processes.Configuration.ConfigureServiceDefinition;
+using MknMs.Application.Processes.Configuration.ConfigureServiceDutyAndSchedule;
+using MknMs.Application.Processes.Configuration.ConfigureTimeSlot;
+using MknMs.Application.Processes.Configuration.Lookup_ServiceType;
+using MknMs.Application.Processes.Configuration.Lookup_TimeOfDay;
+using MknMs.Application.Processes.Configuration.ManageEligibility;
+using MknMs.Application.Processes.Configuration.ManageEvent;
+using MknMs.Application.Processes.Configuration.ManageEventDuty;
+using MknMs.Application.Processes.Configuration.ManageIdentifierHistory;
+using MknMs.Application.Processes.Configuration.ManageMemberRecord;
+using MknMs.Application.Processes.Configuration.ManageProgram;
+using MknMs.Application.Processes.Configuration.ManageProgramItem;
 using MknMs.Application.Processes.Operations.MaterializeOccurrences;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -16,11 +32,44 @@ builder.Services.AddDbContext<MknDbContext>(options =>
 // Register TimeProvider for deterministic, testable clock access.
 builder.Services.AddSingleton(TimeProvider.System);
 
-// Register the twelve processes as they are implemented.
-// Process 11.0 — Materialize Occurrences.
-builder.Services.AddScoped<
-    IMaterializeOccurrencesService,
-    MaterializeOccurrencesService>();
+// ---------------------------------------------------------------------
+// Configuration layer services.
+// ---------------------------------------------------------------------
+
+// Lookups (D10).
+builder.Services.AddScoped<ITimeOfDayService, TimeOfDayService>();
+builder.Services.AddScoped<IServiceTypeService, ServiceTypeService>();
+
+// 1.0 Configure Vocabulary.
+builder.Services.AddScoped<IConfigureRoleService, ConfigureRoleService>();
+builder.Services.AddScoped<IConfigureDutyService, ConfigureDutyService>();
+builder.Services.AddScoped<IConfigureBranchService, ConfigureBranchService>();
+builder.Services.AddScoped<IConfigureTimeSlotService, ConfigureTimeSlotService>();
+builder.Services.AddScoped<IConfigureServiceDefinitionService, ConfigureServiceDefinitionService>();
+builder.Services.AddScoped<IConfigureServiceDutyAndScheduleService, ConfigureServiceDutyAndScheduleService>();
+
+// 2.0 Configure Duty Rules.
+builder.Services.AddScoped<IConfigureDutyRulesService, ConfigureDutyRulesService>();
+
+// 3.0 Manage Membership.
+builder.Services.AddScoped<IManageMemberRecordService, ManageMemberRecordService>();
+builder.Services.AddScoped<IManageIdentifierHistoryService, ManageIdentifierHistoryService>();
+
+// 4.0 Manage Eligibility.
+builder.Services.AddScoped<IManageEligibilityService, ManageEligibilityService>();
+
+// 8.0 Manage Events and Programs.
+builder.Services.AddScoped<IManageEventService, ManageEventService>();
+builder.Services.AddScoped<IManageProgramService, ManageProgramService>();
+builder.Services.AddScoped<IManageProgramItemService, ManageProgramItemService>();
+builder.Services.AddScoped<IManageEventDutyService, ManageEventDutyService>();
+
+// ---------------------------------------------------------------------
+// Operations layer services.
+// ---------------------------------------------------------------------
+
+// 11.0 Materialize Occurrences.
+builder.Services.AddScoped<IMaterializeOccurrencesService, MaterializeOccurrencesService>();
 
 // Standard API services.
 builder.Services.AddEndpointsApiExplorer();
@@ -37,7 +86,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-// Placeholder root endpoint.
+// Root endpoint.
 app.MapGet("/", () => new
 {
     service = "MKN-MS API",
@@ -47,5 +96,6 @@ app.MapGet("/", () => new
 
 // Process endpoints.
 app.MapMaterializeOccurrencesEndpoint();
+app.MapConfigurationEndpoints();
 
 app.Run();

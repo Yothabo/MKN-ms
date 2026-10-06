@@ -6,6 +6,8 @@ global using System.Threading.Tasks;
 
 global using Microsoft.EntityFrameworkCore;
 
+global using MknMs.Application.Common;
+
 global using MknMs.Domain.D1_RoleDuty;
 global using MknMs.Domain.D2_DutyRule;
 global using MknMs.Domain.D3_BranchTimeSlotService;
