@@ -1,4 +1,5 @@
 using MknMs.Api.Endpoints;
+using MknMs.Application.Common;
 using MknMs.Application.Processes.Configuration.ConfigureBranch;
 using MknMs.Application.Processes.Configuration.ConfigureDuty;
 using MknMs.Application.Processes.Configuration.ConfigureDutyRules;
@@ -23,6 +24,7 @@ using MknMs.Application.Processes.Operations.GenerateAssignment;
 using MknMs.Application.Processes.Operations.ManageConfirmation;
 using MknMs.Application.Processes.Operations.MaterializeOccurrences;
 using MknMs.Infrastructure.Scheduling;
+using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -100,7 +102,11 @@ builder.Services.AddScoped<IMaterializeOccurrencesService, MaterializeOccurrence
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-builder.Services.AddMknScheduledJobs();
+{
+    await using var timeZoneConnection = new NpgsqlConnection(connectionString);
+    var applicationTimeZone = await TimeZoneResolver.ResolveFromConnectionAsync(timeZoneConnection);
+    builder.Services.AddMknScheduledJobs(applicationTimeZone);
+}
 
 var app = builder.Build();
 

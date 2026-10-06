@@ -9,9 +9,14 @@ namespace MknMs.Infrastructure.Scheduling;
 /// defines.
 /// </summary>
 /// <remarks>
+/// The scheduler's trigger timezone is the ApplicationTimeZone setting,
+/// resolved by the caller and passed in here. Every trigger uses
+/// .InTimeZone(timeZone) so that "02:00" means 02:00 in the configured
+/// application timezone, not in the host's local timezone. This keeps
+/// the process's view of "today" and the scheduler's trigger timezone
+/// derived from the same configuration value.
+///
 /// Four processes have a scheduled trigger per §16's trigger summary:
-/// 11.0 (daily), 5.0 (recurring), 7.0 (periodic timeout check), and
-/// 10.0 (periodic sweep). The cadences the specification fixes are:
 ///
 ///   - 11.0: daily. §7 says "daily, a fixed frequency, not
 ///     administrator-configurable." The hour is an implementation
@@ -29,7 +34,19 @@ namespace MknMs.Infrastructure.Scheduling;
 /// </remarks>
 public static class QuartzSchedulerRegistration
 {
-    public static IServiceCollection AddMknScheduledJobs(this IServiceCollection services)
+    /// <summary>
+    /// The cron expressions the scheduler uses. Exposed as constants so
+    /// a test can assert the registered triggers match them without
+    /// duplicating the strings.
+    /// </summary>
+    public const string MaterializeCron = "0 0 2 * * ?";
+    public const string GenerateCron = "0 0 3 * * ?";
+    public const string ConfirmationTimeoutCron = "0 0 * * * ?";
+    public const string FillStatusSweepCron = "0 30 * * * ?";
+
+    public static IServiceCollection AddMknScheduledJobs(
+        this IServiceCollection services,
+        TimeZoneInfo timeZone)
     {
         services.AddQuartz(q =>
         {
@@ -39,7 +56,7 @@ public static class QuartzSchedulerRegistration
             q.AddTrigger(opts => opts
                 .ForJob(materializeKey)
                 .WithIdentity($"{nameof(MaterializeOccurrencesJob)}-trigger")
-                .WithCronSchedule("0 0 2 * * ?"));
+                .WithCronSchedule(MaterializeCron, cron => cron.InTimeZone(timeZone)));
 
             // 5.0 Generate Assignment — daily at 03:00.
             var generateKey = new JobKey(nameof(GenerateAssignmentJob));
@@ -47,7 +64,7 @@ public static class QuartzSchedulerRegistration
             q.AddTrigger(opts => opts
                 .ForJob(generateKey)
                 .WithIdentity($"{nameof(GenerateAssignmentJob)}-trigger")
-                .WithCronSchedule("0 0 3 * * ?"));
+                .WithCronSchedule(GenerateCron, cron => cron.InTimeZone(timeZone)));
 
             // 7.0 Manage Confirmation timeout sweep — hourly.
             var confirmationKey = new JobKey(nameof(ManageConfirmationTimeoutJob));
@@ -55,7 +72,7 @@ public static class QuartzSchedulerRegistration
             q.AddTrigger(opts => opts
                 .ForJob(confirmationKey)
                 .WithIdentity($"{nameof(ManageConfirmationTimeoutJob)}-trigger")
-                .WithCronSchedule("0 0 * * * ?"));
+                .WithCronSchedule(ConfirmationTimeoutCron, cron => cron.InTimeZone(timeZone)));
 
             // 10.0 Evaluate Fill Status sweep — hourly, offset.
             var fillKey = new JobKey(nameof(EvaluateFillStatusSweepJob));
@@ -63,7 +80,7 @@ public static class QuartzSchedulerRegistration
             q.AddTrigger(opts => opts
                 .ForJob(fillKey)
                 .WithIdentity($"{nameof(EvaluateFillStatusSweepJob)}-trigger")
-                .WithCronSchedule("0 30 * * * ?"));
+                .WithCronSchedule(FillStatusSweepCron, cron => cron.InTimeZone(timeZone)));
         });
 
         services.AddQuartzHostedService(opts =>

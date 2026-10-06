@@ -258,24 +258,3 @@ INSERT INTO system_setting (key, value, required, description)
 VALUES ('TimedOutStatusID', '4', TRUE,
         'The AssignmentStatus a timed-out assignment transitions to')
 ON CONFLICT (key) DO NOTHING;
-
--- ---------------------------------------------------------------------
--- D11 settings consumed by 7.0 Manage Confirmation, per §11.1.7.
--- These complete §15.3's list: §11.1.7 names "the admin-designated
--- declined status" and "the admin-designated timed-out status," and
--- §15's preamble states that it gathers every setting the locked
--- contracts imply. The settings are implied; the list is completed
--- here.
---
--- Ids map to the AssignmentStatus rows seeded above, in seed order:
--- 1 = Proposed, 2 = Confirmed, 3 = Declined, 4 = Timed Out.
--- ---------------------------------------------------------------------
-INSERT INTO system_setting (key, value, required, description)
-VALUES ('DeclinedStatusID', '3', TRUE,
-        'The AssignmentStatus a declined assignment transitions to')
-ON CONFLICT (key) DO NOTHING;
-
-INSERT INTO system_setting (key, value, required, description)
-VALUES ('TimedOutStatusID', '4', TRUE,
-        'The AssignmentStatus a timed-out assignment transitions to')
-ON CONFLICT (key) DO NOTHING;

@@ -660,7 +660,7 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
             return false;
         }
 
-        var cutoff = DateTimeOffset.UtcNow.AddDays(-windowDays);
+        var cutoff = _clock.GetUtcNow().AddDays(-windowDays);
 
         var hasRecent = await _db.AttendanceRecords
             .AnyAsync(a => a.MemberId == member.MemberId
