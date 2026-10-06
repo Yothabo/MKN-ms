@@ -649,7 +649,7 @@ public sealed class ManageConfirmationService : IManageConfirmationService
                 {
                     return false;
                 }
-                var cutoff = DateTimeOffset.UtcNow.AddDays(-windowDays);
+                var cutoff = _clock.GetUtcNow().AddDays(-windowDays);
                 return await _db.AttendanceRecords
                     .AnyAsync(a => a.MemberId == member.MemberId && a.Timestamp >= cutoff,
                         cancellationToken);

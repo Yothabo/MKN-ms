@@ -341,7 +341,7 @@ EndGlobal
 
 ==============================================================================
 FILE: backend/README.md
-LINES: 166
+LINES: 170
 ==============================================================================
 
 # MKN-MS — Backend
@@ -393,6 +393,8 @@ If a build fails with either of those errors, the heap limit is the cause. Raisi
 
 Without `TZDIR`, the two `TimeZoneResolverTests` that exercise the configured-timezone path fail; the code falls back to UTC as designed. Set `TZDIR` before `dotnet test`, or add it to the Termux `.bashrc`.
 
+**ApplicationTimeZone (lifecycle).** The scheduler and the processes both derive their notion of "today" from `SystemSetting.ApplicationTimeZone`. The processes resolve it on every run, so a change takes effect for them on their next invocation. The Quartz trigger timezones are resolved once at application startup via `TimeZoneResolver.ResolveFromConnectionAsync`, so a change to `ApplicationTimeZone` affects Quartz trigger times only on the next application restart. If an administrator changes the setting, the processes pick it up immediately; the scheduler continues using the previous value until the application is restarted.
+
 ## Stack
 
 - .NET 8 (LTS) — ASP.NET Core Web API
@@ -442,6 +444,8 @@ Four processes have scheduled triggers, registered with Quartz.NET in `MknMs.Inf
 | `EvaluateFillStatusSweepJob` | 10.0 | Hourly, at :30 |
 
 All four job classes are decorated with `[DisallowConcurrentExecution]` so Quartz never runs two instances of the same job at once. Process 11.0 additionally takes a PostgreSQL session-level advisory lock, so that a manual trigger of the materializer cannot overlap a scheduled run.
+
+The trigger times are evaluated in `SystemSetting.ApplicationTimeZone`, resolved at application startup. See the lifecycle note in the environment requirements above.
 
 The cadences are implementation choices the specification does not fix beyond the fact that 11.0 runs daily and the others run periodically.
 
@@ -2188,7 +2192,7 @@ LINES: 28
     </PackageReference>
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.11" />
     <PackageReference Include="Quartz.Extensions.Hosting" Version="3.13.0" />
-    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.*" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.9.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -2745,7 +2749,7 @@ LINES: 19
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="FluentValidation" Version="11.*" />
+    <PackageReference Include="FluentValidation" Version="11.12.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.11" />
   </ItemGroup>
 
@@ -8469,7 +8473,7 @@ public sealed class ManageConfirmationService : IManageConfirmationService
                 {
                     return false;
                 }
-                var cutoff = DateTimeOffset.UtcNow.AddDays(-windowDays);
+                var cutoff = _clock.GetUtcNow().AddDays(-windowDays);
                 return await _db.AttendanceRecords
                     .AnyAsync(a => a.MemberId == member.MemberId && a.Timestamp >= cutoff,
                         cancellationToken);
@@ -18510,12 +18514,12 @@ LINES: 36
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.0" />
-    <PackageReference Include="FluentAssertions" Version="6.*" />
+    <PackageReference Include="FluentAssertions" Version="6.12.2" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.11" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.11" />
-    <PackageReference Include="xunit" Version="2.*" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="2.*">
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -19040,22 +19044,6 @@ LINES: 28
   </ItemGroup>
 
 </Project>
-
-==============================================================================
-FILE: backend/tests/MknMs.UnitTests/UnitTest1.cs
-LINES: 10
-==============================================================================
-
-namespace MknMs.UnitTests;
-
-public class UnitTest1
-{
-    [Fact]
-    public void Test1()
-    {
-
-    }
-}
 
 ==============================================================================
 FILE: docs/README.md

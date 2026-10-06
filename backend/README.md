@@ -47,6 +47,8 @@ If a build fails with either of those errors, the heap limit is the cause. Raisi
 
 Without `TZDIR`, the two `TimeZoneResolverTests` that exercise the configured-timezone path fail; the code falls back to UTC as designed. Set `TZDIR` before `dotnet test`, or add it to the Termux `.bashrc`.
 
+**ApplicationTimeZone (lifecycle).** The scheduler and the processes both derive their notion of "today" from `SystemSetting.ApplicationTimeZone`. The processes resolve it on every run, so a change takes effect for them on their next invocation. The Quartz trigger timezones are resolved once at application startup via `TimeZoneResolver.ResolveFromConnectionAsync`, so a change to `ApplicationTimeZone` affects Quartz trigger times only on the next application restart. If an administrator changes the setting, the processes pick it up immediately; the scheduler continues using the previous value until the application is restarted.
+
 ## Stack
 
 - .NET 8 (LTS) — ASP.NET Core Web API
@@ -96,6 +98,8 @@ Four processes have scheduled triggers, registered with Quartz.NET in `MknMs.Inf
 | `EvaluateFillStatusSweepJob` | 10.0 | Hourly, at :30 |
 
 All four job classes are decorated with `[DisallowConcurrentExecution]` so Quartz never runs two instances of the same job at once. Process 11.0 additionally takes a PostgreSQL session-level advisory lock, so that a manual trigger of the materializer cannot overlap a scheduled run.
+
+The trigger times are evaluated in `SystemSetting.ApplicationTimeZone`, resolved at application startup. See the lifecycle note in the environment requirements above.
 
 The cadences are implementation choices the specification does not fix beyond the fact that 11.0 runs daily and the others run periodically.
 
