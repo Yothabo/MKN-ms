@@ -137,3 +137,9 @@ app.MapRecordAttendanceEndpoint();
 app.MapCreateManualAssignmentEndpoint();
 
 app.Run();
+
+/// <summary>
+/// Exposes the implicit top-level Program class to the integration test
+/// project, so WebApplicationFactory&lt;Program&gt; can build the real host.
+/// </summary>
+public partial class Program { }
