@@ -1,3 +1,6 @@
+using MknMs.Api.Endpoints;
+using MknMs.Application.Processes.Operations.MaterializeOccurrences;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Register the MknDbContext with the PostgreSQL provider.
@@ -9,6 +12,15 @@ var connectionString = builder.Configuration.GetConnectionString("MknDb")
 
 builder.Services.AddDbContext<MknDbContext>(options =>
     options.UseNpgsql(connectionString));
+
+// Register TimeProvider for deterministic, testable clock access.
+builder.Services.AddSingleton(TimeProvider.System);
+
+// Register the twelve processes as they are implemented.
+// Process 11.0 — Materialize Occurrences.
+builder.Services.AddScoped<
+    IMaterializeOccurrencesService,
+    MaterializeOccurrencesService>();
 
 // Standard API services.
 builder.Services.AddEndpointsApiExplorer();
@@ -25,13 +37,15 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-// Placeholder endpoint so the app is runnable. Real endpoints
-// will be added as each of the twelve processes is implemented.
+// Placeholder root endpoint.
 app.MapGet("/", () => new
 {
     service = "MKN-MS API",
     status = "running",
     version = "0.1.0-prototype"
 });
+
+// Process endpoints.
+app.MapMaterializeOccurrencesEndpoint();
 
 app.Run();
