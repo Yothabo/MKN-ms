@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Mvc;
 using MknMs.Application.Common;
 using MknMs.Application.Processes.Configuration.ConfigureBranch;
 using MknMs.Application.Processes.Configuration.ConfigureDuty;
@@ -81,7 +82,7 @@ public static class ConfigurationEndpoints
             Results.Ok(await service.ListAsync(cancellationToken)));
 
         routes.MapPost("/api/lookups/time-of-day", async (
-            CreateLookupRequest request,
+            [FromBody] CreateLookupRequest request,
             ITimeOfDayService service,
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.CreateAsync(request.Name, cancellationToken)));
@@ -92,7 +93,7 @@ public static class ConfigurationEndpoints
             Results.Ok(await service.ListAsync(cancellationToken)));
 
         routes.MapPost("/api/lookups/service-type", async (
-            CreateLookupRequest request,
+            [FromBody] CreateLookupRequest request,
             IServiceTypeService service,
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.CreateAsync(request.Name, cancellationToken)));
@@ -112,14 +113,14 @@ public static class ConfigurationEndpoints
             Results.Ok(await service.ListAsync(includeInactive ?? false, cancellationToken)));
 
         routes.MapPost("/api/config/1.0/roles", async (
-            CreateNamedEntityRequest request,
+            [FromBody] CreateNamedEntityRequest request,
             IConfigureRoleService service,
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.CreateAsync(request.Name, cancellationToken)));
 
         routes.MapPut("/api/config/1.0/roles/{id:int}", async (
             int id,
-            CreateNamedEntityRequest request,
+            [FromBody] CreateNamedEntityRequest request,
             IConfigureRoleService service,
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.RenameAsync(id, request.Name, cancellationToken)));
@@ -138,14 +139,14 @@ public static class ConfigurationEndpoints
             Results.Ok(await service.ListAsync(includeInactive ?? false, cancellationToken)));
 
         routes.MapPost("/api/config/1.0/duties", async (
-            CreateNamedEntityRequest request,
+            [FromBody] CreateNamedEntityRequest request,
             IConfigureDutyService service,
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.CreateAsync(request.Name, cancellationToken)));
 
         routes.MapPut("/api/config/1.0/duties/{id:int}", async (
             int id,
-            CreateNamedEntityRequest request,
+            [FromBody] CreateNamedEntityRequest request,
             IConfigureDutyService service,
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.RenameAsync(id, request.Name, cancellationToken)));
@@ -164,14 +165,14 @@ public static class ConfigurationEndpoints
             Results.Ok(await service.ListAsync(includeInactive ?? false, cancellationToken)));
 
         routes.MapPost("/api/config/1.0/branches", async (
-            CreateBranchRequest request,
+            [FromBody] CreateBranchRequest request,
             IConfigureBranchService service,
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.CreateAsync(request.Name, request.Location, cancellationToken)));
 
         routes.MapPut("/api/config/1.0/branches/{id:int}", async (
             int id,
-            CreateBranchRequest request,
+            [FromBody] CreateBranchRequest request,
             IConfigureBranchService service,
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.UpdateAsync(id, request.Name, request.Location, cancellationToken)));
@@ -191,7 +192,7 @@ public static class ConfigurationEndpoints
             Results.Ok(await service.ListAsync(branchId, includeInactive ?? false, cancellationToken)));
 
         routes.MapPost("/api/config/1.0/time-slots", async (
-            CreateTimeSlotRequest request,
+            [FromBody] CreateTimeSlotRequest request,
             IConfigureTimeSlotService service,
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.CreateAsync(
@@ -211,7 +212,7 @@ public static class ConfigurationEndpoints
             Results.Ok(await service.ListAsync(includeInactive ?? false, cancellationToken)));
 
         routes.MapPost("/api/config/1.0/service-definitions", async (
-            CreateServiceDefinitionRequest request,
+            [FromBody] CreateServiceDefinitionRequest request,
             IConfigureServiceDefinitionService service,
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.CreateAsync(
@@ -233,7 +234,7 @@ public static class ConfigurationEndpoints
 
         routes.MapPost("/api/config/1.0/service-definitions/{id:int}/duties", async (
             int id,
-            AddServiceDutyRequest request,
+            [FromBody] AddServiceDutyRequest request,
             IConfigureServiceDutyAndScheduleService service,
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.AddDutyAsync(id, request.DutyId, request.RequiredSlotCount, cancellationToken)));
@@ -253,7 +254,7 @@ public static class ConfigurationEndpoints
             Results.Ok(await service.ListSchedulesAsync(serviceDefId, includeInactive ?? false, cancellationToken)));
 
         routes.MapPost("/api/config/1.0/service-schedules", async (
-            CreateScheduleRequest request,
+            [FromBody] CreateScheduleRequest request,
             IConfigureServiceDutyAndScheduleService service,
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.CreateScheduleAsync(
@@ -281,7 +282,7 @@ public static class ConfigurationEndpoints
 
         routes.MapPost("/api/config/2.0/duties/{dutyId:int}/rules", async (
             int dutyId,
-            CreateDutyRuleRequest request,
+            [FromBody] CreateDutyRuleRequest request,
             IConfigureDutyRulesService service,
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.CreateAsync(
@@ -289,7 +290,7 @@ public static class ConfigurationEndpoints
 
         routes.MapPut("/api/config/2.0/rules/{id:int}", async (
             int id,
-            CreateDutyRuleRequest request,
+            [FromBody] CreateDutyRuleRequest request,
             IConfigureDutyRulesService service,
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.UpdateAsync(
@@ -325,14 +326,14 @@ public static class ConfigurationEndpoints
         });
 
         routes.MapPost("/api/config/3.0/members", async (
-            CreateMemberRequest request,
+            [FromBody] CreateMemberRequest request,
             IManageMemberRecordService service,
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.CreateAsync(request, cancellationToken)));
 
         routes.MapPut("/api/config/3.0/members/{id:int}", async (
             int id,
-            UpdateMemberRequest request,
+            [FromBody] UpdateMemberRequest request,
             IManageMemberRecordService service,
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.UpdateAsync(id, request, cancellationToken)));
@@ -352,7 +353,7 @@ public static class ConfigurationEndpoints
 
         routes.MapPost("/api/config/3.0/members/{memberId:int}/identifiers", async (
             int memberId,
-            IssueIdentifierRequest request,
+            [FromBody] IssueIdentifierRequest request,
             IManageIdentifierHistoryService service,
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.IssueAsync(
@@ -365,7 +366,7 @@ public static class ConfigurationEndpoints
 
         routes.MapDelete("/api/config/3.0/identifiers/{entryId:int}", async (
             int entryId,
-            RetireIdentifierRequest request,
+            [FromBody] RetireIdentifierRequest request,
             IManageIdentifierHistoryService service,
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.RetireAsync(
@@ -396,7 +397,7 @@ public static class ConfigurationEndpoints
 
         routes.MapPost("/api/config/4.0/members/{memberId:int}/eligibility", async (
             int memberId,
-            GrantEligibilityRequest request,
+            [FromBody] GrantEligibilityRequest request,
             IManageEligibilityService service,
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.GrantAsync(
@@ -408,7 +409,7 @@ public static class ConfigurationEndpoints
 
         routes.MapDelete("/api/config/4.0/eligibility/{eligibilityId:int}", async (
             int eligibilityId,
-            RevokeEligibilityRequest request,
+            [FromBody] RevokeEligibilityRequest request,
             IManageEligibilityService service,
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.RevokeAsync(
@@ -432,7 +433,7 @@ public static class ConfigurationEndpoints
             Results.Ok(await service.ListAsync(includeInactive ?? false, cancellationToken)));
 
         routes.MapPost("/api/config/8.0/events", async (
-            CreateEventRequest request,
+            [FromBody] CreateEventRequest request,
             IManageEventService service,
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.CreateAsync(
@@ -461,7 +462,7 @@ public static class ConfigurationEndpoints
 
         routes.MapPost("/api/config/8.0/events/{eventId:int}/program", async (
             int eventId,
-            CreateProgramRequest request,
+            [FromBody] CreateProgramRequest request,
             IManageProgramService service,
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.CreateAsync(eventId, request.Title, cancellationToken)));
@@ -475,7 +476,7 @@ public static class ConfigurationEndpoints
 
         routes.MapPost("/api/config/8.0/programs/{programId:int}/items", async (
             int programId,
-            CreateProgramItemRequest request,
+            [FromBody] CreateProgramItemRequest request,
             IManageProgramItemService service,
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.CreateAsync(
@@ -497,7 +498,7 @@ public static class ConfigurationEndpoints
 
         routes.MapPost("/api/config/8.0/items/{itemId:int}/duties", async (
             int itemId,
-            CreateEventDutyRequest request,
+            [FromBody] CreateEventDutyRequest request,
             IManageEventDutyService service,
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.CreateAsync(
