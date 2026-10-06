@@ -73,7 +73,8 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
             var ageRangeMin = await ReadIntSettingAsync(AgeRangeMinKey, cancellationToken) ?? 0;
             var ageRangeMax = await ReadIntSettingAsync(AgeRangeMaxKey, cancellationToken) ?? 120;
 
-            var today = DateOnly.FromDateTime(_clock.GetUtcNow().UtcDateTime);
+            var timeZone = await TimeZoneResolver.ResolveAsync(_db, cancellationToken);
+            var today = TimeZoneResolver.ToDateInTimeZone(_clock.GetUtcNow(), timeZone);
 
             var totalCreated = 0;
             var fullyFilled = 0;

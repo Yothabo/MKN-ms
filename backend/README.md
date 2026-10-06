@@ -29,6 +29,24 @@ To run tests:
 
 The two-environment split is a deliberate consequence of Android's syscall surface and proot's incomplete emulation of it, not a defect in the project. Every workaround that makes each environment work (GC heap cap, `DOTNET_ROOT`, host path symlinks) is required for its own purpose and stays in place.
 
+### Environment requirements
+
+Two properties of this environment must be set for the build and the tests to work correctly. Both are consequences of running .NET on Android/Termux, not of the code.
+
+**GC heap hard limit (proot).** The default value, set in proot's `/root/.bashrc`, is `0x20000000` (512 MB). This is too small to compile the current solution: the build fails with `MSB4166: Child node exited prematurely` or `MSB6006: "csc.dll" exited with code 139` when the Roslyn compiler runs out of memory. The value must be raised to at least `0x60000000` (1.5 GB):
+
+    # In proot's /root/.bashrc
+    export DOTNET_GCHeapHardLimit=0x60000000
+
+If a build fails with either of those errors, the heap limit is the cause. Raising it further — to `0x80000000` (2 GB) — is the next step if 1.5 GB is still insufficient; 2 GB is the practical ceiling on the device.
+
+**TZDIR (Termux).** Termux does not ship the standard IANA tzdata. The .NET runtime resolves `TimeZoneInfo.FindSystemTimeZoneById("Africa/Johannesburg")` from `/usr/share/zoneinfo` by default, which does not exist on the Termux side. The PostgreSQL package ships a compatible tzdata tree at `$PREFIX/share/postgresql/timezone`. Pointing `TZDIR` at that tree makes the resolver work:
+
+    # In the Termux shell that runs the tests
+    export TZDIR=$PREFIX/share/postgresql/timezone
+
+Without `TZDIR`, the two `TimeZoneResolverTests` that exercise the configured-timezone path fail; the code falls back to UTC as designed. Set `TZDIR` before `dotnet test`, or add it to the Termux `.bashrc`.
+
 ## Stack
 
 - .NET 8 (LTS) — ASP.NET Core Web API
@@ -47,7 +65,7 @@ The two-environment split is a deliberate consequence of Android's syscall surfa
     │   ├── MknMs.Application/     The twelve processes; one folder per process
     │   ├── MknMs.Domain/          Entities, value objects, domain rules
     │   ├── MknMs.Persistence/     EF Core, PostgreSQL, migrations
-    │   └── MknMs.Infrastructure/  External integrations (Quartz, notification transport)
+    │   └── MknMs.Infrastructure/  External integrations (Quartz scheduler, notification transport)
     └── tests/
         ├── MknMs.UnitTests/
         └── MknMs.IntegrationTests/
@@ -63,14 +81,31 @@ Every project references only projects to its left in this diagram. This is the 
 - `Domain` — entities. No project references.
 - `Persistence` — `MknDbContext`, entity configurations, migrations, the snake_case naming convention.
 - `Application` — the twelve processes; depends on `Domain` and `Persistence`.
-- `Infrastructure` — external integrations. Currently a stub, waiting for the Quartz scheduler and the notification transport.
+- `Infrastructure` — external integrations. Holds the Quartz job classes and the scheduler registration.
 - `API` — hosts the HTTP surface and the composition root.
+
+## Scheduling
+
+Four processes have scheduled triggers, registered with Quartz.NET in `MknMs.Infrastructure/Scheduling/QuartzSchedulerRegistration.cs` and started by `Quartz.Extensions.Hosting` from `Program.cs`:
+
+| Job | Process | Cadence |
+| --- | --- | --- |
+| `MaterializeOccurrencesJob` | 11.0 | Daily, 02:00 |
+| `GenerateAssignmentJob` | 5.0 | Daily, 03:00 |
+| `ManageConfirmationTimeoutJob` | 7.0 | Hourly |
+| `EvaluateFillStatusSweepJob` | 10.0 | Hourly, at :30 |
+
+All four job classes are decorated with `[DisallowConcurrentExecution]` so Quartz never runs two instances of the same job at once. Process 11.0 additionally takes a PostgreSQL session-level advisory lock, so that a manual trigger of the materializer cannot overlap a scheduled run.
+
+The cadences are implementation choices the specification does not fix beyond the fact that 11.0 runs daily and the others run periodically.
 
 ## Build
 
 From inside `backend/`:
 
     dotnet build
+
+If the build fails with `MSB4166` or `MSB6006`, see the environment requirements above — the GC heap limit is too small.
 
 ## Run
 
@@ -81,6 +116,8 @@ From inside `backend/`:
 The API listens on `http://localhost:5000` by default. If port 5000 is already in use, Kestrel will select an alternate port and print it in the startup log — look for the line `Now listening on: http://localhost:NNNN` and use that port in all subsequent calls.
 
 OpenAPI is served at `/swagger` when the environment is `Development`.
+
+The Quartz scheduler starts with the application. The four jobs fire on their configured schedules.
 
 ## Database
 
@@ -98,11 +135,16 @@ Migrations:
 Seed data for development:
 
     psql -h 127.0.0.1 -U mkn_dev -d mkn_dev -f scripts/seed-development.sql
+    psql -h 127.0.0.1 -U mkn_dev -d mkn_dev -f scripts/seed-assignment.sql
+
+Both seed scripts are idempotent — safe to re-run. Every insert is guarded by a `NOT EXISTS` check on the entity's natural key.
 
 ## Tests
 
-From Termux (not inside proot):
+From Termux (not inside proot), with `TZDIR` set as described in the environment requirements:
 
+    export TZDIR=$PREFIX/share/postgresql/timezone
+    cd ~/MKN-ms/backend
     dotnet test tests/MknMs.IntegrationTests
 
 The integration tests connect to the `mkn_test` database. Ensure it exists and has the current schema applied before running them.

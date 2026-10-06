@@ -29,6 +29,8 @@ namespace MknMs.Application.Processes.Operations.ManageConfirmation;
 public sealed class ManageConfirmationService : IManageConfirmationService
 {
     private const string InitialAssignmentStatusIdKey = "InitialAssignmentStatusID";
+    private const string DeclinedStatusIdKey = "DeclinedStatusID";
+    private const string TimedOutStatusIdKey = "TimedOutStatusID";
     private const string ConfirmationTimeoutHoursKey = "ConfirmationTimeoutHours";
     private const string TenureThresholdKey = "TenureThresholdDays";
     private const string AgeRangeMinKey = "AgeRangeMin";
@@ -60,37 +62,36 @@ public sealed class ManageConfirmationService : IManageConfirmationService
                 AssignmentsTransitioned = 0,
                 ReplacementsCreated = 0,
                 SlotsLeftVacant = 0,
-                ErrorDetail = "Command must be either a Respond (AssignmentId and " +
-                              "TargetStatusId) or a Sweep (IsSweep and TargetStatusId).",
+                ErrorDetail = "Command must name a valid operation: Confirm or Decline " +
+                              "with a positive AssignmentId, or Sweep with no AssignmentId.",
             };
         }
 
         try
         {
-            // Required-setting check. §11.1.5: 7.0 refuses to run if
-            // InitialAssignmentStatusID is unset or invalid. The setting
-            // is loaded but not used directly here — it is validated so
-            // the service refuses to run when it is absent, matching the
-            // required-setting rule. For a Respond command, the caller
-            // supplies the target status; for a Sweep command, the same
-            // applies. What matters for the refusal is the setting being
-            // present, since §11.1.5 names it as required.
-            var initialStatusId = await ReadIntSettingAsync(InitialAssignmentStatusIdKey, cancellationToken);
-            if (initialStatusId is null)
+            // Resolve the target status from the administrator-designated
+            // setting for this operation. §11.1.5: a confirm moves to
+            // InitialAssignmentStatusID. §11.1.7: a decline moves to the
+            // declined status; a timeout moves to the timed-out status.
+            // All three are stored as SystemSetting, per §15's amendment
+            // set as completed.
+            var targetStatusId = await ResolveTargetStatusIdAsync(command.Operation, cancellationToken);
+
+            if (targetStatusId is null)
             {
+                var settingName = SettingNameForOperation(command.Operation);
                 return new ManageConfirmationResult
                 {
                     Status = "Failure",
                     AssignmentsTransitioned = 0,
                     ReplacementsCreated = 0,
                     SlotsLeftVacant = 0,
-                    ErrorDetail = $"Required setting '{InitialAssignmentStatusIdKey}' is not configured.",
+                    ErrorDetail = $"Required setting '{settingName}' is not configured.",
                 };
             }
 
-            // Validate the target status exists.
             var targetStatus = await _db.AssignmentStatuses
-                .FirstOrDefaultAsync(s => s.AssignmentStatusId == command.TargetStatusId!.Value,
+                .FirstOrDefaultAsync(s => s.AssignmentStatusId == targetStatusId.Value,
                     cancellationToken);
 
             if (targetStatus is null)
@@ -101,19 +102,19 @@ public sealed class ManageConfirmationService : IManageConfirmationService
                     AssignmentsTransitioned = 0,
                     ReplacementsCreated = 0,
                     SlotsLeftVacant = 0,
-                    ErrorDetail = $"AssignmentStatus {command.TargetStatusId} does not exist.",
+                    ErrorDetail = $"AssignmentStatus {targetStatusId} does not exist.",
                 };
             }
 
-            if (command.IsRespond)
+            if (command.Operation == ManageConfirmationOperation.Sweep)
             {
-                return await RespondAsync(
-                    command.AssignmentId!.Value,
-                    targetStatus,
-                    cancellationToken);
+                return await SweepAsync(targetStatus, cancellationToken);
             }
 
-            return await SweepAsync(targetStatus, cancellationToken);
+            return await RespondAsync(
+                command.AssignmentId!.Value,
+                targetStatus,
+                cancellationToken);
         }
         catch (Exception ex)
         {
@@ -128,9 +129,33 @@ public sealed class ManageConfirmationService : IManageConfirmationService
         }
     }
 
-    // -----------------------------------------------------------------
-    // Respond — one assignment
-    // -----------------------------------------------------------------
+    private static string SettingNameForOperation(ManageConfirmationOperation operation) =>
+        operation switch
+        {
+            ManageConfirmationOperation.Confirm => InitialAssignmentStatusIdKey,
+            ManageConfirmationOperation.Decline => DeclinedStatusIdKey,
+            ManageConfirmationOperation.Sweep => TimedOutStatusIdKey,
+            _ => throw new InvalidOperationException($"Unknown operation {operation}."),
+        };
+
+    private async Task<int?> ResolveTargetStatusIdAsync(
+        ManageConfirmationOperation operation,
+        CancellationToken cancellationToken)
+    {
+        var key = SettingNameForOperation(operation);
+        var value = await ReadIntSettingAsync(key, cancellationToken);
+
+        if (value is null)
+        {
+            return null;
+        }
+
+        // §11.1.5 and §11.1.7: the status must be a real row.
+        var exists = await _db.AssignmentStatuses
+            .AnyAsync(s => s.AssignmentStatusId == value.Value, cancellationToken);
+
+        return exists ? value : null;
+    }
 
     private async Task<ManageConfirmationResult> RespondAsync(
         int assignmentId,
@@ -355,7 +380,8 @@ public sealed class ManageConfirmationService : IManageConfirmationService
             exclusion.Add(memberId);
         }
 
-        var today = DateOnly.FromDateTime(_clock.GetUtcNow().UtcDateTime);
+        var timeZone = await TimeZoneResolver.ResolveAsync(_db, cancellationToken);
+        var today = TimeZoneResolver.ToDateInTimeZone(_clock.GetUtcNow(), timeZone);
         var tenureThresholdDays = await ReadIntSettingAsync(TenureThresholdKey, cancellationToken);
         var ageRangeMin = await ReadIntSettingAsync(AgeRangeMinKey, cancellationToken) ?? 0;
         var ageRangeMax = await ReadIntSettingAsync(AgeRangeMaxKey, cancellationToken) ?? 120;

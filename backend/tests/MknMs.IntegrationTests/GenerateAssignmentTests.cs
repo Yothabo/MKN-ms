@@ -362,4 +362,303 @@ public class GenerateAssignmentTests : IAsyncLifetime
             readingDuty.DutyId,
             beatrice.MemberId);
     }
+
+    // -----------------------------------------------------------------
+    // Extended criteria coverage — added to satisfy the behavioural
+    // coverage the specification's criteria vocabulary implies.
+    // -----------------------------------------------------------------
+
+    [Fact]
+    public async Task Run_WithGenderCriterion_MatchesOnlyMatchingGender()
+    {
+        var fixture = await SeedFixtureAsync();
+
+        // Replace Reading duty's Tier 1 rule with Gender=Female. Both
+        // Beatrice and Dana are Female, but only Beatrice is eligible.
+        var rule = await _db.DutyRules
+            .FirstAsync(r => r.DutyId == fixture.ReadingDutyId);
+        rule.CriteriaType = "Gender";
+        rule.CriteriaValue = "Female";
+        await _db.SaveChangesAsync();
+
+        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var result = await service.RunAsync(new GenerateAssignmentCommand
+        {
+            OccurrenceId = fixture.OccurrenceId,
+        });
+
+        // Reading duty filled by Beatrice (eligible and Female).
+        result.DutiesFullyFilled.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Run_WithMembershipStageCriterion_MatchesOnlyMatchingStage()
+    {
+        var fixture = await SeedFixtureAsync();
+
+        var rule = await _db.DutyRules
+            .FirstAsync(r => r.DutyId == fixture.ReadingDutyId);
+        rule.CriteriaType = "MembershipStage";
+        rule.CriteriaValue = "Full";
+        await _db.SaveChangesAsync();
+
+        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var result = await service.RunAsync(new GenerateAssignmentCommand
+        {
+            OccurrenceId = fixture.OccurrenceId,
+        });
+
+        result.DutiesFullyFilled.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Run_WithAgeRangeCriterion_MatchingRange()
+    {
+        var fixture = await SeedFixtureAsync();
+
+        // Beatrice born 1995-03-12. At the fixed test clock (2026-10-06)
+        // she is 31. A range of 25-35 matches her.
+        var rule = await _db.DutyRules
+            .FirstAsync(r => r.DutyId == fixture.ReadingDutyId);
+        rule.CriteriaType = "AgeRange";
+        rule.CriteriaValue = "25-35";
+        await _db.SaveChangesAsync();
+
+        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var result = await service.RunAsync(new GenerateAssignmentCommand
+        {
+            OccurrenceId = fixture.OccurrenceId,
+        });
+
+        result.DutiesFullyFilled.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Run_WithAgeRangeCriterion_NonMatchingRange_SlotUnfilled()
+    {
+        var fixture = await SeedFixtureAsync();
+
+        // Beatrice is 31. A range of 5-10 does not match.
+        var rule = await _db.DutyRules
+            .FirstAsync(r => r.DutyId == fixture.ReadingDutyId);
+        rule.CriteriaType = "AgeRange";
+        rule.CriteriaValue = "5-10";
+        await _db.SaveChangesAsync();
+
+        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var result = await service.RunAsync(new GenerateAssignmentCommand
+        {
+            OccurrenceId = fixture.OccurrenceId,
+        });
+
+        // Reading duty unfilled; Welcome duty unfilled as well.
+        result.DutiesUnfilled.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Run_WithTenureCriterion_MatchingThreshold()
+    {
+        var fixture = await SeedFixtureAsync();
+
+        // Beatrice joined 2024-06-01. At 2026-10-06 she has ~857 days.
+        // A 30-day threshold matches.
+        var rule = await _db.DutyRules
+            .FirstAsync(r => r.DutyId == fixture.ReadingDutyId);
+        rule.CriteriaType = "Tenure";
+        rule.CriteriaValue = "30";
+        await _db.SaveChangesAsync();
+
+        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var result = await service.RunAsync(new GenerateAssignmentCommand
+        {
+            OccurrenceId = fixture.OccurrenceId,
+        });
+
+        result.DutiesFullyFilled.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Run_WithTwoTiers_FallsThroughToSecondTier()
+    {
+        var fixture = await SeedFixtureAsync();
+
+        // Replace Reading duty's rule set with two tiers:
+        //   Tier 1: Role=Coordinator (no eligible match)
+        //   Tier 2: Role=Steward (Beatrice matches)
+        var existing = await _db.DutyRules
+            .Where(r => r.DutyId == fixture.ReadingDutyId)
+            .ToListAsync();
+        _db.DutyRules.RemoveRange(existing);
+        await _db.SaveChangesAsync();
+
+        _db.DutyRules.Add(new DutyRule
+        {
+            DutyId = fixture.ReadingDutyId,
+            TierOrder = 1,
+            CriteriaType = "Role",
+            CriteriaValue = "Coordinator",
+            IsActive = true,
+        });
+        _db.DutyRules.Add(new DutyRule
+        {
+            DutyId = fixture.ReadingDutyId,
+            TierOrder = 2,
+            CriteriaType = "Role",
+            CriteriaValue = "Steward",
+            IsActive = true,
+        });
+        await _db.SaveChangesAsync();
+
+        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var result = await service.RunAsync(new GenerateAssignmentCommand
+        {
+            OccurrenceId = fixture.OccurrenceId,
+        });
+
+        // Reading duty filled by Beatrice via Tier 2.
+        result.DutiesFullyFilled.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Run_WithSameTierTwoRulesAndsThem()
+    {
+        var fixture = await SeedFixtureAsync();
+
+        // Tier 1 for Reading duty: Role=Steward AND Gender=Female.
+        // Beatrice matches both; Dana matches both but is not eligible.
+        var existing = await _db.DutyRules
+            .Where(r => r.DutyId == fixture.ReadingDutyId)
+            .ToListAsync();
+        _db.DutyRules.RemoveRange(existing);
+        await _db.SaveChangesAsync();
+
+        _db.DutyRules.Add(new DutyRule
+        {
+            DutyId = fixture.ReadingDutyId,
+            TierOrder = 1,
+            CriteriaType = "Role",
+            CriteriaValue = "Steward",
+            IsActive = true,
+        });
+        _db.DutyRules.Add(new DutyRule
+        {
+            DutyId = fixture.ReadingDutyId,
+            TierOrder = 1,
+            CriteriaType = "Gender",
+            CriteriaValue = "Female",
+            IsActive = true,
+        });
+        await _db.SaveChangesAsync();
+
+        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var result = await service.RunAsync(new GenerateAssignmentCommand
+        {
+            OccurrenceId = fixture.OccurrenceId,
+        });
+
+        // Beatrice matches both criteria; Reading filled.
+        result.DutiesFullyFilled.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Run_WithSameTierTwoRules_AndFails_NoCandidate()
+    {
+        var fixture = await SeedFixtureAsync();
+
+        // Tier 1 for Reading duty: Role=Steward AND Gender=Male.
+        // Beatrice is Female. No match.
+        var existing = await _db.DutyRules
+            .Where(r => r.DutyId == fixture.ReadingDutyId)
+            .ToListAsync();
+        _db.DutyRules.RemoveRange(existing);
+        await _db.SaveChangesAsync();
+
+        _db.DutyRules.Add(new DutyRule
+        {
+            DutyId = fixture.ReadingDutyId,
+            TierOrder = 1,
+            CriteriaType = "Role",
+            CriteriaValue = "Steward",
+            IsActive = true,
+        });
+        _db.DutyRules.Add(new DutyRule
+        {
+            DutyId = fixture.ReadingDutyId,
+            TierOrder = 1,
+            CriteriaType = "Gender",
+            CriteriaValue = "Male",
+            IsActive = true,
+        });
+        await _db.SaveChangesAsync();
+
+        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var result = await service.RunAsync(new GenerateAssignmentCommand
+        {
+            OccurrenceId = fixture.OccurrenceId,
+        });
+
+        // Both duties unfilled.
+        result.DutiesUnfilled.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Run_WithReservedCriterion_ProducesNoCandidates()
+    {
+        var fixture = await SeedFixtureAsync();
+
+        var rule = await _db.DutyRules
+            .FirstAsync(r => r.DutyId == fixture.ReadingDutyId);
+        rule.CriteriaType = "AcceptanceRate";
+        rule.CriteriaValue = "0.5";
+        await _db.SaveChangesAsync();
+
+        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var result = await service.RunAsync(new GenerateAssignmentCommand
+        {
+            OccurrenceId = fixture.OccurrenceId,
+        });
+
+        // Reserved criteria are not evaluated. No candidates. Unfilled.
+        result.DutiesUnfilled.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Run_WithTerminalAssignmentOnOccurrence_DoesNotBlockAvailability()
+    {
+        var fixture = await SeedFixtureAsync();
+
+        // Insert a terminal assignment for Beatrice on Welcome duty.
+        // Terminal statuses do not count toward capacity or availability.
+        var declined = new AssignmentStatus { Name = "Declined", IsTerminal = true };
+        _db.AssignmentStatuses.Add(declined);
+        await _db.SaveChangesAsync();
+
+        var welcomeDutyId = await _db.Duties
+            .Where(d => d.Name == "Welcome duty")
+            .Select(d => d.DutyId)
+            .FirstAsync();
+
+        _db.RosterAssignments.Add(new RosterAssignment
+        {
+            MemberId = fixture.BeatriceMemberId,
+            DutyId = welcomeDutyId,
+            OccurrenceId = fixture.OccurrenceId,
+            AssignmentStatusId = declined.AssignmentStatusId,
+            ApprovedBy = null,
+            AssignmentSource = "Automatic",
+            AssignedBy = null,
+            CreatedAt = _clock.GetUtcNow(),
+        });
+        await _db.SaveChangesAsync();
+
+        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var result = await service.RunAsync(new GenerateAssignmentCommand
+        {
+            OccurrenceId = fixture.OccurrenceId,
+        });
+
+        // Beatrice is still available for Reading duty — her terminal
+        // assignment on Welcome does not block.
+        result.DutiesFullyFilled.Should().Be(1);
+    }
 }

@@ -9,13 +9,13 @@ namespace MknMs.Api.Endpoints;
 /// Two routes, one process:
 ///
 ///   - POST /api/processes/7.0/respond — a member has confirmed or
-///     declined. The caller supplies the assignment and the status ID
-///     the response maps to. The endpoint performs no mapping of
-///     "confirm"/"decline" to status IDs; that mapping is administrator
-///     configuration and belongs to the caller.
+///     declined. The caller names the operation ("Confirm" or
+///     "Decline") and the assignment. The target status is read from
+///     SystemSetting by the service, not supplied by the caller.
 ///
-///   - POST /api/processes/7.0/sweep — the scheduled timeout check. The
-///     caller supplies the status ID a timed-out assignment maps to.
+///   - POST /api/processes/7.0/sweep — the scheduled timeout check.
+///     The service finds every timed-out assignment and transitions it
+///     to the status named by SystemSetting.TimedOutStatusID.
 ///
 /// Specification: §11, docs/processes/operations/7.0-manage-confirmation.md.
 /// </remarks>
@@ -36,20 +36,43 @@ public static class ManageConfirmationEndpoint
                     return Results.BadRequest(new { error = "Request body is required." });
                 }
 
-                if (request.AssignmentId is null || request.AssignmentId <= 0
-                    || request.TargetStatusId is null || request.TargetStatusId <= 0)
+                if (request.AssignmentId is null || request.AssignmentId <= 0)
                 {
                     return Results.BadRequest(new
                     {
-                        error = "AssignmentId and TargetStatusId are required and must be positive.",
+                        error = "AssignmentId is required and must be positive.",
+                    });
+                }
+
+                if (string.IsNullOrWhiteSpace(request.Operation))
+                {
+                    return Results.BadRequest(new
+                    {
+                        error = "Operation is required. Must be \"Confirm\" or \"Decline\".",
+                    });
+                }
+
+                ManageConfirmationOperation operation;
+                if (string.Equals(request.Operation, "Confirm", StringComparison.OrdinalIgnoreCase))
+                {
+                    operation = ManageConfirmationOperation.Confirm;
+                }
+                else if (string.Equals(request.Operation, "Decline", StringComparison.OrdinalIgnoreCase))
+                {
+                    operation = ManageConfirmationOperation.Decline;
+                }
+                else
+                {
+                    return Results.BadRequest(new
+                    {
+                        error = "Operation must be \"Confirm\" or \"Decline\".",
                     });
                 }
 
                 var command = new ManageConfirmationCommand
                 {
+                    Operation = operation,
                     AssignmentId = request.AssignmentId,
-                    TargetStatusId = request.TargetStatusId,
-                    IsSweep = false,
                 };
 
                 var result = await service.RunAsync(command, cancellationToken);
@@ -65,24 +88,13 @@ public static class ManageConfirmationEndpoint
         routes.MapPost(
             "/api/processes/7.0/sweep",
             async (
-                ManageConfirmationSweepRequest? request,
                 IManageConfirmationService service,
                 CancellationToken cancellationToken) =>
             {
-                if (request is null || request.TargetStatusId is null
-                    || request.TargetStatusId <= 0)
-                {
-                    return Results.BadRequest(new
-                    {
-                        error = "TargetStatusId is required and must be positive.",
-                    });
-                }
-
                 var command = new ManageConfirmationCommand
                 {
+                    Operation = ManageConfirmationOperation.Sweep,
                     AssignmentId = null,
-                    TargetStatusId = request.TargetStatusId,
-                    IsSweep = true,
                 };
 
                 var result = await service.RunAsync(command, cancellationToken);
@@ -100,18 +112,15 @@ public static class ManageConfirmationEndpoint
 }
 
 /// <summary>
-/// HTTP request body for the respond endpoint.
+/// HTTP request body for the respond route.
 /// </summary>
+/// <remarks>
+/// Operation is "Confirm" or "Decline". The target status the operation
+/// resolves to is administrator configuration, read by the service from
+/// SystemSetting; it is not part of this request.
+/// </remarks>
 public sealed record ManageConfirmationRespondRequest
 {
     public int? AssignmentId { get; init; }
-    public int? TargetStatusId { get; init; }
-}
-
-/// <summary>
-/// HTTP request body for the sweep endpoint.
-/// </summary>
-public sealed record ManageConfirmationSweepRequest
-{
-    public int? TargetStatusId { get; init; }
+    public string? Operation { get; init; }
 }

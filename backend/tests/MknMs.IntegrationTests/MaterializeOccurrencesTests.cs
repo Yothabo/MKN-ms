@@ -8,6 +8,7 @@ using MknMs.Domain.D3_BranchTimeSlotService;
 using MknMs.Domain.D10_ConfigLookups;
 using MknMs.Persistence;
 using Xunit;
+using Npgsql;
 
 namespace MknMs.IntegrationTests;
 
@@ -220,6 +221,78 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
 
         _db.ServiceSchedules.Add(schedule);
         await _db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task Run_WhenLockHeldExternally_FailsWithOverlapMessage()
+    {
+        await SeedMinimalConfigurationAsync();
+
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero));
+        var service = new MaterializeOccurrencesService(_db, clock);
+
+        await using var externalConnection = new NpgsqlConnection(TestConnectionString);
+        await externalConnection.OpenAsync();
+
+        await using (var lockCmd = externalConnection.CreateCommand())
+        {
+            lockCmd.CommandText = "SELECT pg_try_advisory_lock(1100)";
+            var acquired = await lockCmd.ExecuteScalarAsync();
+            acquired.Should().Be(true);
+        }
+
+        try
+        {
+            var result = await service.RunAsync(new MaterializeOccurrencesCommand
+            {
+                TriggerType = "Scheduled",
+            });
+
+            result.Status.Should().Be("Failure");
+            result.ErrorDetail.Should().Contain("Another materializer run is in progress");
+            result.OccurrencesCreated.Should().Be(0);
+
+            var occurrenceCount = await _db.ServiceOccurrences.CountAsync();
+            occurrenceCount.Should().Be(0);
+        }
+        finally
+        {
+            await using var unlockCmd = externalConnection.CreateCommand();
+            unlockCmd.CommandText = "SELECT pg_advisory_unlock(1100)";
+            await unlockCmd.ExecuteScalarAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Run_AfterExternalLockReleased_Succeeds()
+    {
+        await SeedMinimalConfigurationAsync();
+
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero));
+        var service = new MaterializeOccurrencesService(_db, clock);
+
+        await using var externalConnection = new NpgsqlConnection(TestConnectionString);
+        await externalConnection.OpenAsync();
+
+        await using (var lockCmd = externalConnection.CreateCommand())
+        {
+            lockCmd.CommandText = "SELECT pg_try_advisory_lock(1100)";
+            await lockCmd.ExecuteScalarAsync();
+        }
+
+        await using (var unlockCmd = externalConnection.CreateCommand())
+        {
+            unlockCmd.CommandText = "SELECT pg_advisory_unlock(1100)";
+            await unlockCmd.ExecuteScalarAsync();
+        }
+
+        var result = await service.RunAsync(new MaterializeOccurrencesCommand
+        {
+            TriggerType = "Scheduled",
+        });
+
+        result.Status.Should().Be("Success");
+        result.OccurrencesCreated.Should().Be(4);
     }
 }
 

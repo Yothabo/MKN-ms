@@ -22,6 +22,7 @@ using MknMs.Application.Processes.Operations.CreateManualAssignment;
 using MknMs.Application.Processes.Operations.GenerateAssignment;
 using MknMs.Application.Processes.Operations.ManageConfirmation;
 using MknMs.Application.Processes.Operations.MaterializeOccurrences;
+using MknMs.Infrastructure.Scheduling;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -80,7 +81,7 @@ builder.Services.AddScoped<IGenerateAssignmentService, GenerateAssignmentService
 // 7.0 Manage Confirmation.
 builder.Services.AddScoped<IManageConfirmationService, ManageConfirmationService>();
 
-// 9.0 Dispatch Notification — stub implementation until 9.0 is built.
+// 9.0 Dispatch Notification.
 builder.Services.AddScoped<IDispatchNotificationService, DispatchNotificationService>();
 
 // 10.0 Evaluate Fill Status.
@@ -98,6 +99,8 @@ builder.Services.AddScoped<IMaterializeOccurrencesService, MaterializeOccurrence
 // Standard API services.
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+builder.Services.AddMknScheduledJobs();
 
 var app = builder.Build();
 

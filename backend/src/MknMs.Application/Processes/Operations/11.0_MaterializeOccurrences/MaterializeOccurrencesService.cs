@@ -1,3 +1,4 @@
+using System.Data;
 using MknMs.Domain.D11_SystemSetting;
 
 namespace MknMs.Application.Processes.Operations.MaterializeOccurrences;
@@ -10,11 +11,27 @@ namespace MknMs.Application.Processes.Operations.MaterializeOccurrences;
 /// dates within the horizon, and inserts missing occurrences. Never
 /// modifies or deletes existing rows.
 ///
+/// §7: "Overlapping runs are not allowed." This applies to both the
+/// scheduled trigger and the manual trigger. The
+/// [DisallowConcurrentExecution] attribute on the Quartz job covers
+/// the scheduled path; a PostgreSQL session-level advisory lock taken
+/// here covers both paths, so that a manual trigger fired while a
+/// scheduled run is in progress does not overlap it. If the lock
+/// cannot be acquired, the run returns a Failure result with
+/// "another materializer run is in progress" and does nothing else.
+///
 /// Specification: §7, §8.
 /// </remarks>
 public sealed class MaterializeOccurrencesService : IMaterializeOccurrencesService
 {
     private const string HorizonSettingKey = "OccurrenceHorizonDays";
+
+    /// <summary>
+    /// The PostgreSQL advisory lock key identifying the materializer's
+    /// mutual-exclusion lock. An arbitrary constant, chosen to be clear
+    /// of any identity sequence. It is not exposed as configuration.
+    /// </summary>
+    private const long MaterializerLockKey = 1100;
 
     private readonly MknDbContext _db;
     private readonly TimeProvider _clock;
@@ -31,6 +48,78 @@ public sealed class MaterializeOccurrencesService : IMaterializeOccurrencesServi
     {
         ValidateCommand(command);
 
+        // Acquire the advisory lock. Session-scoped: held across every
+        // transaction this method opens, released in the finally below.
+        var connection = _db.Database.GetDbConnection();
+        var wasClosed = connection.State != ConnectionState.Open;
+        if (wasClosed)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+
+        var lockAcquired = false;
+
+        try
+        {
+            await using (var lockCommand = connection.CreateCommand())
+            {
+                lockCommand.CommandText = "SELECT pg_try_advisory_lock(@key)";
+                var parameter = lockCommand.CreateParameter();
+                parameter.ParameterName = "@key";
+                parameter.Value = MaterializerLockKey;
+                lockCommand.Parameters.Add(parameter);
+
+                var result = await lockCommand.ExecuteScalarAsync(cancellationToken);
+                lockAcquired = result is bool acquired && acquired;
+            }
+
+            if (!lockAcquired)
+            {
+                return new MaterializeOccurrencesResult
+                {
+                    RunId = 0,
+                    Status = "Failure",
+                    SchedulesEvaluated = 0,
+                    OccurrencesCreated = 0,
+                    ErrorDetail = "Another materializer run is in progress.",
+                };
+            }
+
+            return await ExecuteRunAsync(command, cancellationToken);
+        }
+        finally
+        {
+            if (lockAcquired)
+            {
+                try
+                {
+                    await using var unlockCommand = connection.CreateCommand();
+                    unlockCommand.CommandText = "SELECT pg_advisory_unlock(@key)";
+                    var parameter = unlockCommand.CreateParameter();
+                    parameter.ParameterName = "@key";
+                    parameter.Value = MaterializerLockKey;
+                    unlockCommand.Parameters.Add(parameter);
+                    await unlockCommand.ExecuteScalarAsync(CancellationToken.None);
+                }
+                catch
+                {
+                    // Best-effort release. If the unlock fails, the lock
+                    // is released when the connection closes; closing
+                    // the connection is the next line.
+                }
+            }
+
+            if (wasClosed && connection.State == ConnectionState.Open)
+            {
+                await connection.CloseAsync();
+            }
+        }
+    }
+
+    private async Task<MaterializeOccurrencesResult> ExecuteRunAsync(
+        MaterializeOccurrencesCommand command,
+        CancellationToken cancellationToken)
+    {
         var startedAt = _clock.GetUtcNow();
         var run = new MaterializerRun
         {
@@ -45,7 +134,8 @@ public sealed class MaterializeOccurrencesService : IMaterializeOccurrencesServi
         try
         {
             var horizonDays = await ResolveHorizonAsync(command, cancellationToken);
-            var today = DateOnly.FromDateTime(_clock.GetUtcNow().UtcDateTime);
+            var timeZone = await TimeZoneResolver.ResolveAsync(_db, cancellationToken);
+            var today = TimeZoneResolver.ToDateInTimeZone(_clock.GetUtcNow(), timeZone);
             var targetEnd = today.AddDays(horizonDays);
 
             var activeSchedules = await _db.ServiceSchedules
@@ -141,7 +231,7 @@ public sealed class MaterializeOccurrencesService : IMaterializeOccurrencesServi
             catch
             {
                 // If even the failure record cannot be written, the
-                // exception is rethrown below. Nothing further can be
+                // exception is returned below. Nothing further can be
                 // done from this layer.
             }
 

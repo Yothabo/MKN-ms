@@ -1,6 +1,5 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging.Abstractions;
 using MknMs.Application.Processes.Operations.DispatchNotification;
 using MknMs.Application.Processes.Operations.ManageConfirmation;
 using MknMs.Domain.D10_ConfigLookups;
@@ -20,16 +19,14 @@ namespace MknMs.IntegrationTests;
 /// Integration tests for process 7.0 Manage Confirmation.
 /// </summary>
 /// <remarks>
-/// Runs against mkn_test. Exercises:
-///   - The required-setting refusal on InitialAssignmentStatusID.
-///   - Status transitions with a non-terminal target (no re-resolve).
-///   - Status transitions with a terminal target (re-resolve).
-///   - Replacement creation with the correct provenance fields.
-///   - Cumulative exclusion of members holding a terminal assignment
-///     on the affected slot.
-///   - Timeout sweep: the rule now - CreatedAt >= ConfirmationTimeoutHours.
-///   - Sweep with the required setting missing.
-///   - Invalid command shape.
+/// Runs against mkn_test. The service reads the target status from
+/// SystemSetting based on the operation:
+///
+///   - Confirm reads InitialAssignmentStatusID
+///   - Decline reads DeclinedStatusID
+///   - Sweep reads TimedOutStatusID
+///
+/// The fixture seeds all three settings so each operation resolves.
 ///
 /// Reference: docs/processes/operations/7.0-manage-confirmation.md,
 /// Specification §11.
@@ -68,10 +65,6 @@ public class ManageConfirmationTests : IAsyncLifetime
         return Task.CompletedTask;
     }
 
-    // -----------------------------------------------------------------
-    // Fixture
-    // -----------------------------------------------------------------
-
     private sealed record Fixture(
         int OccurrenceId,
         int ReadingDutyId,
@@ -80,13 +73,13 @@ public class ManageConfirmationTests : IAsyncLifetime
         int DanaMemberId,
         int ProposedStatusId,
         int ConfirmedStatusId,
-        int DeclinedStatusId);
+        int DeclinedStatusId,
+        int TimedOutStatusId);
 
     private async Task<Fixture> SeedFixtureAsync(
         bool includeInitialStatusSetting = true,
         bool includeTimeoutSetting = true)
     {
-        // Lookups.
         _db.OutcomeStates.Add(new OutcomeState { Name = "Unfilled" });
         _db.ServiceTypes.Add(new ServiceType { Name = "Regular" });
         _db.TimeOfDays.Add(new TimeOfDay { Name = "Morning" });
@@ -107,9 +100,6 @@ public class ManageConfirmationTests : IAsyncLifetime
         var tier = new PermissionTier { Name = "Full Admin" };
         _db.PermissionTiers.Add(tier);
 
-        // Assignment statuses. Proposed = non-terminal, Confirmed =
-        // non-terminal (an admin may mark a confirmation either way),
-        // Declined = terminal, Timed Out = terminal.
         var proposed = new AssignmentStatus { Name = "Proposed", IsTerminal = false };
         var confirmed = new AssignmentStatus { Name = "Confirmed", IsTerminal = false };
         var declined = new AssignmentStatus { Name = "Declined", IsTerminal = true };
@@ -118,12 +108,6 @@ public class ManageConfirmationTests : IAsyncLifetime
         _db.AssignmentStatuses.Add(confirmed);
         _db.AssignmentStatuses.Add(declined);
         _db.AssignmentStatuses.Add(timedOut);
-
-        if (includeInitialStatusSetting)
-        {
-            // Placeholder value; populated with the real id after
-            // SaveChanges so it can reference the confirmed status.
-        }
 
         await _db.SaveChangesAsync();
 
@@ -137,6 +121,20 @@ public class ManageConfirmationTests : IAsyncLifetime
             });
         }
 
+        _db.SystemSettings.Add(new SystemSetting
+        {
+            Key = "DeclinedStatusID",
+            Value = declined.AssignmentStatusId.ToString(),
+            Required = true,
+        });
+
+        _db.SystemSettings.Add(new SystemSetting
+        {
+            Key = "TimedOutStatusID",
+            Value = timedOut.AssignmentStatusId.ToString(),
+            Required = true,
+        });
+
         if (includeTimeoutSetting)
         {
             _db.SystemSettings.Add(new SystemSetting
@@ -149,7 +147,6 @@ public class ManageConfirmationTests : IAsyncLifetime
 
         await _db.SaveChangesAsync();
 
-        // Members.
         var alex = new Member
         {
             Name = "Alex", Surname = "Example",
@@ -239,7 +236,6 @@ public class ManageConfirmationTests : IAsyncLifetime
         _db.ServiceSchedules.Add(schedule);
         await _db.SaveChangesAsync();
 
-        // Duty rules: Reading duty prefers Steward.
         _db.DutyRules.Add(new DutyRule
         {
             DutyId = readingDuty.DutyId,
@@ -250,7 +246,6 @@ public class ManageConfirmationTests : IAsyncLifetime
         });
         await _db.SaveChangesAsync();
 
-        // Eligibility: Beatrice and Dana eligible for Reading duty.
         _db.Eligibilities.Add(new Eligibility
         {
             MemberId = beatrice.MemberId,
@@ -286,8 +281,6 @@ public class ManageConfirmationTests : IAsyncLifetime
         _db.ServiceOccurrences.Add(occurrence);
         await _db.SaveChangesAsync();
 
-        // Existing assignment: Beatrice on Reading duty, NULL status,
-        // created "now" (inside the timeout window).
         var assignment = new RosterAssignment
         {
             MemberId = beatrice.MemberId,
@@ -310,7 +303,8 @@ public class ManageConfirmationTests : IAsyncLifetime
             dana.MemberId,
             proposed.AssignmentStatusId,
             confirmed.AssignmentStatusId,
-            declined.AssignmentStatusId);
+            declined.AssignmentStatusId,
+            timedOut.AssignmentStatusId);
     }
 
     // -----------------------------------------------------------------
@@ -318,16 +312,15 @@ public class ManageConfirmationTests : IAsyncLifetime
     // -----------------------------------------------------------------
 
     [Fact]
-    public async Task Respond_WithNonTerminalStatus_TransitionsWithoutReplacement()
+    public async Task Confirm_TransitionsToInitialStatusWithoutReplacement()
     {
         var fixture = await SeedFixtureAsync();
         var service = new ManageConfirmationService(_db, _notification, _clock);
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
+            Operation = ManageConfirmationOperation.Confirm,
             AssignmentId = fixture.AssignmentId,
-            TargetStatusId = fixture.ConfirmedStatusId,
-            IsSweep = false,
         });
 
         result.Status.Should().Be("Success");
@@ -344,16 +337,15 @@ public class ManageConfirmationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Respond_WithTerminalStatus_AndCandidateAvailable_CreatesReplacement()
+    public async Task Decline_WithTerminalStatus_AndCandidateAvailable_CreatesReplacement()
     {
         var fixture = await SeedFixtureAsync();
         var service = new ManageConfirmationService(_db, _notification, _clock);
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
+            Operation = ManageConfirmationOperation.Decline,
             AssignmentId = fixture.AssignmentId,
-            TargetStatusId = fixture.DeclinedStatusId,
-            IsSweep = false,
         });
 
         result.Status.Should().Be("Success");
@@ -382,11 +374,10 @@ public class ManageConfirmationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Respond_WithTerminalStatus_AndNoCandidate_SlotLeftVacant()
+    public async Task Decline_WithTerminalStatus_AndNoCandidate_SlotLeftVacant()
     {
         var fixture = await SeedFixtureAsync();
 
-        // Remove Dana's eligibility so no candidate remains.
         var danaEligibility = await _db.Eligibilities
             .Where(e => e.MemberId == fixture.DanaMemberId)
             .ToListAsync();
@@ -397,9 +388,8 @@ public class ManageConfirmationTests : IAsyncLifetime
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
+            Operation = ManageConfirmationOperation.Decline,
             AssignmentId = fixture.AssignmentId,
-            TargetStatusId = fixture.DeclinedStatusId,
-            IsSweep = false,
         });
 
         result.Status.Should().Be("Success");
@@ -412,12 +402,10 @@ public class ManageConfirmationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Respond_WithTerminalStatus_ExcludesMemberAlreadyTerminalOnThisSlot()
+    public async Task Decline_WithTerminalStatus_ExcludesMemberAlreadyTerminalOnThisSlot()
     {
         var fixture = await SeedFixtureAsync();
 
-        // Give Dana a terminal assignment on the same slot. She is now
-        // cumulatively excluded, even though she is eligible.
         _db.RosterAssignments.Add(new RosterAssignment
         {
             MemberId = fixture.DanaMemberId,
@@ -435,9 +423,8 @@ public class ManageConfirmationTests : IAsyncLifetime
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
+            Operation = ManageConfirmationOperation.Decline,
             AssignmentId = fixture.AssignmentId,
-            TargetStatusId = fixture.DeclinedStatusId,
-            IsSweep = false,
         });
 
         result.Status.Should().Be("Success");
@@ -445,7 +432,7 @@ public class ManageConfirmationTests : IAsyncLifetime
         result.SlotsLeftVacant.Should().Be(1);
 
         var totalAssignments = await _db.RosterAssignments.CountAsync();
-        totalAssignments.Should().Be(2); // original + Dana's terminal
+        totalAssignments.Should().Be(2);
     }
 
     [Fact]
@@ -453,8 +440,6 @@ public class ManageConfirmationTests : IAsyncLifetime
     {
         var fixture = await SeedFixtureAsync();
 
-        // Backdate the assignment's CreatedAt so it is beyond the
-        // 48-hour timeout window.
         var assignment = await _db.RosterAssignments
             .FirstAsync(a => a.AssignmentId == fixture.AssignmentId);
         assignment.CreatedAt = _clock.GetUtcNow().AddHours(-72);
@@ -464,9 +449,7 @@ public class ManageConfirmationTests : IAsyncLifetime
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
-            AssignmentId = null,
-            TargetStatusId = fixture.DeclinedStatusId,
-            IsSweep = true,
+            Operation = ManageConfirmationOperation.Sweep,
         });
 
         result.Status.Should().Be("Success");
@@ -475,7 +458,7 @@ public class ManageConfirmationTests : IAsyncLifetime
 
         var original = await _db.RosterAssignments
             .FirstAsync(a => a.AssignmentId == fixture.AssignmentId);
-        original.AssignmentStatusId.Should().Be(fixture.DeclinedStatusId);
+        original.AssignmentStatusId.Should().Be(fixture.TimedOutStatusId);
     }
 
     [Fact]
@@ -484,13 +467,9 @@ public class ManageConfirmationTests : IAsyncLifetime
         var fixture = await SeedFixtureAsync();
         var service = new ManageConfirmationService(_db, _notification, _clock);
 
-        // Assignment's CreatedAt is "now", well inside the 48-hour
-        // window. Nothing should be swept.
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
-            AssignmentId = null,
-            TargetStatusId = fixture.DeclinedStatusId,
-            IsSweep = true,
+            Operation = ManageConfirmationOperation.Sweep,
         });
 
         result.Status.Should().Be("Success");
@@ -503,20 +482,41 @@ public class ManageConfirmationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Run_WithoutInitialAssignmentStatusSetting_Fails()
+    public async Task Confirm_WithoutInitialStatusSetting_Fails()
     {
         var fixture = await SeedFixtureAsync(includeInitialStatusSetting: false);
         var service = new ManageConfirmationService(_db, _notification, _clock);
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
+            Operation = ManageConfirmationOperation.Confirm,
             AssignmentId = fixture.AssignmentId,
-            TargetStatusId = fixture.ConfirmedStatusId,
-            IsSweep = false,
         });
 
         result.Status.Should().Be("Failure");
         result.ErrorDetail.Should().Contain("InitialAssignmentStatusID");
+    }
+
+    [Fact]
+    public async Task Decline_WithoutDeclinedStatusSetting_Fails()
+    {
+        var fixture = await SeedFixtureAsync();
+
+        var setting = await _db.SystemSettings
+            .FirstAsync(s => s.Key == "DeclinedStatusID");
+        _db.SystemSettings.Remove(setting);
+        await _db.SaveChangesAsync();
+
+        var service = new ManageConfirmationService(_db, _notification, _clock);
+
+        var result = await service.RunAsync(new ManageConfirmationCommand
+        {
+            Operation = ManageConfirmationOperation.Decline,
+            AssignmentId = fixture.AssignmentId,
+        });
+
+        result.Status.Should().Be("Failure");
+        result.ErrorDetail.Should().Contain("DeclinedStatusID");
     }
 
     [Fact]
@@ -525,9 +525,41 @@ public class ManageConfirmationTests : IAsyncLifetime
         await SeedFixtureAsync();
         var service = new ManageConfirmationService(_db, _notification, _clock);
 
-        var result = await service.RunAsync(new ManageConfirmationCommand());
+        // Confirm without an AssignmentId is invalid.
+        var result = await service.RunAsync(new ManageConfirmationCommand
+        {
+            Operation = ManageConfirmationOperation.Confirm,
+        });
 
         result.Status.Should().Be("Failure");
-        result.ErrorDetail.Should().Contain("Command must be");
+        result.ErrorDetail.Should().Contain("valid operation");
+    }
+
+    [Fact]
+    public async Task Run_ReadsTargetStatusFromSetting_NotFromCommand()
+    {
+        var fixture = await SeedFixtureAsync();
+
+        // Change InitialAssignmentStatusID to point at the Proposed
+        // status. A Confirm should now transition to Proposed, not
+        // Confirmed. This proves the service reads the setting.
+        var setting = await _db.SystemSettings
+            .FirstAsync(s => s.Key == "InitialAssignmentStatusID");
+        setting.Value = fixture.ProposedStatusId.ToString();
+        await _db.SaveChangesAsync();
+
+        var service = new ManageConfirmationService(_db, _notification, _clock);
+
+        var result = await service.RunAsync(new ManageConfirmationCommand
+        {
+            Operation = ManageConfirmationOperation.Confirm,
+            AssignmentId = fixture.AssignmentId,
+        });
+
+        result.Status.Should().Be("Success");
+
+        var assignment = await _db.RosterAssignments
+            .FirstAsync(a => a.AssignmentId == fixture.AssignmentId);
+        assignment.AssignmentStatusId.Should().Be(fixture.ProposedStatusId);
     }
 }

@@ -876,7 +876,7 @@ EndGlobal
 
 ==============================================================================
 FILE: backend/README.md
-LINES: 124
+LINES: 166
 ==============================================================================
 
 # MKN-MS — Backend
@@ -910,6 +910,24 @@ To run tests:
 
 The two-environment split is a deliberate consequence of Android's syscall surface and proot's incomplete emulation of it, not a defect in the project. Every workaround that makes each environment work (GC heap cap, `DOTNET_ROOT`, host path symlinks) is required for its own purpose and stays in place.
 
+### Environment requirements
+
+Two properties of this environment must be set for the build and the tests to work correctly. Both are consequences of running .NET on Android/Termux, not of the code.
+
+**GC heap hard limit (proot).** The default value, set in proot's `/root/.bashrc`, is `0x20000000` (512 MB). This is too small to compile the current solution: the build fails with `MSB4166: Child node exited prematurely` or `MSB6006: "csc.dll" exited with code 139` when the Roslyn compiler runs out of memory. The value must be raised to at least `0x60000000` (1.5 GB):
+
+    # In proot's /root/.bashrc
+    export DOTNET_GCHeapHardLimit=0x60000000
+
+If a build fails with either of those errors, the heap limit is the cause. Raising it further — to `0x80000000` (2 GB) — is the next step if 1.5 GB is still insufficient; 2 GB is the practical ceiling on the device.
+
+**TZDIR (Termux).** Termux does not ship the standard IANA tzdata. The .NET runtime resolves `TimeZoneInfo.FindSystemTimeZoneById("Africa/Johannesburg")` from `/usr/share/zoneinfo` by default, which does not exist on the Termux side. The PostgreSQL package ships a compatible tzdata tree at `$PREFIX/share/postgresql/timezone`. Pointing `TZDIR` at that tree makes the resolver work:
+
+    # In the Termux shell that runs the tests
+    export TZDIR=$PREFIX/share/postgresql/timezone
+
+Without `TZDIR`, the two `TimeZoneResolverTests` that exercise the configured-timezone path fail; the code falls back to UTC as designed. Set `TZDIR` before `dotnet test`, or add it to the Termux `.bashrc`.
+
 ## Stack
 
 - .NET 8 (LTS) — ASP.NET Core Web API
@@ -928,7 +946,7 @@ The two-environment split is a deliberate consequence of Android's syscall surfa
     │   ├── MknMs.Application/     The twelve processes; one folder per process
     │   ├── MknMs.Domain/          Entities, value objects, domain rules
     │   ├── MknMs.Persistence/     EF Core, PostgreSQL, migrations
-    │   └── MknMs.Infrastructure/  External integrations (Quartz, notification transport)
+    │   └── MknMs.Infrastructure/  External integrations (Quartz scheduler, notification transport)
     └── tests/
         ├── MknMs.UnitTests/
         └── MknMs.IntegrationTests/
@@ -944,14 +962,31 @@ Every project references only projects to its left in this diagram. This is the 
 - `Domain` — entities. No project references.
 - `Persistence` — `MknDbContext`, entity configurations, migrations, the snake_case naming convention.
 - `Application` — the twelve processes; depends on `Domain` and `Persistence`.
-- `Infrastructure` — external integrations. Currently a stub, waiting for the Quartz scheduler and the notification transport.
+- `Infrastructure` — external integrations. Holds the Quartz job classes and the scheduler registration.
 - `API` — hosts the HTTP surface and the composition root.
+
+## Scheduling
+
+Four processes have scheduled triggers, registered with Quartz.NET in `MknMs.Infrastructure/Scheduling/QuartzSchedulerRegistration.cs` and started by `Quartz.Extensions.Hosting` from `Program.cs`:
+
+| Job | Process | Cadence |
+| --- | --- | --- |
+| `MaterializeOccurrencesJob` | 11.0 | Daily, 02:00 |
+| `GenerateAssignmentJob` | 5.0 | Daily, 03:00 |
+| `ManageConfirmationTimeoutJob` | 7.0 | Hourly |
+| `EvaluateFillStatusSweepJob` | 10.0 | Hourly, at :30 |
+
+All four job classes are decorated with `[DisallowConcurrentExecution]` so Quartz never runs two instances of the same job at once. Process 11.0 additionally takes a PostgreSQL session-level advisory lock, so that a manual trigger of the materializer cannot overlap a scheduled run.
+
+The cadences are implementation choices the specification does not fix beyond the fact that 11.0 runs daily and the others run periodically.
 
 ## Build
 
 From inside `backend/`:
 
     dotnet build
+
+If the build fails with `MSB4166` or `MSB6006`, see the environment requirements above — the GC heap limit is too small.
 
 ## Run
 
@@ -962,6 +997,8 @@ From inside `backend/`:
 The API listens on `http://localhost:5000` by default. If port 5000 is already in use, Kestrel will select an alternate port and print it in the startup log — look for the line `Now listening on: http://localhost:NNNN` and use that port in all subsequent calls.
 
 OpenAPI is served at `/swagger` when the environment is `Development`.
+
+The Quartz scheduler starts with the application. The four jobs fire on their configured schedules.
 
 ## Database
 
@@ -979,11 +1016,16 @@ Migrations:
 Seed data for development:
 
     psql -h 127.0.0.1 -U mkn_dev -d mkn_dev -f scripts/seed-development.sql
+    psql -h 127.0.0.1 -U mkn_dev -d mkn_dev -f scripts/seed-assignment.sql
+
+Both seed scripts are idempotent — safe to re-run. Every insert is guarded by a `NOT EXISTS` check on the entity's natural key.
 
 ## Tests
 
-From Termux (not inside proot):
+From Termux (not inside proot), with `TZDIR` set as described in the environment requirements:
 
+    export TZDIR=$PREFIX/share/postgresql/timezone
+    cd ~/MKN-ms/backend
     dotnet test tests/MknMs.IntegrationTests
 
 The integration tests connect to the `mkn_test` database. Ensure it exists and has the current schema applied before running them.
@@ -1157,7 +1199,7 @@ WHERE NOT EXISTS (
 
 ==============================================================================
 FILE: backend/scripts/seed-development.sql
-LINES: 227
+LINES: 281
 ==============================================================================
 
 -- MKN-MS development seed data.
@@ -1386,6 +1428,60 @@ ON CONFLICT (key) DO NOTHING;
 INSERT INTO system_setting (key, value, required, description)
 VALUES ('NotificationChannel', 'Log', FALSE,
         'The channel 9.0 dispatches assignment notices through')
+ON CONFLICT (key) DO NOTHING;
+
+-- ---------------------------------------------------------------------
+-- D11 settings consumed by all processes that derive a calendar date.
+-- §7 requires occurrence dates to be generated using the configured
+-- system/application timezone, not UTC. The setting holds an IANA
+-- timezone ID. It is not listed among the required settings in §15;
+-- the resolver falls back to UTC if it is absent.
+-- ---------------------------------------------------------------------
+INSERT INTO system_setting (key, value, required, description)
+VALUES ('ApplicationTimeZone', 'Africa/Johannesburg', FALSE,
+        'IANA timezone ID used to derive operational calendar dates')
+ON CONFLICT (key) DO NOTHING;
+
+-- ---------------------------------------------------------------------
+-- D11 settings consumed by 7.0 Manage Confirmation, per §11.1.7.
+-- These complete §15.3's list: §11.1.7 names "the admin-designated
+-- declined status" and "the admin-designated timed-out status," and
+-- §15's preamble states that it gathers every setting the locked
+-- contracts imply. The settings are implied; the list is completed
+-- here.
+--
+-- Ids map to the AssignmentStatus rows seeded above, in seed order:
+-- 1 = Proposed, 2 = Confirmed, 3 = Declined, 4 = Timed Out.
+-- ---------------------------------------------------------------------
+INSERT INTO system_setting (key, value, required, description)
+VALUES ('DeclinedStatusID', '3', TRUE,
+        'The AssignmentStatus a declined assignment transitions to')
+ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO system_setting (key, value, required, description)
+VALUES ('TimedOutStatusID', '4', TRUE,
+        'The AssignmentStatus a timed-out assignment transitions to')
+ON CONFLICT (key) DO NOTHING;
+
+-- ---------------------------------------------------------------------
+-- D11 settings consumed by 7.0 Manage Confirmation, per §11.1.7.
+-- These complete §15.3's list: §11.1.7 names "the admin-designated
+-- declined status" and "the admin-designated timed-out status," and
+-- §15's preamble states that it gathers every setting the locked
+-- contracts imply. The settings are implied; the list is completed
+-- here.
+--
+-- Ids map to the AssignmentStatus rows seeded above, in seed order:
+-- 1 = Proposed, 2 = Confirmed, 3 = Declined, 4 = Timed Out.
+-- ---------------------------------------------------------------------
+INSERT INTO system_setting (key, value, required, description)
+VALUES ('DeclinedStatusID', '3', TRUE,
+        'The AssignmentStatus a declined assignment transitions to')
+ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO system_setting (key, value, required, description)
+VALUES ('TimedOutStatusID', '4', TRUE,
+        'The AssignmentStatus a timed-out assignment transitions to')
 ON CONFLICT (key) DO NOTHING;
 
 ==============================================================================
@@ -2324,7 +2420,7 @@ public sealed record GenerateAssignmentRequest
 
 ==============================================================================
 FILE: backend/src/MknMs.Api/Endpoints/ManageConfirmationEndpoint.cs
-LINES: 117
+LINES: 126
 ==============================================================================
 
 using MknMs.Application.Processes.Operations.ManageConfirmation;
@@ -2338,13 +2434,13 @@ namespace MknMs.Api.Endpoints;
 /// Two routes, one process:
 ///
 ///   - POST /api/processes/7.0/respond — a member has confirmed or
-///     declined. The caller supplies the assignment and the status ID
-///     the response maps to. The endpoint performs no mapping of
-///     "confirm"/"decline" to status IDs; that mapping is administrator
-///     configuration and belongs to the caller.
+///     declined. The caller names the operation ("Confirm" or
+///     "Decline") and the assignment. The target status is read from
+///     SystemSetting by the service, not supplied by the caller.
 ///
-///   - POST /api/processes/7.0/sweep — the scheduled timeout check. The
-///     caller supplies the status ID a timed-out assignment maps to.
+///   - POST /api/processes/7.0/sweep — the scheduled timeout check.
+///     The service finds every timed-out assignment and transitions it
+///     to the status named by SystemSetting.TimedOutStatusID.
 ///
 /// Specification: §11, docs/processes/operations/7.0-manage-confirmation.md.
 /// </remarks>
@@ -2365,20 +2461,43 @@ public static class ManageConfirmationEndpoint
                     return Results.BadRequest(new { error = "Request body is required." });
                 }
 
-                if (request.AssignmentId is null || request.AssignmentId <= 0
-                    || request.TargetStatusId is null || request.TargetStatusId <= 0)
+                if (request.AssignmentId is null || request.AssignmentId <= 0)
                 {
                     return Results.BadRequest(new
                     {
-                        error = "AssignmentId and TargetStatusId are required and must be positive.",
+                        error = "AssignmentId is required and must be positive.",
+                    });
+                }
+
+                if (string.IsNullOrWhiteSpace(request.Operation))
+                {
+                    return Results.BadRequest(new
+                    {
+                        error = "Operation is required. Must be \"Confirm\" or \"Decline\".",
+                    });
+                }
+
+                ManageConfirmationOperation operation;
+                if (string.Equals(request.Operation, "Confirm", StringComparison.OrdinalIgnoreCase))
+                {
+                    operation = ManageConfirmationOperation.Confirm;
+                }
+                else if (string.Equals(request.Operation, "Decline", StringComparison.OrdinalIgnoreCase))
+                {
+                    operation = ManageConfirmationOperation.Decline;
+                }
+                else
+                {
+                    return Results.BadRequest(new
+                    {
+                        error = "Operation must be \"Confirm\" or \"Decline\".",
                     });
                 }
 
                 var command = new ManageConfirmationCommand
                 {
+                    Operation = operation,
                     AssignmentId = request.AssignmentId,
-                    TargetStatusId = request.TargetStatusId,
-                    IsSweep = false,
                 };
 
                 var result = await service.RunAsync(command, cancellationToken);
@@ -2394,24 +2513,13 @@ public static class ManageConfirmationEndpoint
         routes.MapPost(
             "/api/processes/7.0/sweep",
             async (
-                ManageConfirmationSweepRequest? request,
                 IManageConfirmationService service,
                 CancellationToken cancellationToken) =>
             {
-                if (request is null || request.TargetStatusId is null
-                    || request.TargetStatusId <= 0)
-                {
-                    return Results.BadRequest(new
-                    {
-                        error = "TargetStatusId is required and must be positive.",
-                    });
-                }
-
                 var command = new ManageConfirmationCommand
                 {
+                    Operation = ManageConfirmationOperation.Sweep,
                     AssignmentId = null,
-                    TargetStatusId = request.TargetStatusId,
-                    IsSweep = true,
                 };
 
                 var result = await service.RunAsync(command, cancellationToken);
@@ -2429,20 +2537,17 @@ public static class ManageConfirmationEndpoint
 }
 
 /// <summary>
-/// HTTP request body for the respond endpoint.
+/// HTTP request body for the respond route.
 /// </summary>
+/// <remarks>
+/// Operation is "Confirm" or "Decline". The target status the operation
+/// resolves to is administrator configuration, read by the service from
+/// SystemSetting; it is not part of this request.
+/// </remarks>
 public sealed record ManageConfirmationRespondRequest
 {
     public int? AssignmentId { get; init; }
-    public int? TargetStatusId { get; init; }
-}
-
-/// <summary>
-/// HTTP request body for the sweep endpoint.
-/// </summary>
-public sealed record ManageConfirmationSweepRequest
-{
-    public int? TargetStatusId { get; init; }
+    public string? Operation { get; init; }
 }
 
 ==============================================================================
@@ -2619,7 +2724,7 @@ global using MknMs.Persistence;
 
 ==============================================================================
 FILE: backend/src/MknMs.Api/MknMs.Api.csproj
-LINES: 27
+LINES: 28
 ==============================================================================
 
 <Project Sdk="Microsoft.NET.Sdk.Web">
@@ -2638,6 +2743,7 @@ LINES: 27
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.11" />
+    <PackageReference Include="Quartz.Extensions.Hosting" Version="3.13.0" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.*" />
   </ItemGroup>
 
@@ -2664,7 +2770,7 @@ Accept: application/json
 
 ==============================================================================
 FILE: backend/src/MknMs.Api/Program.cs
-LINES: 130
+LINES: 133
 ==============================================================================
 
 using MknMs.Api.Endpoints;
@@ -2691,6 +2797,7 @@ using MknMs.Application.Processes.Operations.CreateManualAssignment;
 using MknMs.Application.Processes.Operations.GenerateAssignment;
 using MknMs.Application.Processes.Operations.ManageConfirmation;
 using MknMs.Application.Processes.Operations.MaterializeOccurrences;
+using MknMs.Infrastructure.Scheduling;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -2749,7 +2856,7 @@ builder.Services.AddScoped<IGenerateAssignmentService, GenerateAssignmentService
 // 7.0 Manage Confirmation.
 builder.Services.AddScoped<IManageConfirmationService, ManageConfirmationService>();
 
-// 9.0 Dispatch Notification — stub implementation until 9.0 is built.
+// 9.0 Dispatch Notification.
 builder.Services.AddScoped<IDispatchNotificationService, DispatchNotificationService>();
 
 // 10.0 Evaluate Fill Status.
@@ -2767,6 +2874,8 @@ builder.Services.AddScoped<IMaterializeOccurrencesService, MaterializeOccurrence
 // Standard API services.
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+builder.Services.AddMknScheduledJobs();
 
 var app = builder.Build();
 
@@ -3017,6 +3126,81 @@ public sealed class EntityNotFoundException : Exception
     public string EntityName { get; }
 
     public int Id { get; }
+}
+
+==============================================================================
+FILE: backend/src/MknMs.Application/Common/TimeZoneResolver.cs
+LINES: 69
+==============================================================================
+
+namespace MknMs.Application.Common;
+
+/// <summary>
+/// Resolves the configured application timezone used to derive
+/// operational dates from an instant.
+/// </summary>
+/// <remarks>
+/// The specification §7 requires that occurrence dates are generated
+/// using "the configured system/application timezone," not UTC. The
+/// same rule governs the date derived by the assignment engine for
+/// age and tenure criteria evaluation.
+///
+/// The timezone is read from SystemSetting under the key
+/// ApplicationTimeZone, holding an IANA timezone ID (for example,
+/// Africa/Johannesburg). The setting is not listed among the required
+/// settings in the specification's amendment set, so its absence does
+/// not cause a process to refuse to run. When it is absent, or when it
+/// holds a value that is not a recognized timezone ID, the resolver
+/// returns UTC — matching the behaviour that was implicit before this
+/// resolver existed, and giving a configured value precedence when
+/// one is present.
+///
+/// The setting is read on each resolution, so changing it takes
+/// effect on the next process run. This matches §7's rule that a
+/// change to a setting takes effect on the next run and is not itself
+/// a trigger.
+/// </remarks>
+public static class TimeZoneResolver
+{
+    public const string ApplicationTimeZoneKey = "ApplicationTimeZone";
+
+    private static readonly TimeZoneInfo Fallback = TimeZoneInfo.Utc;
+
+    public static async Task<TimeZoneInfo> ResolveAsync(
+        MknDbContext db,
+        CancellationToken cancellationToken = default)
+    {
+        var setting = await db.SystemSettings
+            .FirstOrDefaultAsync(s => s.Key == ApplicationTimeZoneKey, cancellationToken);
+
+        if (setting?.Value is null || string.IsNullOrWhiteSpace(setting.Value))
+        {
+            return Fallback;
+        }
+
+        try
+        {
+            return TimeZoneInfo.FindSystemTimeZoneById(setting.Value.Trim());
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            return Fallback;
+        }
+        catch (InvalidTimeZoneException)
+        {
+            return Fallback;
+        }
+    }
+
+    /// <summary>
+    /// Converts an instant to the calendar date it falls on in the
+    /// supplied timezone.
+    /// </summary>
+    public static DateOnly ToDateInTimeZone(DateTimeOffset instant, TimeZoneInfo timeZone)
+    {
+        var local = TimeZoneInfo.ConvertTime(instant, timeZone);
+        return DateOnly.FromDateTime(local.DateTime);
+    }
 }
 
 ==============================================================================
@@ -6336,9 +6520,10 @@ public sealed record MaterializeOccurrencesResult
 
 ==============================================================================
 FILE: backend/src/MknMs.Application/Processes/Operations/11.0_MaterializeOccurrences/MaterializeOccurrencesService.cs
-LINES: 244
+LINES: 334
 ==============================================================================
 
+using System.Data;
 using MknMs.Domain.D11_SystemSetting;
 
 namespace MknMs.Application.Processes.Operations.MaterializeOccurrences;
@@ -6351,11 +6536,27 @@ namespace MknMs.Application.Processes.Operations.MaterializeOccurrences;
 /// dates within the horizon, and inserts missing occurrences. Never
 /// modifies or deletes existing rows.
 ///
+/// §7: "Overlapping runs are not allowed." This applies to both the
+/// scheduled trigger and the manual trigger. The
+/// [DisallowConcurrentExecution] attribute on the Quartz job covers
+/// the scheduled path; a PostgreSQL session-level advisory lock taken
+/// here covers both paths, so that a manual trigger fired while a
+/// scheduled run is in progress does not overlap it. If the lock
+/// cannot be acquired, the run returns a Failure result with
+/// "another materializer run is in progress" and does nothing else.
+///
 /// Specification: §7, §8.
 /// </remarks>
 public sealed class MaterializeOccurrencesService : IMaterializeOccurrencesService
 {
     private const string HorizonSettingKey = "OccurrenceHorizonDays";
+
+    /// <summary>
+    /// The PostgreSQL advisory lock key identifying the materializer's
+    /// mutual-exclusion lock. An arbitrary constant, chosen to be clear
+    /// of any identity sequence. It is not exposed as configuration.
+    /// </summary>
+    private const long MaterializerLockKey = 1100;
 
     private readonly MknDbContext _db;
     private readonly TimeProvider _clock;
@@ -6372,6 +6573,78 @@ public sealed class MaterializeOccurrencesService : IMaterializeOccurrencesServi
     {
         ValidateCommand(command);
 
+        // Acquire the advisory lock. Session-scoped: held across every
+        // transaction this method opens, released in the finally below.
+        var connection = _db.Database.GetDbConnection();
+        var wasClosed = connection.State != ConnectionState.Open;
+        if (wasClosed)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+
+        var lockAcquired = false;
+
+        try
+        {
+            await using (var lockCommand = connection.CreateCommand())
+            {
+                lockCommand.CommandText = "SELECT pg_try_advisory_lock(@key)";
+                var parameter = lockCommand.CreateParameter();
+                parameter.ParameterName = "@key";
+                parameter.Value = MaterializerLockKey;
+                lockCommand.Parameters.Add(parameter);
+
+                var result = await lockCommand.ExecuteScalarAsync(cancellationToken);
+                lockAcquired = result is bool acquired && acquired;
+            }
+
+            if (!lockAcquired)
+            {
+                return new MaterializeOccurrencesResult
+                {
+                    RunId = 0,
+                    Status = "Failure",
+                    SchedulesEvaluated = 0,
+                    OccurrencesCreated = 0,
+                    ErrorDetail = "Another materializer run is in progress.",
+                };
+            }
+
+            return await ExecuteRunAsync(command, cancellationToken);
+        }
+        finally
+        {
+            if (lockAcquired)
+            {
+                try
+                {
+                    await using var unlockCommand = connection.CreateCommand();
+                    unlockCommand.CommandText = "SELECT pg_advisory_unlock(@key)";
+                    var parameter = unlockCommand.CreateParameter();
+                    parameter.ParameterName = "@key";
+                    parameter.Value = MaterializerLockKey;
+                    unlockCommand.Parameters.Add(parameter);
+                    await unlockCommand.ExecuteScalarAsync(CancellationToken.None);
+                }
+                catch
+                {
+                    // Best-effort release. If the unlock fails, the lock
+                    // is released when the connection closes; closing
+                    // the connection is the next line.
+                }
+            }
+
+            if (wasClosed && connection.State == ConnectionState.Open)
+            {
+                await connection.CloseAsync();
+            }
+        }
+    }
+
+    private async Task<MaterializeOccurrencesResult> ExecuteRunAsync(
+        MaterializeOccurrencesCommand command,
+        CancellationToken cancellationToken)
+    {
         var startedAt = _clock.GetUtcNow();
         var run = new MaterializerRun
         {
@@ -6386,7 +6659,8 @@ public sealed class MaterializeOccurrencesService : IMaterializeOccurrencesServi
         try
         {
             var horizonDays = await ResolveHorizonAsync(command, cancellationToken);
-            var today = DateOnly.FromDateTime(_clock.GetUtcNow().UtcDateTime);
+            var timeZone = await TimeZoneResolver.ResolveAsync(_db, cancellationToken);
+            var today = TimeZoneResolver.ToDateInTimeZone(_clock.GetUtcNow(), timeZone);
             var targetEnd = today.AddDays(horizonDays);
 
             var activeSchedules = await _db.ServiceSchedules
@@ -6482,7 +6756,7 @@ public sealed class MaterializeOccurrencesService : IMaterializeOccurrencesServi
             catch
             {
                 // If even the failure record cannot be written, the
-                // exception is rethrown below. Nothing further can be
+                // exception is returned below. Nothing further can be
                 // done from this layer.
             }
 
@@ -6955,7 +7229,7 @@ public sealed record GenerateAssignmentResult
 
 ==============================================================================
 FILE: backend/src/MknMs.Application/Processes/Operations/5.0_GenerateAssignment/GenerateAssignmentService.cs
-LINES: 709
+LINES: 710
 ==============================================================================
 
 using MknMs.Application.Processes.Operations.DispatchNotification;
@@ -7033,7 +7307,8 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
             var ageRangeMin = await ReadIntSettingAsync(AgeRangeMinKey, cancellationToken) ?? 0;
             var ageRangeMax = await ReadIntSettingAsync(AgeRangeMaxKey, cancellationToken) ?? 120;
 
-            var today = DateOnly.FromDateTime(_clock.GetUtcNow().UtcDateTime);
+            var timeZone = await TimeZoneResolver.ResolveAsync(_db, cancellationToken);
+            var today = TimeZoneResolver.ToDateInTimeZone(_clock.GetUtcNow(), timeZone);
 
             var totalCreated = 0;
             var fullyFilled = 0;
@@ -7936,63 +8211,67 @@ public interface IManageConfirmationService
 
 ==============================================================================
 FILE: backend/src/MknMs.Application/Processes/Operations/7.0_ManageConfirmation/ManageConfirmationCommand.cs
-LINES: 55
+LINES: 59
 ==============================================================================
 
 namespace MknMs.Application.Processes.Operations.ManageConfirmation;
 
 /// <summary>
+/// The operation 7.0 is performing.
+/// </summary>
+/// <remarks>
+/// Three shapes, because the process's three triggers map to three
+/// different target statuses, and the target status is administrator
+/// configuration stored in SystemSetting rather than supplied by the
+/// caller:
+///
+///   - Confirm — a member has confirmed. The assignment transitions to
+///     the status named by SystemSetting.InitialAssignmentStatusID,
+///     per §11.1.5.
+///   - Decline — a member has declined. The assignment transitions to
+///     the status named by SystemSetting.DeclinedStatusID, per §11.1.7.
+///   - Sweep — the scheduled timeout check. Every NULL-status
+///     assignment whose elapsed age meets the configured timeout
+///     transitions to the status named by
+///     SystemSetting.TimedOutStatusID, per §11.1.7.
+///
+/// The service reads the target status from the setting, so the caller
+/// names only the operation and the assignment (for a single response).
+/// This is the reading in which "administrator-designated status" means
+/// what it says: a value in a setting, not a value passed by a caller.
+///
+/// Specification: §11.
+/// </remarks>
+public enum ManageConfirmationOperation
+{
+    Confirm = 0,
+    Decline = 1,
+    Sweep = 2,
+}
+
+/// <summary>
 /// Inputs to one Manage Confirmation run.
 /// </summary>
 /// <remarks>
-/// Two shapes of invocation are supported by the same service:
-///
-///   - Respond: a member has confirmed or declined. The caller supplies
-///     the assignment and the administrator-designated status ID that
-///     the member's response maps to. The service applies the
-///     transition; if the target status is terminal, it re-resolves the
-///     affected slot.
-///
-///   - Sweep: the scheduled timeout check. The caller supplies the
-///     administrator-designated status ID that a timed-out assignment
-///     maps to. The service finds every NULL-status assignment whose
-///     elapsed age meets the configured timeout and applies the
-///     transition to each; for each, if the target status is terminal,
-///     it re-resolves the affected slot.
-///
-/// The service does not decide which status ID means "confirmed" or
-/// "declined" or "timed out". That mapping is administrator
-/// configuration, and the caller supplies the target ID. This is the
-/// only reading that does not require a setting the specification does
-/// not name.
+/// For Confirm and Decline, AssignmentId is required.
+/// For Sweep, AssignmentId is ignored; the service finds every
+/// timed-out assignment itself.
 ///
 /// Specification: §11.
 /// </remarks>
 public sealed record ManageConfirmationCommand
 {
-    /// <summary>
-    /// Respond to a specific assignment. When set, TargetStatusId is
-    /// required and the sweep fields must be null.
-    /// </summary>
+    public required ManageConfirmationOperation Operation { get; init; }
+
     public int? AssignmentId { get; init; }
 
-    /// <summary>
-    /// The status the assignment transitions to. Required for a Respond
-    /// command. Null for a Sweep command.
-    /// </summary>
-    public int? TargetStatusId { get; init; }
-
-    /// <summary>
-    /// Sweep timed-out assignments. When true, TargetStatusId is
-    /// required and AssignmentId must be null.
-    /// </summary>
-    public bool IsSweep { get; init; }
-
-    public bool IsRespond => AssignmentId is not null && !IsSweep;
+    public bool IsSingleResponse =>
+        Operation == ManageConfirmationOperation.Confirm
+        || Operation == ManageConfirmationOperation.Decline;
 
     public bool IsValid =>
-        (IsRespond && TargetStatusId is not null)
-        || (IsSweep && AssignmentId is null && TargetStatusId is not null);
+        (IsSingleResponse && AssignmentId is not null && AssignmentId > 0)
+        || (Operation == ManageConfirmationOperation.Sweep && AssignmentId is null);
 }
 
 ==============================================================================
@@ -8039,7 +8318,7 @@ public sealed record ManageConfirmationResult
 
 ==============================================================================
 FILE: backend/src/MknMs.Application/Processes/Operations/7.0_ManageConfirmation/ManageConfirmationService.cs
-LINES: 718
+LINES: 744
 ==============================================================================
 
 using MknMs.Application.Processes.Operations.DispatchNotification;
@@ -8073,6 +8352,8 @@ namespace MknMs.Application.Processes.Operations.ManageConfirmation;
 public sealed class ManageConfirmationService : IManageConfirmationService
 {
     private const string InitialAssignmentStatusIdKey = "InitialAssignmentStatusID";
+    private const string DeclinedStatusIdKey = "DeclinedStatusID";
+    private const string TimedOutStatusIdKey = "TimedOutStatusID";
     private const string ConfirmationTimeoutHoursKey = "ConfirmationTimeoutHours";
     private const string TenureThresholdKey = "TenureThresholdDays";
     private const string AgeRangeMinKey = "AgeRangeMin";
@@ -8104,37 +8385,36 @@ public sealed class ManageConfirmationService : IManageConfirmationService
                 AssignmentsTransitioned = 0,
                 ReplacementsCreated = 0,
                 SlotsLeftVacant = 0,
-                ErrorDetail = "Command must be either a Respond (AssignmentId and " +
-                              "TargetStatusId) or a Sweep (IsSweep and TargetStatusId).",
+                ErrorDetail = "Command must name a valid operation: Confirm or Decline " +
+                              "with a positive AssignmentId, or Sweep with no AssignmentId.",
             };
         }
 
         try
         {
-            // Required-setting check. §11.1.5: 7.0 refuses to run if
-            // InitialAssignmentStatusID is unset or invalid. The setting
-            // is loaded but not used directly here — it is validated so
-            // the service refuses to run when it is absent, matching the
-            // required-setting rule. For a Respond command, the caller
-            // supplies the target status; for a Sweep command, the same
-            // applies. What matters for the refusal is the setting being
-            // present, since §11.1.5 names it as required.
-            var initialStatusId = await ReadIntSettingAsync(InitialAssignmentStatusIdKey, cancellationToken);
-            if (initialStatusId is null)
+            // Resolve the target status from the administrator-designated
+            // setting for this operation. §11.1.5: a confirm moves to
+            // InitialAssignmentStatusID. §11.1.7: a decline moves to the
+            // declined status; a timeout moves to the timed-out status.
+            // All three are stored as SystemSetting, per §15's amendment
+            // set as completed.
+            var targetStatusId = await ResolveTargetStatusIdAsync(command.Operation, cancellationToken);
+
+            if (targetStatusId is null)
             {
+                var settingName = SettingNameForOperation(command.Operation);
                 return new ManageConfirmationResult
                 {
                     Status = "Failure",
                     AssignmentsTransitioned = 0,
                     ReplacementsCreated = 0,
                     SlotsLeftVacant = 0,
-                    ErrorDetail = $"Required setting '{InitialAssignmentStatusIdKey}' is not configured.",
+                    ErrorDetail = $"Required setting '{settingName}' is not configured.",
                 };
             }
 
-            // Validate the target status exists.
             var targetStatus = await _db.AssignmentStatuses
-                .FirstOrDefaultAsync(s => s.AssignmentStatusId == command.TargetStatusId!.Value,
+                .FirstOrDefaultAsync(s => s.AssignmentStatusId == targetStatusId.Value,
                     cancellationToken);
 
             if (targetStatus is null)
@@ -8145,19 +8425,19 @@ public sealed class ManageConfirmationService : IManageConfirmationService
                     AssignmentsTransitioned = 0,
                     ReplacementsCreated = 0,
                     SlotsLeftVacant = 0,
-                    ErrorDetail = $"AssignmentStatus {command.TargetStatusId} does not exist.",
+                    ErrorDetail = $"AssignmentStatus {targetStatusId} does not exist.",
                 };
             }
 
-            if (command.IsRespond)
+            if (command.Operation == ManageConfirmationOperation.Sweep)
             {
-                return await RespondAsync(
-                    command.AssignmentId!.Value,
-                    targetStatus,
-                    cancellationToken);
+                return await SweepAsync(targetStatus, cancellationToken);
             }
 
-            return await SweepAsync(targetStatus, cancellationToken);
+            return await RespondAsync(
+                command.AssignmentId!.Value,
+                targetStatus,
+                cancellationToken);
         }
         catch (Exception ex)
         {
@@ -8172,9 +8452,33 @@ public sealed class ManageConfirmationService : IManageConfirmationService
         }
     }
 
-    // -----------------------------------------------------------------
-    // Respond — one assignment
-    // -----------------------------------------------------------------
+    private static string SettingNameForOperation(ManageConfirmationOperation operation) =>
+        operation switch
+        {
+            ManageConfirmationOperation.Confirm => InitialAssignmentStatusIdKey,
+            ManageConfirmationOperation.Decline => DeclinedStatusIdKey,
+            ManageConfirmationOperation.Sweep => TimedOutStatusIdKey,
+            _ => throw new InvalidOperationException($"Unknown operation {operation}."),
+        };
+
+    private async Task<int?> ResolveTargetStatusIdAsync(
+        ManageConfirmationOperation operation,
+        CancellationToken cancellationToken)
+    {
+        var key = SettingNameForOperation(operation);
+        var value = await ReadIntSettingAsync(key, cancellationToken);
+
+        if (value is null)
+        {
+            return null;
+        }
+
+        // §11.1.5 and §11.1.7: the status must be a real row.
+        var exists = await _db.AssignmentStatuses
+            .AnyAsync(s => s.AssignmentStatusId == value.Value, cancellationToken);
+
+        return exists ? value : null;
+    }
 
     private async Task<ManageConfirmationResult> RespondAsync(
         int assignmentId,
@@ -8399,7 +8703,8 @@ public sealed class ManageConfirmationService : IManageConfirmationService
             exclusion.Add(memberId);
         }
 
-        var today = DateOnly.FromDateTime(_clock.GetUtcNow().UtcDateTime);
+        var timeZone = await TimeZoneResolver.ResolveAsync(_db, cancellationToken);
+        var today = TimeZoneResolver.ToDateInTimeZone(_clock.GetUtcNow(), timeZone);
         var tenureThresholdDays = await ReadIntSettingAsync(TenureThresholdKey, cancellationToken);
         var ageRangeMin = await ReadIntSettingAsync(AgeRangeMinKey, cancellationToken) ?? 0;
         var ageRangeMax = await ReadIntSettingAsync(AgeRangeMaxKey, cancellationToken) ?? 120;
@@ -9925,8 +10230,340 @@ global using System.Threading;
 global using System.Threading.Tasks;
 
 ==============================================================================
+FILE: backend/src/MknMs.Infrastructure/Jobs/EvaluateFillStatusSweepJob.cs
+LINES: 84
+==============================================================================
+
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using MknMs.Application.Common;
+using MknMs.Application.Processes.Operations.EvaluateFillStatus;
+using MknMs.Persistence;
+using Quartz;
+
+namespace MknMs.Infrastructure.Jobs;
+
+/// <summary>
+/// Quartz job that runs the scheduled sweep of process 10.0 Evaluate
+/// Fill Status.
+/// </summary>
+/// <remarks>
+/// §12: 10.0 has two triggers — after assignment changes, and a
+/// scheduled sweep "to catch occurrences whose state changed without a
+/// direct trigger." This job supplies the scheduled sweep. The range
+/// is bounded to the recent past and future in the configured
+/// application timezone, so that an occurrence whose assignments
+/// changed without firing the event path is re-evaluated.
+///
+/// The sweep is bounded to a window wide enough to cover any
+/// occurrence whose state may have changed and narrow enough to keep
+/// each scheduled run cheap. The window is an implementation choice
+/// the specification does not fix.
+///
+/// Specification: §12.
+/// </remarks>
+[DisallowConcurrentExecution]
+public sealed class EvaluateFillStatusSweepJob : IJob
+{
+    private readonly IServiceProvider _services;
+    private readonly ILogger<EvaluateFillStatusSweepJob> _logger;
+
+    public EvaluateFillStatusSweepJob(
+        IServiceProvider services,
+        ILogger<EvaluateFillStatusSweepJob> logger)
+    {
+        _services = services;
+        _logger = logger;
+    }
+
+    public async Task Execute(IJobExecutionContext context)
+    {
+        using var scope = _services.CreateScope();
+        var service = scope.ServiceProvider
+            .GetRequiredService<IEvaluateFillStatusService>();
+        var db = scope.ServiceProvider.GetRequiredService<MknDbContext>();
+        var clock = scope.ServiceProvider.GetRequiredService<TimeProvider>();
+
+        var timeZone = await TimeZoneResolver.ResolveAsync(db, context.CancellationToken);
+        var today = TimeZoneResolver.ToDateInTimeZone(clock.GetUtcNow(), timeZone);
+
+        // Sweep the past 7 days and the next 30 days. The past window
+        // covers occurrences whose assignments changed while an event
+        // trigger was unavailable; the forward window covers upcoming
+        // occurrences whose state may be evaluated in advance.
+        var command = new EvaluateFillStatusCommand
+        {
+            OccurrenceId = null,
+            FromDate = today.AddDays(-7),
+            ToDate = today.AddDays(30),
+        };
+
+        var result = await service.RunAsync(command, context.CancellationToken);
+
+        if (result.Status == "Success")
+        {
+            _logger.LogInformation(
+                "Scheduled fill-status sweep completed: {OccurrencesEvaluated} evaluated, {UnfilledCount} unfilled, {PartiallyFilledCount} partially filled, {FilledCount} filled, {SkippedCancelledCount} skipped.",
+                result.OccurrencesEvaluated,
+                result.UnfilledCount,
+                result.PartiallyFilledCount,
+                result.FilledCount,
+                result.SkippedCancelledCount);
+        }
+        else
+        {
+            _logger.LogError(
+                "Scheduled fill-status sweep failed: {ErrorDetail}",
+                result.ErrorDetail);
+        }
+    }
+}
+
+==============================================================================
+FILE: backend/src/MknMs.Infrastructure/Jobs/GenerateAssignmentJob.cs
+LINES: 82
+==============================================================================
+
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using MknMs.Application.Common;
+using MknMs.Application.Processes.Operations.GenerateAssignment;
+using MknMs.Persistence;
+using Quartz;
+
+namespace MknMs.Infrastructure.Jobs;
+
+/// <summary>
+/// Quartz job that runs process 5.0 Generate Assignment on its
+/// scheduled trigger.
+/// </summary>
+/// <remarks>
+/// §10: 5.0 has two triggers — a scheduled run and a manual
+/// administrator action. The scheduled run "picks up any occurrence
+/// not yet filled, or any occurrence whose assignments have become
+/// incomplete." This job supplies that scheduled trigger with the
+/// command shape it requires: a date range, bounded to today's
+/// occurrences in the configured application timezone.
+///
+/// The date is derived using TimeZoneResolver, the same resolver
+/// process 5.0 itself uses, so "today" means the same thing to the
+/// job and to the service.
+///
+/// [DisallowConcurrentExecution] prevents Quartz from running two
+/// instances of this job at once. The manual endpoint is a separate
+/// path; the service is additive and re-entrant, so a manual trigger
+/// overlapping a scheduled one produces no duplicate data.
+///
+/// Specification: §10.
+/// </remarks>
+[DisallowConcurrentExecution]
+public sealed class GenerateAssignmentJob : IJob
+{
+    private readonly IServiceProvider _services;
+    private readonly ILogger<GenerateAssignmentJob> _logger;
+
+    public GenerateAssignmentJob(
+        IServiceProvider services,
+        ILogger<GenerateAssignmentJob> logger)
+    {
+        _services = services;
+        _logger = logger;
+    }
+
+    public async Task Execute(IJobExecutionContext context)
+    {
+        using var scope = _services.CreateScope();
+        var service = scope.ServiceProvider
+            .GetRequiredService<IGenerateAssignmentService>();
+        var db = scope.ServiceProvider.GetRequiredService<MknDbContext>();
+        var clock = scope.ServiceProvider.GetRequiredService<TimeProvider>();
+
+        var timeZone = await TimeZoneResolver.ResolveAsync(db, context.CancellationToken);
+        var today = TimeZoneResolver.ToDateInTimeZone(clock.GetUtcNow(), timeZone);
+
+        var command = new GenerateAssignmentCommand
+        {
+            OccurrenceId = null,
+            FromDate = today,
+            ToDate = today,
+        };
+
+        var result = await service.RunAsync(command, context.CancellationToken);
+
+        if (result.Status == "Success")
+        {
+            _logger.LogInformation(
+                "Scheduled generate-assignment run completed for {Date}: {OccurrencesProcessed} occurrences processed, {AssignmentsCreated} assignments created.",
+                today,
+                result.OccurrencesProcessed,
+                result.AssignmentsCreated);
+        }
+        else
+        {
+            _logger.LogError(
+                "Scheduled generate-assignment run failed: {ErrorDetail}",
+                result.ErrorDetail);
+        }
+    }
+}
+
+==============================================================================
+FILE: backend/src/MknMs.Infrastructure/Jobs/ManageConfirmationTimeoutJob.cs
+LINES: 69
+==============================================================================
+
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using MknMs.Application.Processes.Operations.ManageConfirmation;
+using Quartz;
+
+namespace MknMs.Infrastructure.Jobs;
+
+/// <summary>
+/// Quartz job that runs the timeout sweep of process 7.0 Manage
+/// Confirmation on its scheduled trigger.
+/// </summary>
+/// <remarks>
+/// §11: 7.0 has two triggers — a member response and a scheduled check
+/// "runs periodically to detect timed-out assignments." This job
+/// supplies that scheduled check. The service reads the target status
+/// from SystemSetting.TimedOutStatusID.
+///
+/// [DisallowConcurrentExecution] prevents Quartz from running two
+/// instances of this job at once. A member response arriving during a
+/// sweep is applied by the respond path, which is a separate
+/// operation; the underlying rows are protected by the schema's
+/// primary keys and the unique constraint on the assignment.
+///
+/// Specification: §11.
+/// </remarks>
+[DisallowConcurrentExecution]
+public sealed class ManageConfirmationTimeoutJob : IJob
+{
+    private readonly IServiceProvider _services;
+    private readonly ILogger<ManageConfirmationTimeoutJob> _logger;
+
+    public ManageConfirmationTimeoutJob(
+        IServiceProvider services,
+        ILogger<ManageConfirmationTimeoutJob> logger)
+    {
+        _services = services;
+        _logger = logger;
+    }
+
+    public async Task Execute(IJobExecutionContext context)
+    {
+        using var scope = _services.CreateScope();
+        var service = scope.ServiceProvider
+            .GetRequiredService<IManageConfirmationService>();
+
+        var command = new ManageConfirmationCommand
+        {
+            Operation = ManageConfirmationOperation.Sweep,
+            AssignmentId = null,
+        };
+
+        var result = await service.RunAsync(command, context.CancellationToken);
+
+        if (result.Status == "Success")
+        {
+            _logger.LogInformation(
+                "Scheduled confirmation timeout sweep completed: {AssignmentsTransitioned} assignments transitioned, {ReplacementsCreated} replacements created, {SlotsLeftVacant} slots left vacant.",
+                result.AssignmentsTransitioned,
+                result.ReplacementsCreated,
+                result.SlotsLeftVacant);
+        }
+        else
+        {
+            _logger.LogError(
+                "Scheduled confirmation timeout sweep failed: {ErrorDetail}",
+                result.ErrorDetail);
+        }
+    }
+}
+
+==============================================================================
+FILE: backend/src/MknMs.Infrastructure/Jobs/MaterializeOccurrencesJob.cs
+LINES: 73
+==============================================================================
+
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using MknMs.Application.Processes.Operations.MaterializeOccurrences;
+using Quartz;
+
+namespace MknMs.Infrastructure.Jobs;
+
+/// <summary>
+/// Quartz job that runs process 11.0 Materialize Occurrences on its
+/// scheduled trigger.
+/// </summary>
+/// <remarks>
+/// §7: 11.0 runs as part of the application's existing scheduled-job
+/// mechanism, daily, at a fixed frequency, not administrator-
+/// configurable. Overlapping runs are not allowed. This job uses
+/// [DisallowConcurrentExecution] so that Quartz never runs two
+/// instances of it at once within the scheduler. The manual endpoint
+/// is a separate trigger path; the service's own advisory lock
+/// (see MaterializeOccurrencesService) covers the case where the
+/// manual trigger and the scheduled trigger would otherwise overlap.
+///
+/// The job resolves IMaterializeOccurrencesService from the job
+/// context's service provider so that the scoped service sees a scoped
+/// DbContext — the standard Quartz.Extensions.Hosting pattern.
+///
+/// Specification: §7, §8.
+/// </remarks>
+[DisallowConcurrentExecution]
+public sealed class MaterializeOccurrencesJob : IJob
+{
+    private readonly IServiceProvider _services;
+    private readonly ILogger<MaterializeOccurrencesJob> _logger;
+
+    public MaterializeOccurrencesJob(
+        IServiceProvider services,
+        ILogger<MaterializeOccurrencesJob> logger)
+    {
+        _services = services;
+        _logger = logger;
+    }
+
+    public async Task Execute(IJobExecutionContext context)
+    {
+        using var scope = _services.CreateScope();
+        var service = scope.ServiceProvider
+            .GetRequiredService<IMaterializeOccurrencesService>();
+
+        var command = new MaterializeOccurrencesCommand
+        {
+            TriggerType = "Scheduled",
+            TriggeredByAdminId = null,
+            HorizonDaysOverride = null,
+        };
+
+        var result = await service.RunAsync(command, context.CancellationToken);
+
+        if (result.Status == "Success")
+        {
+            _logger.LogInformation(
+                "Scheduled materialize run {RunId} completed: {SchedulesEvaluated} schedules evaluated, {OccurrencesCreated} occurrences created.",
+                result.RunId,
+                result.SchedulesEvaluated,
+                result.OccurrencesCreated);
+        }
+        else
+        {
+            _logger.LogError(
+                "Scheduled materialize run {RunId} failed: {ErrorDetail}",
+                result.RunId,
+                result.ErrorDetail);
+        }
+    }
+}
+
+==============================================================================
 FILE: backend/src/MknMs.Infrastructure/MknMs.Infrastructure.csproj
-LINES: 15
+LINES: 20
 ==============================================================================
 
 ﻿<Project Sdk="Microsoft.NET.Sdk">
@@ -9937,6 +10574,11 @@ LINES: 15
     <ProjectReference Include="..\MknMs.Application\MknMs.Application.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Quartz" Version="3.13.0" />
+    <PackageReference Include="Quartz.Extensions.Hosting" Version="3.13.0" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -9944,6 +10586,88 @@ LINES: 15
   </PropertyGroup>
 
 </Project>
+
+==============================================================================
+FILE: backend/src/MknMs.Infrastructure/Scheduling/QuartzSchedulerRegistration.cs
+LINES: 76
+==============================================================================
+
+using Microsoft.Extensions.DependencyInjection;
+using MknMs.Infrastructure.Jobs;
+using Quartz;
+
+namespace MknMs.Infrastructure.Scheduling;
+
+/// <summary>
+/// Registers Quartz.NET with the scheduled jobs the specification
+/// defines.
+/// </summary>
+/// <remarks>
+/// Four processes have a scheduled trigger per §16's trigger summary:
+/// 11.0 (daily), 5.0 (recurring), 7.0 (periodic timeout check), and
+/// 10.0 (periodic sweep). The cadences the specification fixes are:
+///
+///   - 11.0: daily. §7 says "daily, a fixed frequency, not
+///     administrator-configurable." The hour is an implementation
+///     choice; 02:00 in the application timezone runs the pipeline
+///     before the day begins.
+///   - 5.0: §10 says "a recurring run." Daily at 03:00, one hour after
+///     materialization, fills the occurrences that were just created.
+///   - 7.0: §11 says the check "runs periodically." Hourly.
+///   - 10.0: §12 says the sweep runs "periodically." Hourly.
+///
+/// All four use [DisallowConcurrentExecution] on their job classes so
+/// Quartz never runs two instances of the same job at once.
+///
+/// Specification: §7, §10, §11, §12, §16.
+/// </remarks>
+public static class QuartzSchedulerRegistration
+{
+    public static IServiceCollection AddMknScheduledJobs(this IServiceCollection services)
+    {
+        services.AddQuartz(q =>
+        {
+            // 11.0 Materialize Occurrences — daily at 02:00.
+            var materializeKey = new JobKey(nameof(MaterializeOccurrencesJob));
+            q.AddJob<MaterializeOccurrencesJob>(opts => opts.WithIdentity(materializeKey));
+            q.AddTrigger(opts => opts
+                .ForJob(materializeKey)
+                .WithIdentity($"{nameof(MaterializeOccurrencesJob)}-trigger")
+                .WithCronSchedule("0 0 2 * * ?"));
+
+            // 5.0 Generate Assignment — daily at 03:00.
+            var generateKey = new JobKey(nameof(GenerateAssignmentJob));
+            q.AddJob<GenerateAssignmentJob>(opts => opts.WithIdentity(generateKey));
+            q.AddTrigger(opts => opts
+                .ForJob(generateKey)
+                .WithIdentity($"{nameof(GenerateAssignmentJob)}-trigger")
+                .WithCronSchedule("0 0 3 * * ?"));
+
+            // 7.0 Manage Confirmation timeout sweep — hourly.
+            var confirmationKey = new JobKey(nameof(ManageConfirmationTimeoutJob));
+            q.AddJob<ManageConfirmationTimeoutJob>(opts => opts.WithIdentity(confirmationKey));
+            q.AddTrigger(opts => opts
+                .ForJob(confirmationKey)
+                .WithIdentity($"{nameof(ManageConfirmationTimeoutJob)}-trigger")
+                .WithCronSchedule("0 0 * * * ?"));
+
+            // 10.0 Evaluate Fill Status sweep — hourly, offset.
+            var fillKey = new JobKey(nameof(EvaluateFillStatusSweepJob));
+            q.AddJob<EvaluateFillStatusSweepJob>(opts => opts.WithIdentity(fillKey));
+            q.AddTrigger(opts => opts
+                .ForJob(fillKey)
+                .WithIdentity($"{nameof(EvaluateFillStatusSweepJob)}-trigger")
+                .WithCronSchedule("0 30 * * * ?"));
+        });
+
+        services.AddQuartzHostedService(opts =>
+        {
+            opts.WaitForJobsToComplete = true;
+        });
+
+        return services;
+    }
+}
 
 ==============================================================================
 FILE: backend/src/MknMs.Persistence/GlobalUsings.cs
@@ -16696,7 +17420,7 @@ public sealed class FakeDispatchNotificationService : IDispatchNotificationServi
 
 ==============================================================================
 FILE: backend/tests/MknMs.IntegrationTests/GenerateAssignmentTests.cs
-LINES: 365
+LINES: 664
 ==============================================================================
 
 using FluentAssertions;
@@ -17063,16 +17787,314 @@ public class GenerateAssignmentTests : IAsyncLifetime
             readingDuty.DutyId,
             beatrice.MemberId);
     }
+
+    // -----------------------------------------------------------------
+    // Extended criteria coverage — added to satisfy the behavioural
+    // coverage the specification's criteria vocabulary implies.
+    // -----------------------------------------------------------------
+
+    [Fact]
+    public async Task Run_WithGenderCriterion_MatchesOnlyMatchingGender()
+    {
+        var fixture = await SeedFixtureAsync();
+
+        // Replace Reading duty's Tier 1 rule with Gender=Female. Both
+        // Beatrice and Dana are Female, but only Beatrice is eligible.
+        var rule = await _db.DutyRules
+            .FirstAsync(r => r.DutyId == fixture.ReadingDutyId);
+        rule.CriteriaType = "Gender";
+        rule.CriteriaValue = "Female";
+        await _db.SaveChangesAsync();
+
+        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var result = await service.RunAsync(new GenerateAssignmentCommand
+        {
+            OccurrenceId = fixture.OccurrenceId,
+        });
+
+        // Reading duty filled by Beatrice (eligible and Female).
+        result.DutiesFullyFilled.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Run_WithMembershipStageCriterion_MatchesOnlyMatchingStage()
+    {
+        var fixture = await SeedFixtureAsync();
+
+        var rule = await _db.DutyRules
+            .FirstAsync(r => r.DutyId == fixture.ReadingDutyId);
+        rule.CriteriaType = "MembershipStage";
+        rule.CriteriaValue = "Full";
+        await _db.SaveChangesAsync();
+
+        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var result = await service.RunAsync(new GenerateAssignmentCommand
+        {
+            OccurrenceId = fixture.OccurrenceId,
+        });
+
+        result.DutiesFullyFilled.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Run_WithAgeRangeCriterion_MatchingRange()
+    {
+        var fixture = await SeedFixtureAsync();
+
+        // Beatrice born 1995-03-12. At the fixed test clock (2026-10-06)
+        // she is 31. A range of 25-35 matches her.
+        var rule = await _db.DutyRules
+            .FirstAsync(r => r.DutyId == fixture.ReadingDutyId);
+        rule.CriteriaType = "AgeRange";
+        rule.CriteriaValue = "25-35";
+        await _db.SaveChangesAsync();
+
+        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var result = await service.RunAsync(new GenerateAssignmentCommand
+        {
+            OccurrenceId = fixture.OccurrenceId,
+        });
+
+        result.DutiesFullyFilled.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Run_WithAgeRangeCriterion_NonMatchingRange_SlotUnfilled()
+    {
+        var fixture = await SeedFixtureAsync();
+
+        // Beatrice is 31. A range of 5-10 does not match.
+        var rule = await _db.DutyRules
+            .FirstAsync(r => r.DutyId == fixture.ReadingDutyId);
+        rule.CriteriaType = "AgeRange";
+        rule.CriteriaValue = "5-10";
+        await _db.SaveChangesAsync();
+
+        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var result = await service.RunAsync(new GenerateAssignmentCommand
+        {
+            OccurrenceId = fixture.OccurrenceId,
+        });
+
+        // Reading duty unfilled; Welcome duty unfilled as well.
+        result.DutiesUnfilled.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Run_WithTenureCriterion_MatchingThreshold()
+    {
+        var fixture = await SeedFixtureAsync();
+
+        // Beatrice joined 2024-06-01. At 2026-10-06 she has ~857 days.
+        // A 30-day threshold matches.
+        var rule = await _db.DutyRules
+            .FirstAsync(r => r.DutyId == fixture.ReadingDutyId);
+        rule.CriteriaType = "Tenure";
+        rule.CriteriaValue = "30";
+        await _db.SaveChangesAsync();
+
+        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var result = await service.RunAsync(new GenerateAssignmentCommand
+        {
+            OccurrenceId = fixture.OccurrenceId,
+        });
+
+        result.DutiesFullyFilled.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Run_WithTwoTiers_FallsThroughToSecondTier()
+    {
+        var fixture = await SeedFixtureAsync();
+
+        // Replace Reading duty's rule set with two tiers:
+        //   Tier 1: Role=Coordinator (no eligible match)
+        //   Tier 2: Role=Steward (Beatrice matches)
+        var existing = await _db.DutyRules
+            .Where(r => r.DutyId == fixture.ReadingDutyId)
+            .ToListAsync();
+        _db.DutyRules.RemoveRange(existing);
+        await _db.SaveChangesAsync();
+
+        _db.DutyRules.Add(new DutyRule
+        {
+            DutyId = fixture.ReadingDutyId,
+            TierOrder = 1,
+            CriteriaType = "Role",
+            CriteriaValue = "Coordinator",
+            IsActive = true,
+        });
+        _db.DutyRules.Add(new DutyRule
+        {
+            DutyId = fixture.ReadingDutyId,
+            TierOrder = 2,
+            CriteriaType = "Role",
+            CriteriaValue = "Steward",
+            IsActive = true,
+        });
+        await _db.SaveChangesAsync();
+
+        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var result = await service.RunAsync(new GenerateAssignmentCommand
+        {
+            OccurrenceId = fixture.OccurrenceId,
+        });
+
+        // Reading duty filled by Beatrice via Tier 2.
+        result.DutiesFullyFilled.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Run_WithSameTierTwoRulesAndsThem()
+    {
+        var fixture = await SeedFixtureAsync();
+
+        // Tier 1 for Reading duty: Role=Steward AND Gender=Female.
+        // Beatrice matches both; Dana matches both but is not eligible.
+        var existing = await _db.DutyRules
+            .Where(r => r.DutyId == fixture.ReadingDutyId)
+            .ToListAsync();
+        _db.DutyRules.RemoveRange(existing);
+        await _db.SaveChangesAsync();
+
+        _db.DutyRules.Add(new DutyRule
+        {
+            DutyId = fixture.ReadingDutyId,
+            TierOrder = 1,
+            CriteriaType = "Role",
+            CriteriaValue = "Steward",
+            IsActive = true,
+        });
+        _db.DutyRules.Add(new DutyRule
+        {
+            DutyId = fixture.ReadingDutyId,
+            TierOrder = 1,
+            CriteriaType = "Gender",
+            CriteriaValue = "Female",
+            IsActive = true,
+        });
+        await _db.SaveChangesAsync();
+
+        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var result = await service.RunAsync(new GenerateAssignmentCommand
+        {
+            OccurrenceId = fixture.OccurrenceId,
+        });
+
+        // Beatrice matches both criteria; Reading filled.
+        result.DutiesFullyFilled.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Run_WithSameTierTwoRules_AndFails_NoCandidate()
+    {
+        var fixture = await SeedFixtureAsync();
+
+        // Tier 1 for Reading duty: Role=Steward AND Gender=Male.
+        // Beatrice is Female. No match.
+        var existing = await _db.DutyRules
+            .Where(r => r.DutyId == fixture.ReadingDutyId)
+            .ToListAsync();
+        _db.DutyRules.RemoveRange(existing);
+        await _db.SaveChangesAsync();
+
+        _db.DutyRules.Add(new DutyRule
+        {
+            DutyId = fixture.ReadingDutyId,
+            TierOrder = 1,
+            CriteriaType = "Role",
+            CriteriaValue = "Steward",
+            IsActive = true,
+        });
+        _db.DutyRules.Add(new DutyRule
+        {
+            DutyId = fixture.ReadingDutyId,
+            TierOrder = 1,
+            CriteriaType = "Gender",
+            CriteriaValue = "Male",
+            IsActive = true,
+        });
+        await _db.SaveChangesAsync();
+
+        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var result = await service.RunAsync(new GenerateAssignmentCommand
+        {
+            OccurrenceId = fixture.OccurrenceId,
+        });
+
+        // Both duties unfilled.
+        result.DutiesUnfilled.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Run_WithReservedCriterion_ProducesNoCandidates()
+    {
+        var fixture = await SeedFixtureAsync();
+
+        var rule = await _db.DutyRules
+            .FirstAsync(r => r.DutyId == fixture.ReadingDutyId);
+        rule.CriteriaType = "AcceptanceRate";
+        rule.CriteriaValue = "0.5";
+        await _db.SaveChangesAsync();
+
+        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var result = await service.RunAsync(new GenerateAssignmentCommand
+        {
+            OccurrenceId = fixture.OccurrenceId,
+        });
+
+        // Reserved criteria are not evaluated. No candidates. Unfilled.
+        result.DutiesUnfilled.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Run_WithTerminalAssignmentOnOccurrence_DoesNotBlockAvailability()
+    {
+        var fixture = await SeedFixtureAsync();
+
+        // Insert a terminal assignment for Beatrice on Welcome duty.
+        // Terminal statuses do not count toward capacity or availability.
+        var declined = new AssignmentStatus { Name = "Declined", IsTerminal = true };
+        _db.AssignmentStatuses.Add(declined);
+        await _db.SaveChangesAsync();
+
+        var welcomeDutyId = await _db.Duties
+            .Where(d => d.Name == "Welcome duty")
+            .Select(d => d.DutyId)
+            .FirstAsync();
+
+        _db.RosterAssignments.Add(new RosterAssignment
+        {
+            MemberId = fixture.BeatriceMemberId,
+            DutyId = welcomeDutyId,
+            OccurrenceId = fixture.OccurrenceId,
+            AssignmentStatusId = declined.AssignmentStatusId,
+            ApprovedBy = null,
+            AssignmentSource = "Automatic",
+            AssignedBy = null,
+            CreatedAt = _clock.GetUtcNow(),
+        });
+        await _db.SaveChangesAsync();
+
+        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var result = await service.RunAsync(new GenerateAssignmentCommand
+        {
+            OccurrenceId = fixture.OccurrenceId,
+        });
+
+        // Beatrice is still available for Reading duty — her terminal
+        // assignment on Welcome does not block.
+        result.DutiesFullyFilled.Should().Be(1);
+    }
 }
 
 ==============================================================================
 FILE: backend/tests/MknMs.IntegrationTests/ManageConfirmationTests.cs
-LINES: 533
+LINES: 565
 ==============================================================================
 
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging.Abstractions;
 using MknMs.Application.Processes.Operations.DispatchNotification;
 using MknMs.Application.Processes.Operations.ManageConfirmation;
 using MknMs.Domain.D10_ConfigLookups;
@@ -17092,16 +18114,14 @@ namespace MknMs.IntegrationTests;
 /// Integration tests for process 7.0 Manage Confirmation.
 /// </summary>
 /// <remarks>
-/// Runs against mkn_test. Exercises:
-///   - The required-setting refusal on InitialAssignmentStatusID.
-///   - Status transitions with a non-terminal target (no re-resolve).
-///   - Status transitions with a terminal target (re-resolve).
-///   - Replacement creation with the correct provenance fields.
-///   - Cumulative exclusion of members holding a terminal assignment
-///     on the affected slot.
-///   - Timeout sweep: the rule now - CreatedAt >= ConfirmationTimeoutHours.
-///   - Sweep with the required setting missing.
-///   - Invalid command shape.
+/// Runs against mkn_test. The service reads the target status from
+/// SystemSetting based on the operation:
+///
+///   - Confirm reads InitialAssignmentStatusID
+///   - Decline reads DeclinedStatusID
+///   - Sweep reads TimedOutStatusID
+///
+/// The fixture seeds all three settings so each operation resolves.
 ///
 /// Reference: docs/processes/operations/7.0-manage-confirmation.md,
 /// Specification §11.
@@ -17140,10 +18160,6 @@ public class ManageConfirmationTests : IAsyncLifetime
         return Task.CompletedTask;
     }
 
-    // -----------------------------------------------------------------
-    // Fixture
-    // -----------------------------------------------------------------
-
     private sealed record Fixture(
         int OccurrenceId,
         int ReadingDutyId,
@@ -17152,13 +18168,13 @@ public class ManageConfirmationTests : IAsyncLifetime
         int DanaMemberId,
         int ProposedStatusId,
         int ConfirmedStatusId,
-        int DeclinedStatusId);
+        int DeclinedStatusId,
+        int TimedOutStatusId);
 
     private async Task<Fixture> SeedFixtureAsync(
         bool includeInitialStatusSetting = true,
         bool includeTimeoutSetting = true)
     {
-        // Lookups.
         _db.OutcomeStates.Add(new OutcomeState { Name = "Unfilled" });
         _db.ServiceTypes.Add(new ServiceType { Name = "Regular" });
         _db.TimeOfDays.Add(new TimeOfDay { Name = "Morning" });
@@ -17179,9 +18195,6 @@ public class ManageConfirmationTests : IAsyncLifetime
         var tier = new PermissionTier { Name = "Full Admin" };
         _db.PermissionTiers.Add(tier);
 
-        // Assignment statuses. Proposed = non-terminal, Confirmed =
-        // non-terminal (an admin may mark a confirmation either way),
-        // Declined = terminal, Timed Out = terminal.
         var proposed = new AssignmentStatus { Name = "Proposed", IsTerminal = false };
         var confirmed = new AssignmentStatus { Name = "Confirmed", IsTerminal = false };
         var declined = new AssignmentStatus { Name = "Declined", IsTerminal = true };
@@ -17190,12 +18203,6 @@ public class ManageConfirmationTests : IAsyncLifetime
         _db.AssignmentStatuses.Add(confirmed);
         _db.AssignmentStatuses.Add(declined);
         _db.AssignmentStatuses.Add(timedOut);
-
-        if (includeInitialStatusSetting)
-        {
-            // Placeholder value; populated with the real id after
-            // SaveChanges so it can reference the confirmed status.
-        }
 
         await _db.SaveChangesAsync();
 
@@ -17209,6 +18216,20 @@ public class ManageConfirmationTests : IAsyncLifetime
             });
         }
 
+        _db.SystemSettings.Add(new SystemSetting
+        {
+            Key = "DeclinedStatusID",
+            Value = declined.AssignmentStatusId.ToString(),
+            Required = true,
+        });
+
+        _db.SystemSettings.Add(new SystemSetting
+        {
+            Key = "TimedOutStatusID",
+            Value = timedOut.AssignmentStatusId.ToString(),
+            Required = true,
+        });
+
         if (includeTimeoutSetting)
         {
             _db.SystemSettings.Add(new SystemSetting
@@ -17221,7 +18242,6 @@ public class ManageConfirmationTests : IAsyncLifetime
 
         await _db.SaveChangesAsync();
 
-        // Members.
         var alex = new Member
         {
             Name = "Alex", Surname = "Example",
@@ -17311,7 +18331,6 @@ public class ManageConfirmationTests : IAsyncLifetime
         _db.ServiceSchedules.Add(schedule);
         await _db.SaveChangesAsync();
 
-        // Duty rules: Reading duty prefers Steward.
         _db.DutyRules.Add(new DutyRule
         {
             DutyId = readingDuty.DutyId,
@@ -17322,7 +18341,6 @@ public class ManageConfirmationTests : IAsyncLifetime
         });
         await _db.SaveChangesAsync();
 
-        // Eligibility: Beatrice and Dana eligible for Reading duty.
         _db.Eligibilities.Add(new Eligibility
         {
             MemberId = beatrice.MemberId,
@@ -17358,8 +18376,6 @@ public class ManageConfirmationTests : IAsyncLifetime
         _db.ServiceOccurrences.Add(occurrence);
         await _db.SaveChangesAsync();
 
-        // Existing assignment: Beatrice on Reading duty, NULL status,
-        // created "now" (inside the timeout window).
         var assignment = new RosterAssignment
         {
             MemberId = beatrice.MemberId,
@@ -17382,7 +18398,8 @@ public class ManageConfirmationTests : IAsyncLifetime
             dana.MemberId,
             proposed.AssignmentStatusId,
             confirmed.AssignmentStatusId,
-            declined.AssignmentStatusId);
+            declined.AssignmentStatusId,
+            timedOut.AssignmentStatusId);
     }
 
     // -----------------------------------------------------------------
@@ -17390,16 +18407,15 @@ public class ManageConfirmationTests : IAsyncLifetime
     // -----------------------------------------------------------------
 
     [Fact]
-    public async Task Respond_WithNonTerminalStatus_TransitionsWithoutReplacement()
+    public async Task Confirm_TransitionsToInitialStatusWithoutReplacement()
     {
         var fixture = await SeedFixtureAsync();
         var service = new ManageConfirmationService(_db, _notification, _clock);
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
+            Operation = ManageConfirmationOperation.Confirm,
             AssignmentId = fixture.AssignmentId,
-            TargetStatusId = fixture.ConfirmedStatusId,
-            IsSweep = false,
         });
 
         result.Status.Should().Be("Success");
@@ -17416,16 +18432,15 @@ public class ManageConfirmationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Respond_WithTerminalStatus_AndCandidateAvailable_CreatesReplacement()
+    public async Task Decline_WithTerminalStatus_AndCandidateAvailable_CreatesReplacement()
     {
         var fixture = await SeedFixtureAsync();
         var service = new ManageConfirmationService(_db, _notification, _clock);
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
+            Operation = ManageConfirmationOperation.Decline,
             AssignmentId = fixture.AssignmentId,
-            TargetStatusId = fixture.DeclinedStatusId,
-            IsSweep = false,
         });
 
         result.Status.Should().Be("Success");
@@ -17454,11 +18469,10 @@ public class ManageConfirmationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Respond_WithTerminalStatus_AndNoCandidate_SlotLeftVacant()
+    public async Task Decline_WithTerminalStatus_AndNoCandidate_SlotLeftVacant()
     {
         var fixture = await SeedFixtureAsync();
 
-        // Remove Dana's eligibility so no candidate remains.
         var danaEligibility = await _db.Eligibilities
             .Where(e => e.MemberId == fixture.DanaMemberId)
             .ToListAsync();
@@ -17469,9 +18483,8 @@ public class ManageConfirmationTests : IAsyncLifetime
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
+            Operation = ManageConfirmationOperation.Decline,
             AssignmentId = fixture.AssignmentId,
-            TargetStatusId = fixture.DeclinedStatusId,
-            IsSweep = false,
         });
 
         result.Status.Should().Be("Success");
@@ -17484,12 +18497,10 @@ public class ManageConfirmationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Respond_WithTerminalStatus_ExcludesMemberAlreadyTerminalOnThisSlot()
+    public async Task Decline_WithTerminalStatus_ExcludesMemberAlreadyTerminalOnThisSlot()
     {
         var fixture = await SeedFixtureAsync();
 
-        // Give Dana a terminal assignment on the same slot. She is now
-        // cumulatively excluded, even though she is eligible.
         _db.RosterAssignments.Add(new RosterAssignment
         {
             MemberId = fixture.DanaMemberId,
@@ -17507,9 +18518,8 @@ public class ManageConfirmationTests : IAsyncLifetime
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
+            Operation = ManageConfirmationOperation.Decline,
             AssignmentId = fixture.AssignmentId,
-            TargetStatusId = fixture.DeclinedStatusId,
-            IsSweep = false,
         });
 
         result.Status.Should().Be("Success");
@@ -17517,7 +18527,7 @@ public class ManageConfirmationTests : IAsyncLifetime
         result.SlotsLeftVacant.Should().Be(1);
 
         var totalAssignments = await _db.RosterAssignments.CountAsync();
-        totalAssignments.Should().Be(2); // original + Dana's terminal
+        totalAssignments.Should().Be(2);
     }
 
     [Fact]
@@ -17525,8 +18535,6 @@ public class ManageConfirmationTests : IAsyncLifetime
     {
         var fixture = await SeedFixtureAsync();
 
-        // Backdate the assignment's CreatedAt so it is beyond the
-        // 48-hour timeout window.
         var assignment = await _db.RosterAssignments
             .FirstAsync(a => a.AssignmentId == fixture.AssignmentId);
         assignment.CreatedAt = _clock.GetUtcNow().AddHours(-72);
@@ -17536,9 +18544,7 @@ public class ManageConfirmationTests : IAsyncLifetime
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
-            AssignmentId = null,
-            TargetStatusId = fixture.DeclinedStatusId,
-            IsSweep = true,
+            Operation = ManageConfirmationOperation.Sweep,
         });
 
         result.Status.Should().Be("Success");
@@ -17547,7 +18553,7 @@ public class ManageConfirmationTests : IAsyncLifetime
 
         var original = await _db.RosterAssignments
             .FirstAsync(a => a.AssignmentId == fixture.AssignmentId);
-        original.AssignmentStatusId.Should().Be(fixture.DeclinedStatusId);
+        original.AssignmentStatusId.Should().Be(fixture.TimedOutStatusId);
     }
 
     [Fact]
@@ -17556,13 +18562,9 @@ public class ManageConfirmationTests : IAsyncLifetime
         var fixture = await SeedFixtureAsync();
         var service = new ManageConfirmationService(_db, _notification, _clock);
 
-        // Assignment's CreatedAt is "now", well inside the 48-hour
-        // window. Nothing should be swept.
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
-            AssignmentId = null,
-            TargetStatusId = fixture.DeclinedStatusId,
-            IsSweep = true,
+            Operation = ManageConfirmationOperation.Sweep,
         });
 
         result.Status.Should().Be("Success");
@@ -17575,20 +18577,41 @@ public class ManageConfirmationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Run_WithoutInitialAssignmentStatusSetting_Fails()
+    public async Task Confirm_WithoutInitialStatusSetting_Fails()
     {
         var fixture = await SeedFixtureAsync(includeInitialStatusSetting: false);
         var service = new ManageConfirmationService(_db, _notification, _clock);
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
+            Operation = ManageConfirmationOperation.Confirm,
             AssignmentId = fixture.AssignmentId,
-            TargetStatusId = fixture.ConfirmedStatusId,
-            IsSweep = false,
         });
 
         result.Status.Should().Be("Failure");
         result.ErrorDetail.Should().Contain("InitialAssignmentStatusID");
+    }
+
+    [Fact]
+    public async Task Decline_WithoutDeclinedStatusSetting_Fails()
+    {
+        var fixture = await SeedFixtureAsync();
+
+        var setting = await _db.SystemSettings
+            .FirstAsync(s => s.Key == "DeclinedStatusID");
+        _db.SystemSettings.Remove(setting);
+        await _db.SaveChangesAsync();
+
+        var service = new ManageConfirmationService(_db, _notification, _clock);
+
+        var result = await service.RunAsync(new ManageConfirmationCommand
+        {
+            Operation = ManageConfirmationOperation.Decline,
+            AssignmentId = fixture.AssignmentId,
+        });
+
+        result.Status.Should().Be("Failure");
+        result.ErrorDetail.Should().Contain("DeclinedStatusID");
     }
 
     [Fact]
@@ -17597,16 +18620,48 @@ public class ManageConfirmationTests : IAsyncLifetime
         await SeedFixtureAsync();
         var service = new ManageConfirmationService(_db, _notification, _clock);
 
-        var result = await service.RunAsync(new ManageConfirmationCommand());
+        // Confirm without an AssignmentId is invalid.
+        var result = await service.RunAsync(new ManageConfirmationCommand
+        {
+            Operation = ManageConfirmationOperation.Confirm,
+        });
 
         result.Status.Should().Be("Failure");
-        result.ErrorDetail.Should().Contain("Command must be");
+        result.ErrorDetail.Should().Contain("valid operation");
+    }
+
+    [Fact]
+    public async Task Run_ReadsTargetStatusFromSetting_NotFromCommand()
+    {
+        var fixture = await SeedFixtureAsync();
+
+        // Change InitialAssignmentStatusID to point at the Proposed
+        // status. A Confirm should now transition to Proposed, not
+        // Confirmed. This proves the service reads the setting.
+        var setting = await _db.SystemSettings
+            .FirstAsync(s => s.Key == "InitialAssignmentStatusID");
+        setting.Value = fixture.ProposedStatusId.ToString();
+        await _db.SaveChangesAsync();
+
+        var service = new ManageConfirmationService(_db, _notification, _clock);
+
+        var result = await service.RunAsync(new ManageConfirmationCommand
+        {
+            Operation = ManageConfirmationOperation.Confirm,
+            AssignmentId = fixture.AssignmentId,
+        });
+
+        result.Status.Should().Be("Success");
+
+        var assignment = await _db.RosterAssignments
+            .FirstAsync(a => a.AssignmentId == fixture.AssignmentId);
+        assignment.AssignmentStatusId.Should().Be(fixture.ProposedStatusId);
     }
 }
 
 ==============================================================================
 FILE: backend/tests/MknMs.IntegrationTests/MaterializeOccurrencesTests.cs
-LINES: 240
+LINES: 313
 ==============================================================================
 
 using FluentAssertions;
@@ -17619,6 +18674,7 @@ using MknMs.Domain.D3_BranchTimeSlotService;
 using MknMs.Domain.D10_ConfigLookups;
 using MknMs.Persistence;
 using Xunit;
+using Npgsql;
 
 namespace MknMs.IntegrationTests;
 
@@ -17831,6 +18887,78 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
 
         _db.ServiceSchedules.Add(schedule);
         await _db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task Run_WhenLockHeldExternally_FailsWithOverlapMessage()
+    {
+        await SeedMinimalConfigurationAsync();
+
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero));
+        var service = new MaterializeOccurrencesService(_db, clock);
+
+        await using var externalConnection = new NpgsqlConnection(TestConnectionString);
+        await externalConnection.OpenAsync();
+
+        await using (var lockCmd = externalConnection.CreateCommand())
+        {
+            lockCmd.CommandText = "SELECT pg_try_advisory_lock(1100)";
+            var acquired = await lockCmd.ExecuteScalarAsync();
+            acquired.Should().Be(true);
+        }
+
+        try
+        {
+            var result = await service.RunAsync(new MaterializeOccurrencesCommand
+            {
+                TriggerType = "Scheduled",
+            });
+
+            result.Status.Should().Be("Failure");
+            result.ErrorDetail.Should().Contain("Another materializer run is in progress");
+            result.OccurrencesCreated.Should().Be(0);
+
+            var occurrenceCount = await _db.ServiceOccurrences.CountAsync();
+            occurrenceCount.Should().Be(0);
+        }
+        finally
+        {
+            await using var unlockCmd = externalConnection.CreateCommand();
+            unlockCmd.CommandText = "SELECT pg_advisory_unlock(1100)";
+            await unlockCmd.ExecuteScalarAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Run_AfterExternalLockReleased_Succeeds()
+    {
+        await SeedMinimalConfigurationAsync();
+
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero));
+        var service = new MaterializeOccurrencesService(_db, clock);
+
+        await using var externalConnection = new NpgsqlConnection(TestConnectionString);
+        await externalConnection.OpenAsync();
+
+        await using (var lockCmd = externalConnection.CreateCommand())
+        {
+            lockCmd.CommandText = "SELECT pg_try_advisory_lock(1100)";
+            await lockCmd.ExecuteScalarAsync();
+        }
+
+        await using (var unlockCmd = externalConnection.CreateCommand())
+        {
+            unlockCmd.CommandText = "SELECT pg_advisory_unlock(1100)";
+            await unlockCmd.ExecuteScalarAsync();
+        }
+
+        var result = await service.RunAsync(new MaterializeOccurrencesCommand
+        {
+            TriggerType = "Scheduled",
+        });
+
+        result.Status.Should().Be("Success");
+        result.OccurrencesCreated.Should().Be(4);
     }
 }
 
@@ -18174,6 +19302,122 @@ public class RecordAttendanceTests : IAsyncLifetime
 
         var count = await _db.AttendanceRecords.CountAsync();
         count.Should().Be(0);
+    }
+}
+
+==============================================================================
+FILE: backend/tests/MknMs.IntegrationTests/TimeZoneResolverTests.cs
+LINES: 110
+==============================================================================
+
+using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
+using MknMs.Application.Common;
+using MknMs.Domain.D11_SystemSetting;
+using MknMs.Persistence;
+using Xunit;
+
+namespace MknMs.IntegrationTests;
+
+/// <summary>
+/// Tests for TimeZoneResolver.
+/// </summary>
+/// <remarks>
+/// Proves the two behaviours the resolver must have:
+///   - A configured ApplicationTimeZone is respected when it is present.
+///   - The resolver falls back to UTC when the setting is absent.
+///
+/// Reference: §7 — "using the configured system/application timezone."
+/// </remarks>
+public class TimeZoneResolverTests : IAsyncLifetime
+{
+    private const string TestConnectionString =
+        "Host=127.0.0.1;Port=5432;Database=mkn_test;Username=mkn_dev";
+
+    private MknDbContext _db = null!;
+
+    public async Task InitializeAsync()
+    {
+        var options = new DbContextOptionsBuilder<MknDbContext>()
+            .UseNpgsql(TestConnectionString)
+            .Options;
+
+        _db = new MknDbContext(options);
+
+        await _db.Database.ExecuteSqlRawAsync(
+            "TRUNCATE TABLE materializer_run, attendance_record, roster_assignment, " +
+            "service_occurrence_duty, service_occurrence, service_schedule, " +
+            "service_definition_duty, branch_time_slot, service_definition, " +
+            "service_type, time_of_day, branch, identifier_history, eligibility, " +
+            "duty_rule, admin, member, role, duty, system_setting, " +
+            "outcome_state, assignment_status, permission_tier RESTART IDENTITY CASCADE;");
+    }
+
+    public Task DisposeAsync()
+    {
+        _db.Dispose();
+        return Task.CompletedTask;
+    }
+
+    [Fact]
+    public async Task Resolve_WithConfiguredTimeZone_ReturnsThatZone()
+    {
+        _db.SystemSettings.Add(new SystemSetting
+        {
+            Key = "ApplicationTimeZone",
+            Value = "Africa/Johannesburg",
+            Required = false,
+        });
+        await _db.SaveChangesAsync();
+
+        var tz = await TimeZoneResolver.ResolveAsync(_db);
+
+        tz.Id.Should().Be("Africa/Johannesburg");
+    }
+
+    [Fact]
+    public async Task Resolve_WithoutConfiguredTimeZone_FallsBackToUtc()
+    {
+        var tz = await TimeZoneResolver.ResolveAsync(_db);
+
+        tz.Id.Should().Be("UTC");
+    }
+
+    [Fact]
+    public async Task Resolve_WithUnrecognisedValue_FallsBackToUtc()
+    {
+        _db.SystemSettings.Add(new SystemSetting
+        {
+            Key = "ApplicationTimeZone",
+            Value = "Not/ARealTimeZone",
+            Required = false,
+        });
+        await _db.SaveChangesAsync();
+
+        var tz = await TimeZoneResolver.ResolveAsync(_db);
+
+        tz.Id.Should().Be("UTC");
+    }
+
+    [Fact]
+    public async Task ToDateInTimeZone_NearMidnight_ResolvesToCorrectDate()
+    {
+        // Johannesburg is UTC+2. An instant at 22:30 UTC on the 6th is
+        // 00:30 on the 7th in Johannesburg — the next day.
+        var instant = new DateTimeOffset(2026, 10, 6, 22, 30, 0, TimeSpan.Zero);
+
+        _db.SystemSettings.Add(new SystemSetting
+        {
+            Key = "ApplicationTimeZone",
+            Value = "Africa/Johannesburg",
+            Required = false,
+        });
+        await _db.SaveChangesAsync();
+
+        var tz = await TimeZoneResolver.ResolveAsync(_db);
+        var date = TimeZoneResolver.ToDateInTimeZone(instant, tz);
+
+        date.Should().Be(new DateOnly(2026, 10, 7));
     }
 }
 
