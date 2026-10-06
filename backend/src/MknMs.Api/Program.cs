@@ -15,6 +15,12 @@ using MknMs.Application.Processes.Configuration.ManageIdentifierHistory;
 using MknMs.Application.Processes.Configuration.ManageMemberRecord;
 using MknMs.Application.Processes.Configuration.ManageProgram;
 using MknMs.Application.Processes.Configuration.ManageProgramItem;
+using MknMs.Application.Processes.Operations.DispatchNotification;
+using MknMs.Application.Processes.Operations.EvaluateFillStatus;
+using MknMs.Application.Processes.Operations.RecordAttendance;
+using MknMs.Application.Processes.Operations.CreateManualAssignment;
+using MknMs.Application.Processes.Operations.GenerateAssignment;
+using MknMs.Application.Processes.Operations.ManageConfirmation;
 using MknMs.Application.Processes.Operations.MaterializeOccurrences;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -68,6 +74,24 @@ builder.Services.AddScoped<IManageEventDutyService, ManageEventDutyService>();
 // Operations layer services.
 // ---------------------------------------------------------------------
 
+// 5.0 Generate Assignment.
+builder.Services.AddScoped<IGenerateAssignmentService, GenerateAssignmentService>();
+
+// 7.0 Manage Confirmation.
+builder.Services.AddScoped<IManageConfirmationService, ManageConfirmationService>();
+
+// 9.0 Dispatch Notification — stub implementation until 9.0 is built.
+builder.Services.AddScoped<IDispatchNotificationService, DispatchNotificationService>();
+
+// 10.0 Evaluate Fill Status.
+builder.Services.AddScoped<IEvaluateFillStatusService, EvaluateFillStatusService>();
+
+// 6.0 Record Attendance.
+builder.Services.AddScoped<IRecordAttendanceService, RecordAttendanceService>();
+
+// 12.0 Create Manual Assignment.
+builder.Services.AddScoped<ICreateManualAssignmentService, CreateManualAssignmentService>();
+
 // 11.0 Materialize Occurrences.
 builder.Services.AddScoped<IMaterializeOccurrencesService, MaterializeOccurrencesService>();
 
@@ -97,5 +121,10 @@ app.MapGet("/", () => new
 // Process endpoints.
 app.MapMaterializeOccurrencesEndpoint();
 app.MapConfigurationEndpoints();
+app.MapGenerateAssignmentEndpoint();
+app.MapManageConfirmationEndpoint();
+app.MapEvaluateFillStatusEndpoint();
+app.MapRecordAttendanceEndpoint();
+app.MapCreateManualAssignmentEndpoint();
 
 app.Run();

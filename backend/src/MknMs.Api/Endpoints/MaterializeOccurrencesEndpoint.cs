@@ -26,9 +26,19 @@ public static class MaterializeOccurrencesEndpoint
             {
                 var requestValue = request ?? new MaterializeOccurrencesRequest();
 
+                var triggerType = requestValue.TriggerType ?? "Manual";
+
+                if (triggerType != "Manual" && triggerType != "Scheduled")
+                {
+                    return Results.BadRequest(new
+                    {
+                        error = "TriggerType must be \"Manual\" or \"Scheduled\".",
+                    });
+                }
+
                 var command = new MaterializeOccurrencesCommand
                 {
-                    TriggerType = requestValue.TriggerType ?? "Manual",
+                    TriggerType = triggerType,
                     TriggeredByAdminId = requestValue.TriggeredByAdminId,
                     HorizonDaysOverride = requestValue.HorizonDaysOverride,
                 };
