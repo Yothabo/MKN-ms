@@ -20,8 +20,13 @@ namespace MknMs.IntegrationTests;
 /// The real DispatchNotificationService is exercised. Its transport is
 /// structured logging (spec §14.1.2 places the channel mechanism
 /// outside the schema), so a capturing ILogger stands in for the
-/// destination. The tests assert on the composed message and the
-/// channel name, and confirm the service writes nothing.
+/// destination.
+///
+/// §14.1.2 defines no channel-specific fallback. A NotificationChannel
+/// that is absent and Required = true surfaces a configuration error; a
+/// channel that is absent and Required = false, or a channel whose
+/// value is not recognised, produces no send and no log. These tests
+/// exercise all three of those cases.
 /// </remarks>
 public class DispatchNotificationTests : IAsyncLifetime
 {
@@ -59,7 +64,9 @@ public class DispatchNotificationTests : IAsyncLifetime
         int OccurrenceId,
         int DutyId);
 
-    private async Task<Fixture> SeedFixtureAsync(string? notificationChannel = "Log")
+    private async Task<Fixture> SeedFixtureAsync(
+        string? notificationChannel = "Log",
+        bool notificationChannelRequired = false)
     {
         var serviceType = new ServiceType { Name = "Regular" };
         var timeOfDay = new TimeOfDay { Name = "Morning" };
@@ -80,7 +87,7 @@ public class DispatchNotificationTests : IAsyncLifetime
             {
                 Key = "NotificationChannel",
                 Value = notificationChannel,
-                Required = false,
+                Required = notificationChannelRequired,
             });
             await _db.SaveChangesAsync();
         }
@@ -236,29 +243,32 @@ public class DispatchNotificationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Dispatch_WithoutChannelSetting_UsesLogDefault()
+    public async Task Dispatch_WithChannelSettingAbsentAndNotRequired_DoesNotLog()
     {
+        // §14.1.2: absent and Required = false → no notification.
         var f = await SeedFixtureAsync(notificationChannel: null);
         var logger = new CapturingLogger<DispatchNotificationService>();
         var service = new DispatchNotificationService(_db, logger);
 
         await service.DispatchAssignmentNoticeAsync(f.Assignment);
 
-        logger.Entries.Should().HaveCount(1);
-        logger.Entries[0].Message.Should().Contain("Log");
+        logger.Entries.Should().BeEmpty(
+            "an absent optional NotificationChannel must not log (§14.1.2)");
     }
 
     [Fact]
-    public async Task Dispatch_WithUnimplementedChannel_StillLogs()
+    public async Task Dispatch_WithUnimplementedChannel_DoesNotLog()
     {
+        // §14.1.2: an unrecognised channel value produces no send and no
+        // log. There is no fallback to logging.
         var f = await SeedFixtureAsync(notificationChannel: "Email");
         var logger = new CapturingLogger<DispatchNotificationService>();
         var service = new DispatchNotificationService(_db, logger);
 
         await service.DispatchAssignmentNoticeAsync(f.Assignment);
 
-        logger.Entries.Should().HaveCount(1);
-        logger.Entries[0].Message.Should().Contain("Email");
+        logger.Entries.Should().BeEmpty(
+            "an unimplemented channel must not silently log (§14.1.2)");
     }
 
     [Fact]

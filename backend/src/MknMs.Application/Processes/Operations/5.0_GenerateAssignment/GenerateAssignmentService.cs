@@ -305,6 +305,10 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
         return new OccurrenceFillOutcome(dutyOutcomes, totalCreated);
     }
 
+    // -----------------------------------------------------------------
+    // Effective duty list
+    // -----------------------------------------------------------------
+
     private sealed record RequiredDuty(int DutyId, int RequiredSlotCount);
 
     private async Task<List<RequiredDuty>> ResolveEffectiveDutiesAsync(
@@ -394,10 +398,11 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
         CancellationToken cancellationToken)
     {
         // Step 1 — Eligibility gate. A member is a candidate only if
-        // they have an applicable Eligibility row for this duty: latest
-        // GrantedDate where RevokedDate is null, tiebroken by greatest
-        // EligibilityId (§10.1.4).
-        var eligibleMemberIds = await ResolveEligibleMembersAsync(dutyId, cancellationToken);
+        // they have an applicable Eligibility row for this duty: the
+        // row with the latest GrantedDate that is in the past and whose
+        // RevokedDate is either null or in the future (§10.1.4).
+        var eligibleMemberIds = await ResolveEligibleMembersAsync(
+            dutyId, today, cancellationToken);
 
         if (eligibleMemberIds.Count == 0)
         {
@@ -496,16 +501,19 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
 
     private async Task<HashSet<int>> ResolveEligibleMembersAsync(
         int dutyId,
+        DateOnly today,
         CancellationToken cancellationToken)
     {
-        // For each member, the applicable Eligibility row is the one
-        // with the latest GrantedDate whose RevokedDate is null,
-        // tiebroken by the greatest EligibilityId.
-        //
-        // This is expressed as a single query that selects, per member,
-        // the winning row.
+        // §10.1.4 as documented in the 5.0 process contract:
+        //   - the row whose GrantedDate is in the past,
+        //   - whose RevokedDate is either null or in the future.
+        // The applicable row per (member, duty) is the one with the
+        // latest GrantedDate among those, tiebroken by the greatest
+        // EligibilityId.
         var rows = await _db.Eligibilities
-            .Where(e => e.DutyId == dutyId && e.RevokedDate == null)
+            .Where(e => e.DutyId == dutyId
+                && e.GrantedDate <= today
+                && (e.RevokedDate == null || e.RevokedDate > today))
             .ToListAsync(cancellationToken);
 
         var eligible = rows
@@ -514,7 +522,6 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
                 .OrderByDescending(e => e.GrantedDate)
                 .ThenByDescending(e => e.EligibilityId)
                 .First())
-            .Where(e => e.RevokedDate == null)
             .Select(e => e.MemberId)
             .ToHashSet();
 
@@ -555,15 +562,19 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
                 return string.Equals(member.MembershipStage, criteriaValue, StringComparison.OrdinalIgnoreCase);
 
             case "BranchAttendanceRecency":
+                // §10.1.5: the criterion is "Member has an
+                // AttendanceRecord at the specified branch within the
+                // configured window." The specified branch is the
+                // branch of the occurrence being filled; the window is
+                // the rule's CriteriaValue, in days.
                 return await EvaluateBranchAttendanceRecencyAsync(
-                    member, criteriaValue, occurrence, branchAttendanceCache, cancellationToken);
+                    member, criteriaValue, occurrence, cancellationToken);
 
             case "EligibilityFlag":
                 // The Eligibility Flag criterion references a duty; the
-                // member must have a current Eligibility grant for it.
-                // The CriteriaValue is the duty name or id — for the
-                // current implementation, treat it as a duty id.
-                return await EvaluateEligibilityFlagAsync(member, criteriaValue, cancellationToken);
+                // member must hold a current Eligibility grant for it.
+                return await EvaluateEligibilityFlagAsync(
+                    member, criteriaValue, today, cancellationToken);
 
             case "AcceptanceRate":
             case "DutiesCarried":
@@ -662,30 +673,58 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
         Member member,
         string criteriaValue,
         ServiceOccurrence occurrence,
-        Dictionary<int, bool> cache,
         CancellationToken cancellationToken)
     {
-        // CriteriaValue is a window in days. Attendance is branch-agnostic
-        // for this implementation — the criterion is presence at any
-        // occurrence within the window, matching the MKN default.
+        // §10.1.5: "Member has an AttendanceRecord at the specified
+        // branch within the configured window." CriteriaValue is the
+        // window in days. The specified branch is the branch of the
+        // occurrence being filled, resolved through the occurrence's
+        // schedule and time slot.
         if (!int.TryParse(criteriaValue, out var windowDays))
+        {
+            return false;
+        }
+
+        // The occurrence's branch. Event-sourced occurrences (no
+        // schedule) have no branch context and cannot satisfy the
+        // criterion.
+        var occurrenceBranchId = await _db.ServiceSchedules
+            .Where(s => s.ScheduleId == occurrence.ScheduleId)
+            .Select(s => (int?)s.TimeSlot.BranchId)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (occurrenceBranchId is null)
         {
             return false;
         }
 
         var cutoff = _clock.GetUtcNow().AddDays(-windowDays);
 
+        // Attendance records whose own occurrence is at the same branch
+        // as the occurrence being filled, within the window.
         var hasRecent = await _db.AttendanceRecords
-            .AnyAsync(a => a.MemberId == member.MemberId
-                && a.Timestamp >= cutoff,
-                cancellationToken);
+            .Where(a => a.MemberId == member.MemberId
+                && a.Timestamp >= cutoff)
+            .Join(
+                _db.ServiceOccurrences,
+                a => a.OccurrenceId,
+                o => o.OccurrenceId,
+                (a, o) => new { Attendance = a, Occurrence = o })
+            .Join(
+                _db.ServiceSchedules,
+                x => x.Occurrence.ScheduleId,
+                s => (int?)s.ScheduleId,
+                (x, s) => new { x.Attendance, BranchId = s.TimeSlot.BranchId })
+            .AnyAsync(x => x.BranchId == occurrenceBranchId.Value, cancellationToken);
 
         return hasRecent;
     }
 
+
     private async Task<bool> EvaluateEligibilityFlagAsync(
         Member member,
         string criteriaValue,
+        DateOnly today,
         CancellationToken cancellationToken)
     {
         // CriteriaValue names a duty (by id or name). We match by id
@@ -695,10 +734,13 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
             return false;
         }
 
+        // §10.1.4: the grant must be in effect today — GrantedDate not
+        // in the future, RevokedDate either absent or in the future.
         var exists = await _db.Eligibilities
             .AnyAsync(e => e.MemberId == member.MemberId
                 && e.DutyId == dutyId
-                && e.RevokedDate == null,
+                && e.GrantedDate <= today
+                && (e.RevokedDate == null || e.RevokedDate > today),
                 cancellationToken);
 
         return exists;

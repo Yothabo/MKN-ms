@@ -6437,7 +6437,7 @@ public sealed record CreateManualAssignmentResult
 
 ==============================================================================
 FILE: backend/src/MknMs.Application/Processes/Operations/12.0_CreateManualAssignment/CreateManualAssignmentService.cs
-LINES: 190
+LINES: 201
 ==============================================================================
 
 using MknMs.Application.Processes.Operations.DispatchNotification;
@@ -6458,6 +6458,10 @@ namespace MknMs.Application.Processes.Operations.CreateManualAssignment;
 /// capacity and per-occurrence availability are not enforced.
 /// Uniqueness on (MemberId, DutyId, OccurrenceId) is enforced by the
 /// database and is a hard failure, not a soft report.
+///
+/// Eligibility resolution follows §10.1.4 exactly: the grant must be in
+/// effect today — GrantedDate not in the future, RevokedDate either
+/// absent or in the future.
 ///
 /// Specification: §17.
 /// </remarks>
@@ -6483,6 +6487,11 @@ public sealed class CreateManualAssignmentService : ICreateManualAssignmentServi
     {
         try
         {
+            // §10.1.4: eligibility is date-bounded. Resolve today once
+            // in the application timezone, as 5.0 and 7.0 do.
+            var timeZone = await TimeZoneResolver.ResolveAsync(_db, cancellationToken);
+            var today = TimeZoneResolver.ToDateInTimeZone(_clock.GetUtcNow(), timeZone);
+
             // Validate referents.
             var member = await _db.Members
                 .FirstOrDefaultAsync(m => m.MemberId == command.MemberId, cancellationToken);
@@ -6560,10 +6569,12 @@ public sealed class CreateManualAssignmentService : ICreateManualAssignmentServi
                             $"Eligibility Flag rule {rule.RuleId} has a non-integer CriteriaValue.");
                     }
 
+                    // §10.1.4: the grant must be in effect today.
                     var hasEligibility = await _db.Eligibilities
                         .AnyAsync(e => e.MemberId == command.MemberId
                             && e.DutyId == requiredDutyId
-                            && e.RevokedDate == null,
+                            && e.GrantedDate <= today
+                            && (e.RevokedDate == null || e.RevokedDate > today),
                             cancellationToken);
 
                     if (!hasEligibility)
@@ -6737,7 +6748,7 @@ public sealed record GenerateAssignmentResult
 
 ==============================================================================
 FILE: backend/src/MknMs.Application/Processes/Operations/5.0_GenerateAssignment/GenerateAssignmentService.cs
-LINES: 723
+LINES: 765
 ==============================================================================
 
 using MknMs.Application.Processes.Operations.DispatchNotification;
@@ -7047,6 +7058,10 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
         return new OccurrenceFillOutcome(dutyOutcomes, totalCreated);
     }
 
+    // -----------------------------------------------------------------
+    // Effective duty list
+    // -----------------------------------------------------------------
+
     private sealed record RequiredDuty(int DutyId, int RequiredSlotCount);
 
     private async Task<List<RequiredDuty>> ResolveEffectiveDutiesAsync(
@@ -7136,10 +7151,11 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
         CancellationToken cancellationToken)
     {
         // Step 1 — Eligibility gate. A member is a candidate only if
-        // they have an applicable Eligibility row for this duty: latest
-        // GrantedDate where RevokedDate is null, tiebroken by greatest
-        // EligibilityId (§10.1.4).
-        var eligibleMemberIds = await ResolveEligibleMembersAsync(dutyId, cancellationToken);
+        // they have an applicable Eligibility row for this duty: the
+        // row with the latest GrantedDate that is in the past and whose
+        // RevokedDate is either null or in the future (§10.1.4).
+        var eligibleMemberIds = await ResolveEligibleMembersAsync(
+            dutyId, today, cancellationToken);
 
         if (eligibleMemberIds.Count == 0)
         {
@@ -7238,16 +7254,19 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
 
     private async Task<HashSet<int>> ResolveEligibleMembersAsync(
         int dutyId,
+        DateOnly today,
         CancellationToken cancellationToken)
     {
-        // For each member, the applicable Eligibility row is the one
-        // with the latest GrantedDate whose RevokedDate is null,
-        // tiebroken by the greatest EligibilityId.
-        //
-        // This is expressed as a single query that selects, per member,
-        // the winning row.
+        // §10.1.4 as documented in the 5.0 process contract:
+        //   - the row whose GrantedDate is in the past,
+        //   - whose RevokedDate is either null or in the future.
+        // The applicable row per (member, duty) is the one with the
+        // latest GrantedDate among those, tiebroken by the greatest
+        // EligibilityId.
         var rows = await _db.Eligibilities
-            .Where(e => e.DutyId == dutyId && e.RevokedDate == null)
+            .Where(e => e.DutyId == dutyId
+                && e.GrantedDate <= today
+                && (e.RevokedDate == null || e.RevokedDate > today))
             .ToListAsync(cancellationToken);
 
         var eligible = rows
@@ -7256,7 +7275,6 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
                 .OrderByDescending(e => e.GrantedDate)
                 .ThenByDescending(e => e.EligibilityId)
                 .First())
-            .Where(e => e.RevokedDate == null)
             .Select(e => e.MemberId)
             .ToHashSet();
 
@@ -7297,15 +7315,19 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
                 return string.Equals(member.MembershipStage, criteriaValue, StringComparison.OrdinalIgnoreCase);
 
             case "BranchAttendanceRecency":
+                // §10.1.5: the criterion is "Member has an
+                // AttendanceRecord at the specified branch within the
+                // configured window." The specified branch is the
+                // branch of the occurrence being filled; the window is
+                // the rule's CriteriaValue, in days.
                 return await EvaluateBranchAttendanceRecencyAsync(
-                    member, criteriaValue, occurrence, branchAttendanceCache, cancellationToken);
+                    member, criteriaValue, occurrence, cancellationToken);
 
             case "EligibilityFlag":
                 // The Eligibility Flag criterion references a duty; the
-                // member must have a current Eligibility grant for it.
-                // The CriteriaValue is the duty name or id — for the
-                // current implementation, treat it as a duty id.
-                return await EvaluateEligibilityFlagAsync(member, criteriaValue, cancellationToken);
+                // member must hold a current Eligibility grant for it.
+                return await EvaluateEligibilityFlagAsync(
+                    member, criteriaValue, today, cancellationToken);
 
             case "AcceptanceRate":
             case "DutiesCarried":
@@ -7404,30 +7426,58 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
         Member member,
         string criteriaValue,
         ServiceOccurrence occurrence,
-        Dictionary<int, bool> cache,
         CancellationToken cancellationToken)
     {
-        // CriteriaValue is a window in days. Attendance is branch-agnostic
-        // for this implementation — the criterion is presence at any
-        // occurrence within the window, matching the MKN default.
+        // §10.1.5: "Member has an AttendanceRecord at the specified
+        // branch within the configured window." CriteriaValue is the
+        // window in days. The specified branch is the branch of the
+        // occurrence being filled, resolved through the occurrence's
+        // schedule and time slot.
         if (!int.TryParse(criteriaValue, out var windowDays))
+        {
+            return false;
+        }
+
+        // The occurrence's branch. Event-sourced occurrences (no
+        // schedule) have no branch context and cannot satisfy the
+        // criterion.
+        var occurrenceBranchId = await _db.ServiceSchedules
+            .Where(s => s.ScheduleId == occurrence.ScheduleId)
+            .Select(s => (int?)s.TimeSlot.BranchId)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (occurrenceBranchId is null)
         {
             return false;
         }
 
         var cutoff = _clock.GetUtcNow().AddDays(-windowDays);
 
+        // Attendance records whose own occurrence is at the same branch
+        // as the occurrence being filled, within the window.
         var hasRecent = await _db.AttendanceRecords
-            .AnyAsync(a => a.MemberId == member.MemberId
-                && a.Timestamp >= cutoff,
-                cancellationToken);
+            .Where(a => a.MemberId == member.MemberId
+                && a.Timestamp >= cutoff)
+            .Join(
+                _db.ServiceOccurrences,
+                a => a.OccurrenceId,
+                o => o.OccurrenceId,
+                (a, o) => new { Attendance = a, Occurrence = o })
+            .Join(
+                _db.ServiceSchedules,
+                x => x.Occurrence.ScheduleId,
+                s => (int?)s.ScheduleId,
+                (x, s) => new { x.Attendance, BranchId = s.TimeSlot.BranchId })
+            .AnyAsync(x => x.BranchId == occurrenceBranchId.Value, cancellationToken);
 
         return hasRecent;
     }
 
+
     private async Task<bool> EvaluateEligibilityFlagAsync(
         Member member,
         string criteriaValue,
+        DateOnly today,
         CancellationToken cancellationToken)
     {
         // CriteriaValue names a duty (by id or name). We match by id
@@ -7437,10 +7487,13 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
             return false;
         }
 
+        // §10.1.4: the grant must be in effect today — GrantedDate not
+        // in the future, RevokedDate either absent or in the future.
         var exists = await _db.Eligibilities
             .AnyAsync(e => e.MemberId == member.MemberId
                 && e.DutyId == dutyId
-                && e.RevokedDate == null,
+                && e.GrantedDate <= today
+                && (e.RevokedDate == null || e.RevokedDate > today),
                 cancellationToken);
 
         return exists;
@@ -7839,7 +7892,7 @@ public sealed record ManageConfirmationResult
 
 ==============================================================================
 FILE: backend/src/MknMs.Application/Processes/Operations/7.0_ManageConfirmation/ManageConfirmationService.cs
-LINES: 837
+LINES: 902
 ==============================================================================
 
 using MknMs.Application.Processes.Operations.DispatchNotification;
@@ -8454,7 +8507,8 @@ public sealed class ManageConfirmationService : IManageConfirmationService
         int ageRangeMax,
         CancellationToken cancellationToken)
     {
-        var eligibleMemberIds = await ResolveEligibleMembersAsync(dutyId, cancellationToken);
+        var eligibleMemberIds = await ResolveEligibleMembersAsync(
+            dutyId, today, cancellationToken);
         if (eligibleMemberIds.Count == 0)
         {
             return new List<int>();
@@ -8492,8 +8546,6 @@ public sealed class ManageConfirmationService : IManageConfirmationService
             .OrderBy(g => g.Key)
             .ToList();
 
-        var cache = new Dictionary<int, bool>();
-
         foreach (var tier in tiers)
         {
             var tierMembers = new List<int>();
@@ -8507,7 +8559,7 @@ public sealed class ManageConfirmationService : IManageConfirmationService
                     var matches = await EvaluateCriterionAsync(
                         member, rule.CriteriaType, rule.CriteriaValue,
                         occurrence, today, tenureThresholdDays,
-                        ageRangeMin, ageRangeMax, cache, cancellationToken);
+                        ageRangeMin, ageRangeMax, cancellationToken);
 
                     if (!matches)
                     {
@@ -8531,12 +8583,22 @@ public sealed class ManageConfirmationService : IManageConfirmationService
         return new List<int>();
     }
 
+    // -----------------------------------------------------------------
+    // Eligibility resolution (§10.1.4)
+    // -----------------------------------------------------------------
+
     private async Task<HashSet<int>> ResolveEligibleMembersAsync(
         int dutyId,
+        DateOnly today,
         CancellationToken cancellationToken)
     {
+        // §10.1.4 as documented in the 5.0 process contract:
+        //   - the row whose GrantedDate is in the past,
+        //   - whose RevokedDate is either null or in the future.
         var rows = await _db.Eligibilities
-            .Where(e => e.DutyId == dutyId && e.RevokedDate == null)
+            .Where(e => e.DutyId == dutyId
+                && e.GrantedDate <= today
+                && (e.RevokedDate == null || e.RevokedDate > today))
             .ToListAsync(cancellationToken);
 
         return rows
@@ -8545,10 +8607,13 @@ public sealed class ManageConfirmationService : IManageConfirmationService
                 .OrderByDescending(e => e.GrantedDate)
                 .ThenByDescending(e => e.EligibilityId)
                 .First())
-            .Where(e => e.RevokedDate == null)
             .Select(e => e.MemberId)
             .ToHashSet();
     }
+
+    // -----------------------------------------------------------------
+    // Criteria evaluation (§5)
+    // -----------------------------------------------------------------
 
     private async Task<bool> EvaluateCriterionAsync(
         Member member,
@@ -8559,7 +8624,6 @@ public sealed class ManageConfirmationService : IManageConfirmationService
         int? tenureThresholdDays,
         int ageRangeMin,
         int ageRangeMax,
-        Dictionary<int, bool> cache,
         CancellationToken cancellationToken)
     {
         switch (criteriaType)
@@ -8582,25 +8646,16 @@ public sealed class ManageConfirmationService : IManageConfirmationService
                 return string.Equals(member.MembershipStage, criteriaValue, StringComparison.OrdinalIgnoreCase);
 
             case "BranchAttendanceRecency":
-                if (!int.TryParse(criteriaValue, out var windowDays))
-                {
-                    return false;
-                }
-                var cutoff = _clock.GetUtcNow().AddDays(-windowDays);
-                return await _db.AttendanceRecords
-                    .AnyAsync(a => a.MemberId == member.MemberId && a.Timestamp >= cutoff,
-                        cancellationToken);
+                // §10.1.5: "Member has an AttendanceRecord at the
+                // specified branch within the configured window."
+                // CriteriaValue is the window in days. The specified
+                // branch is the branch of the occurrence being filled.
+                return await EvaluateBranchAttendanceRecencyAsync(
+                    member, criteriaValue, occurrence, cancellationToken);
 
             case "EligibilityFlag":
-                if (!int.TryParse(criteriaValue, out var dutyId))
-                {
-                    return false;
-                }
-                return await _db.Eligibilities
-                    .AnyAsync(e => e.MemberId == member.MemberId
-                        && e.DutyId == dutyId
-                        && e.RevokedDate == null,
-                        cancellationToken);
+                return await EvaluateEligibilityFlagAsync(
+                    member, criteriaValue, today, cancellationToken);
 
             case "AcceptanceRate":
             case "DutiesCarried":
@@ -8610,6 +8665,69 @@ public sealed class ManageConfirmationService : IManageConfirmationService
             default:
                 return false;
         }
+    }
+
+    private async Task<bool> EvaluateBranchAttendanceRecencyAsync(
+        Member member,
+        string criteriaValue,
+        ServiceOccurrence occurrence,
+        CancellationToken cancellationToken)
+    {
+        if (!int.TryParse(criteriaValue, out var windowDays))
+        {
+            return false;
+        }
+
+        var occurrenceBranchId = await _db.ServiceSchedules
+            .Where(s => s.ScheduleId == occurrence.ScheduleId)
+            .Select(s => (int?)s.TimeSlot.BranchId)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (occurrenceBranchId is null)
+        {
+            return false;
+        }
+
+        var cutoff = _clock.GetUtcNow().AddDays(-windowDays);
+
+        var hasRecent = await _db.AttendanceRecords
+            .Where(a => a.MemberId == member.MemberId
+                && a.Timestamp >= cutoff)
+            .Join(
+                _db.ServiceOccurrences,
+                a => a.OccurrenceId,
+                o => o.OccurrenceId,
+                (a, o) => new { Attendance = a, Occurrence = o })
+            .Join(
+                _db.ServiceSchedules,
+                x => x.Occurrence.ScheduleId,
+                s => (int?)s.ScheduleId,
+                (x, s) => new { x.Attendance, BranchId = s.TimeSlot.BranchId })
+            .AnyAsync(x => x.BranchId == occurrenceBranchId.Value, cancellationToken);
+
+        return hasRecent;
+    }
+
+    private async Task<bool> EvaluateEligibilityFlagAsync(
+        Member member,
+        string criteriaValue,
+        DateOnly today,
+        CancellationToken cancellationToken)
+    {
+        if (!int.TryParse(criteriaValue, out var dutyId))
+        {
+            return false;
+        }
+
+        // §10.1.4: the grant must be in effect today.
+        var exists = await _db.Eligibilities
+            .AnyAsync(e => e.MemberId == member.MemberId
+                && e.DutyId == dutyId
+                && e.GrantedDate <= today
+                && (e.RevokedDate == null || e.RevokedDate > today),
+                cancellationToken);
+
+        return exists;
     }
 
     private static bool EvaluateAgeRange(
@@ -8682,7 +8800,7 @@ public sealed class ManageConfirmationService : IManageConfirmationService
 
 ==============================================================================
 FILE: backend/src/MknMs.Application/Processes/Operations/9.0_DispatchNotification/DispatchNotificationService.cs
-LINES: 138
+LINES: 144
 ==============================================================================
 
 using Microsoft.Extensions.Logging;
@@ -8695,17 +8813,19 @@ namespace MknMs.Application.Processes.Operations.DispatchNotification;
 /// <remarks>
 /// Reads the assignment, the member, the occurrence, and the configured
 /// channel setting. Composes a message. Dispatches it through the
-/// channel named by SystemSetting.NotificationChannel. Returns.
+/// channel named by SystemSetting.NotificationChannel.
 ///
-/// This implementation's transport is structured logging. The spec
-/// places the channel mechanism outside the schema (§14.1.2): "the
-/// actual credentials and transport live outside the schema." Logging
-/// is a legitimate destination, and it is the smallest complete
-/// implementation of the process the spec defines.
+/// §14.1.2 places the channel mechanism outside the schema: "the actual
+/// credentials and transport live outside the schema." Logging is a
+/// legitimate transport and is the only one implemented here.
 ///
-/// The switch on NotificationChannel is present from the start so that
-/// adding Email, Webhook, or SMS later is a change to this file only.
-/// The interface does not change. No caller changes.
+/// §14.1.2 also specifies the absent-or-invalid behaviour: no
+/// channel-specific fallback is defined by this contract, and the
+/// setting's Required flag governs. If NotificationChannel is absent
+/// and Required = true, the process refuses to send and surfaces a
+/// configuration error. If it is absent and Required = false, no
+/// notification is sent. If the value is not a recognised channel, no
+/// notification is sent. There is no implicit default channel.
 ///
 /// Reads D7 RosterAssignment, D4 Member, D3 ServiceOccurrence, D11
 /// SystemSetting. Writes nothing. Invokes nothing.
@@ -8718,6 +8838,7 @@ namespace MknMs.Application.Processes.Operations.DispatchNotification;
 public sealed class DispatchNotificationService : IDispatchNotificationService
 {
     private const string ChannelKey = "NotificationChannel";
+    private const string LogChannel = "log";
 
     private readonly MknDbContext _db;
     private readonly ILogger<DispatchNotificationService> _logger;
@@ -8736,6 +8857,35 @@ public sealed class DispatchNotificationService : IDispatchNotificationService
     {
         try
         {
+            // Read the channel setting. §14.1.2: no fallback is defined
+            // by the contract. A required-and-absent setting surfaces a
+            // configuration error; an optional-and-absent or
+            // unrecognised setting produces no send.
+            var setting = await _db.SystemSettings
+                .FirstOrDefaultAsync(s => s.Key == ChannelKey, cancellationToken);
+
+            if (string.IsNullOrWhiteSpace(setting?.Value))
+            {
+                if (setting?.Required ?? false)
+                {
+                    throw new InvalidOperationException(
+                        $"Required setting '{ChannelKey}' is not configured. " +
+                        "Notification dispatch cannot proceed.");
+                }
+
+                // Optional and absent: no notification is sent.
+                return;
+            }
+
+            var channelName = setting!.Value!.Trim();
+
+            // Only the log channel is implemented. An unrecognised
+            // value is not a fallback to logging; nothing is sent.
+            if (!string.Equals(channelName, LogChannel, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
             // Read the three referenced rows. §14.1.1: 9.0 reads what it
             // needs to compose the message; it does not modify any of it.
             var member = await _db.Members
@@ -8750,24 +8900,10 @@ public sealed class DispatchNotificationService : IDispatchNotificationService
                 .FirstOrDefaultAsync(d => d.DutyId == assignment.DutyId,
                     cancellationToken);
 
-            // Read the channel setting. §14.1.2: if absent, the process
-            // follows the setting's configured validity behavior. The
-            // seed and production both write a value; if it is missing
-            // here, the implementation logs the message under a default
-            // channel name so the process still produces an observable
-            // effect.
-            var channel = await _db.SystemSettings
-                .FirstOrDefaultAsync(s => s.Key == ChannelKey, cancellationToken);
-
-            var channelName = string.IsNullOrWhiteSpace(channel?.Value)
-                ? "Log"
-                : channel!.Value!.Trim();
-
             // Compose the message. §14.1.6: the notification carries
             // enough for the member to understand what is being asked of
             // them — the occurrence date and time, the duty, and the
-            // implicit expectation of a response. The format is
-            // channel-dependent and outside the schema.
+            // implicit expectation of a response.
             var date = occurrence?.Date.ToString("yyyy-MM-dd") ?? "unknown date";
             var time = occurrence?.StartTime?.ToString("HH:mm") ?? "unknown time";
             var dutyName = duty?.Name ?? $"duty #{assignment.DutyId}";
@@ -8779,42 +8915,30 @@ public sealed class DispatchNotificationService : IDispatchNotificationService
                 $"Assignment notice: {memberName}, you are assigned to " +
                 $"'{dutyName}' on {date} at {time}.";
 
-            // Dispatch. The switch is the extension point. Adding a
-            // channel is adding a case here — nowhere else.
-            switch (channelName.ToLowerInvariant())
-            {
-                case "log":
-                default:
-                    _logger.LogInformation(
-                        "Notification [{Channel}] assignment={AssignmentId} member={MemberId} duty={DutyId} occurrence={OccurrenceId}: {Message}",
-                        channelName,
-                        assignment.AssignmentId,
-                        assignment.MemberId,
-                        assignment.DutyId,
-                        assignment.OccurrenceId,
-                        message);
-                    break;
+            _logger.LogInformation(
+                "Notification [{Channel}] assignment={AssignmentId} member={MemberId} duty={DutyId} occurrence={OccurrenceId}: {Message}",
+                channelName,
+                assignment.AssignmentId,
+                assignment.MemberId,
+                assignment.DutyId,
+                assignment.OccurrenceId,
+                message);
 
-                // The following channels are named in the specification
-                // (§14.1.2 names "SMS, email, push, or another
-                // mechanism") but are not implemented here. When they are
-                // implemented, each becomes a case with its own send
-                // path. The callers — 5.0, 7.0, 12.0 — are unaffected.
-
-                // case "email":
-                //     await SendEmailAsync(message, member, cancellationToken);
-                //     break;
-                //
-                // case "webhook":
-                //     await SendWebhookAsync(message, assignment, cancellationToken);
-                //     break;
-            }
+            // Additional channels — Email, Webhook, SMS — are named in
+            // the specification (§14.1.2) and are not implemented here.
+            // Each becomes its own case with its own send path. The
+            // callers — 5.0, 7.0, 12.0 — are unaffected.
+        }
+        catch (InvalidOperationException)
+        {
+            // Required-setting failure. Rethrow so the invoking process
+            // surfaces the configuration error, consistent with how
+            // other required settings behave elsewhere.
+            throw;
         }
         catch (Exception ex)
         {
             // Fire-and-forget. §14.1.5: no retry, no delivery record.
-            // The failure is logged so an operator can see it; the
-            // invoking process is unaffected.
             _logger.LogError(
                 ex,
                 "Notification dispatch failed for assignment {AssignmentId}. " +
@@ -16289,7 +16413,7 @@ public class CreateManualAssignmentTests : IAsyncLifetime
 
 ==============================================================================
 FILE: backend/tests/MknMs.IntegrationTests/DispatchNotificationTests.cs
-LINES: 318
+LINES: 328
 ==============================================================================
 
 using FluentAssertions;
@@ -16314,8 +16438,13 @@ namespace MknMs.IntegrationTests;
 /// The real DispatchNotificationService is exercised. Its transport is
 /// structured logging (spec §14.1.2 places the channel mechanism
 /// outside the schema), so a capturing ILogger stands in for the
-/// destination. The tests assert on the composed message and the
-/// channel name, and confirm the service writes nothing.
+/// destination.
+///
+/// §14.1.2 defines no channel-specific fallback. A NotificationChannel
+/// that is absent and Required = true surfaces a configuration error; a
+/// channel that is absent and Required = false, or a channel whose
+/// value is not recognised, produces no send and no log. These tests
+/// exercise all three of those cases.
 /// </remarks>
 public class DispatchNotificationTests : IAsyncLifetime
 {
@@ -16353,7 +16482,9 @@ public class DispatchNotificationTests : IAsyncLifetime
         int OccurrenceId,
         int DutyId);
 
-    private async Task<Fixture> SeedFixtureAsync(string? notificationChannel = "Log")
+    private async Task<Fixture> SeedFixtureAsync(
+        string? notificationChannel = "Log",
+        bool notificationChannelRequired = false)
     {
         var serviceType = new ServiceType { Name = "Regular" };
         var timeOfDay = new TimeOfDay { Name = "Morning" };
@@ -16374,7 +16505,7 @@ public class DispatchNotificationTests : IAsyncLifetime
             {
                 Key = "NotificationChannel",
                 Value = notificationChannel,
-                Required = false,
+                Required = notificationChannelRequired,
             });
             await _db.SaveChangesAsync();
         }
@@ -16530,29 +16661,32 @@ public class DispatchNotificationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Dispatch_WithoutChannelSetting_UsesLogDefault()
+    public async Task Dispatch_WithChannelSettingAbsentAndNotRequired_DoesNotLog()
     {
+        // §14.1.2: absent and Required = false → no notification.
         var f = await SeedFixtureAsync(notificationChannel: null);
         var logger = new CapturingLogger<DispatchNotificationService>();
         var service = new DispatchNotificationService(_db, logger);
 
         await service.DispatchAssignmentNoticeAsync(f.Assignment);
 
-        logger.Entries.Should().HaveCount(1);
-        logger.Entries[0].Message.Should().Contain("Log");
+        logger.Entries.Should().BeEmpty(
+            "an absent optional NotificationChannel must not log (§14.1.2)");
     }
 
     [Fact]
-    public async Task Dispatch_WithUnimplementedChannel_StillLogs()
+    public async Task Dispatch_WithUnimplementedChannel_DoesNotLog()
     {
+        // §14.1.2: an unrecognised channel value produces no send and no
+        // log. There is no fallback to logging.
         var f = await SeedFixtureAsync(notificationChannel: "Email");
         var logger = new CapturingLogger<DispatchNotificationService>();
         var service = new DispatchNotificationService(_db, logger);
 
         await service.DispatchAssignmentNoticeAsync(f.Assignment);
 
-        logger.Entries.Should().HaveCount(1);
-        logger.Entries[0].Message.Should().Contain("Email");
+        logger.Entries.Should().BeEmpty(
+            "an unimplemented channel must not silently log (§14.1.2)");
     }
 
     [Fact]
@@ -19729,6 +19863,514 @@ public class RecordAttendanceTests : IAsyncLifetime
 
         var count = await _db.AttendanceRecords.CountAsync();
         count.Should().Be(0);
+    }
+}
+
+==============================================================================
+FILE: backend/tests/MknMs.IntegrationTests/SpecComplianceTests.cs
+LINES: 502
+==============================================================================
+
+using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
+using MknMs.Application.Processes.Operations.GenerateAssignment;
+using MknMs.Domain.D10_ConfigLookups;
+using MknMs.Domain.D11_SystemSetting;
+using MknMs.Domain.D1_RoleDuty;
+using MknMs.Domain.D2_DutyRule;
+using MknMs.Domain.D3_BranchTimeSlotService;
+using MknMs.Domain.D4_Member;
+using MknMs.Domain.D6_Eligibility;
+using MknMs.Domain.D7_RosterAssignment;
+using MknMs.Domain.D8_AttendanceRecord;
+using MknMs.Persistence;
+using Xunit;
+
+namespace MknMs.IntegrationTests;
+
+/// <summary>
+/// Three tests isolating three specification deviations found by review.
+/// Written against the current code, before the fix. Each fails if the
+/// defect exists and passes once the code matches the specification.
+///
+/// Specification: 5.0 doc lines 62-66, line 97; 9.0 doc lines 66, 70.
+/// </summary>
+public class SpecComplianceTests : IAsyncLifetime
+{
+    private const string TestConnectionString =
+        "Host=127.0.0.1;Port=5432;Database=mkn_test;Username=mkn_dev";
+
+    private static readonly DateTimeOffset Now = new(2026, 10, 7, 12, 0, 0, TimeSpan.Zero);
+
+    private MknDbContext _db = null!;
+    private FakeDispatchNotificationService _notification = null!;
+    private TimeProvider _clock = null!;
+
+    public async Task InitializeAsync()
+    {
+        var options = new DbContextOptionsBuilder<MknDbContext>()
+            .UseNpgsql(TestConnectionString)
+            .Options;
+
+        _db = new MknDbContext(options);
+        _notification = new FakeDispatchNotificationService();
+        _clock = new FakeTimeProvider(Now);
+
+        await _db.Database.ExecuteSqlRawAsync(
+            "TRUNCATE TABLE materializer_run, attendance_record, roster_assignment, " +
+            "service_occurrence_duty, service_occurrence, service_schedule, " +
+            "service_definition_duty, branch_time_slot, service_definition, " +
+            "service_type, time_of_day, branch, identifier_history, eligibility, " +
+            "duty_rule, admin, member, role, duty, system_setting, " +
+            "outcome_state, assignment_status, permission_tier RESTART IDENTITY CASCADE;");
+    }
+
+    public Task DisposeAsync()
+    {
+        _db.Dispose();
+        return Task.CompletedTask;
+    }
+
+    // -----------------------------------------------------------------
+    // Shared seed helper
+    // -----------------------------------------------------------------
+
+    private async Task<(int OccurrenceId, int DutyId, int MemberId, int AdminId, int BranchId)> SeedBasicAsync(
+        string branchName = "Main")
+    {
+        _db.ServiceTypes.Add(new ServiceType { Name = "Regular" });
+        _db.TimeOfDays.Add(new TimeOfDay { Name = "Slot" });
+        var role = new Role { Name = "Member", IsActive = true };
+        _db.Roles.Add(role);
+        var duty = new Duty { Name = "Reading duty", IsActive = true };
+        _db.Duties.Add(duty);
+        var branch = new Branch { Name = branchName, Location = "Here", IsActive = true };
+        _db.Branches.Add(branch);
+        var tier = new PermissionTier { Name = "Full Admin" };
+        _db.PermissionTiers.Add(tier);
+        await _db.SaveChangesAsync();
+
+        var alex = new Member
+        {
+            Name = "Alex", Surname = "Example",
+            JoinDate = new DateOnly(2024, 1, 1),
+            DateOfBirth = new DateOnly(1990, 1, 1),
+            MembershipStage = "Full", Gender = "Other",
+            Phone = "+27-000-0000", Email = null,
+            BranchId = branch.BranchId, RoleId = role.RoleId, IsActive = true,
+        };
+        _db.Members.Add(alex);
+        await _db.SaveChangesAsync();
+
+        var admin = new Admin { MemberId = alex.MemberId, PermissionTierId = tier.PermissionTierId };
+        _db.Admins.Add(admin);
+        await _db.SaveChangesAsync();
+
+        var slot = new BranchTimeSlot
+        {
+            BranchId = branch.BranchId,
+            DayOfWeek = "Sunday",
+            TimeOfDayId = _db.TimeOfDays.Local.First().TimeOfDayId,
+            IsActive = true,
+        };
+        _db.BranchTimeSlots.Add(slot);
+        await _db.SaveChangesAsync();
+
+        var definition = new ServiceDefinition
+        {
+            Name = "Service",
+            ServiceTypeId = _db.ServiceTypes.Local.First().ServiceTypeId,
+            OwningBranchId = null,
+            IsActive = true,
+        };
+        _db.ServiceDefinitions.Add(definition);
+        await _db.SaveChangesAsync();
+
+        _db.ServiceDefinitionDuties.Add(new ServiceDefinitionDuty
+        {
+            ServiceDefId = definition.ServiceDefId,
+            DutyId = duty.DutyId,
+            RequiredSlotCount = 1,
+            IsActive = true,
+        });
+
+        var schedule = new ServiceSchedule
+        {
+            ServiceDefId = definition.ServiceDefId,
+            TimeSlotId = slot.TimeSlotId,
+            StartTime = new TimeOnly(9, 0),
+            IsActive = true,
+        };
+        _db.ServiceSchedules.Add(schedule);
+        await _db.SaveChangesAsync();
+
+        var occurrence = new ServiceOccurrence
+        {
+            ScheduleId = schedule.ScheduleId,
+            EventId = null,
+            Date = new DateOnly(2026, 10, 11),
+            ServiceTypeId = null,
+            StartTime = null,
+            FillStatusId = null,
+            GeneratedBy = "System",
+            CreatedBy = null,
+            ChangedBy = null,
+        };
+        _db.ServiceOccurrences.Add(occurrence);
+        await _db.SaveChangesAsync();
+
+        return (occurrence.OccurrenceId, duty.DutyId, alex.MemberId, admin.AdminId, branch.BranchId);
+    }
+
+    // -----------------------------------------------------------------
+    // Item 1 — future grant must not win eligibility
+    // -----------------------------------------------------------------
+
+    [Fact]
+    public async Task Eligibility_FutureGrant_DoesNotMakeMemberEligible()
+    {
+        var (occurrenceId, dutyId, memberId, adminId, _) = await SeedBasicAsync();
+
+        // Two grants for the same (member, duty):
+        //   A: GrantedDate 2026-10-01, revoked null       — current
+        //   B: GrantedDate 2026-10-20, revoked null       — future
+        // The 5.0 doc says: current row wins. The code currently picks B
+        // because B has the later GrantedDate. Under the spec, the member
+        // is eligible (A is current). But if B alone existed with a
+        // future date and A did not, the member would not be eligible.
+        //
+        // Test: only a future grant exists. The member must NOT be
+        // eligible.
+        _db.Eligibilities.Add(new Eligibility
+        {
+            MemberId = memberId,
+            DutyId = dutyId,
+            GrantedDate = new DateOnly(2026, 10, 20),
+            GrantedBy = adminId,
+            RevokedDate = null,
+            RevokedReason = null,
+        });
+        await _db.SaveChangesAsync();
+
+        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var result = await service.RunAsync(new GenerateAssignmentCommand
+        {
+            OccurrenceId = occurrenceId,
+        });
+
+        // §10.1.4: a member becomes eligible only when GrantedDate is in
+        // the past. A future grant alone does not make them eligible.
+        var assignments = await _db.RosterAssignments
+            .Where(a => a.MemberId == memberId)
+            .CountAsync();
+
+        assignments.Should().Be(0,
+            "a future GrantedDate must not make a member eligible (§10.1.4)");
+    }
+
+    [Fact]
+    public async Task Eligibility_FutureRevoke_DoesNotRevoke()
+    {
+        var (occurrenceId, dutyId, memberId, adminId, _) = await SeedBasicAsync();
+
+        // A current grant with a RevokedDate in the future. §10.1.4:
+        // a future RevokedDate does not revoke. The member is currently
+        // eligible.
+        _db.Eligibilities.Add(new Eligibility
+        {
+            MemberId = memberId,
+            DutyId = dutyId,
+            GrantedDate = new DateOnly(2026, 1, 1),
+            GrantedBy = adminId,
+            RevokedDate = new DateOnly(2027, 1, 1),
+            RevokedReason = null,
+        });
+        await _db.SaveChangesAsync();
+
+        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        await service.RunAsync(new GenerateAssignmentCommand
+        {
+            OccurrenceId = occurrenceId,
+        });
+
+        var assignments = await _db.RosterAssignments
+            .Where(a => a.MemberId == memberId)
+            .CountAsync();
+
+        assignments.Should().Be(1,
+            "a future RevokedDate must not revoke a grant (§10.1.4)");
+    }
+
+    // -----------------------------------------------------------------
+    // Item 2 — Branch-Attendance Recency must filter by branch
+    // -----------------------------------------------------------------
+
+    [Fact]
+    public async Task BranchAttendanceRecency_IgnoresAttendanceAtWrongBranch()
+    {
+        // Two branches. Duty rule requires attendance at "Target".
+        // Member attended only at "Other". Criterion must not match, so
+        // the duty stays unfilled.
+        var (occurrenceId, dutyId, memberId, adminId, _) = await SeedBasicAsync(branchName: "Target");
+
+        // A second branch.
+        var otherBranch = new Branch { Name = "Other", Location = "Elsewhere", IsActive = true };
+        _db.Branches.Add(otherBranch);
+        await _db.SaveChangesAsync();
+
+        var otherSlot = new BranchTimeSlot
+        {
+            BranchId = otherBranch.BranchId,
+            DayOfWeek = "Sunday",
+            TimeOfDayId = _db.TimeOfDays.Local.First().TimeOfDayId,
+            IsActive = true,
+        };
+        _db.BranchTimeSlots.Add(otherSlot);
+        await _db.SaveChangesAsync();
+
+        var otherDefinition = new ServiceDefinition
+        {
+            Name = "Other Service",
+            ServiceTypeId = _db.ServiceTypes.Local.First().ServiceTypeId,
+            OwningBranchId = null,
+            IsActive = true,
+        };
+        _db.ServiceDefinitions.Add(otherDefinition);
+        await _db.SaveChangesAsync();
+
+        var otherSchedule = new ServiceSchedule
+        {
+            ServiceDefId = otherDefinition.ServiceDefId,
+            TimeSlotId = otherSlot.TimeSlotId,
+            StartTime = new TimeOnly(9, 0),
+            IsActive = true,
+        };
+        _db.ServiceSchedules.Add(otherSchedule);
+        await _db.SaveChangesAsync();
+
+        var otherOccurrence = new ServiceOccurrence
+        {
+            ScheduleId = otherSchedule.ScheduleId,
+            EventId = null,
+            Date = new DateOnly(2026, 10, 6),
+            ServiceTypeId = null,
+            StartTime = null,
+            FillStatusId = null,
+            GeneratedBy = "System",
+            CreatedBy = null,
+            ChangedBy = null,
+        };
+        _db.ServiceOccurrences.Add(otherOccurrence);
+        await _db.SaveChangesAsync();
+
+        // Attendance at the OTHER branch.
+        _db.AttendanceRecords.Add(new AttendanceRecord
+        {
+            MemberId = memberId,
+            OccurrenceId = otherOccurrence.OccurrenceId,
+            Timestamp = Now.AddDays(-1),
+        });
+
+        // Eligibility + DutyRule: Branch-Attendance Recency, value "Target".
+        _db.Eligibilities.Add(new Eligibility
+        {
+            MemberId = memberId,
+            DutyId = dutyId,
+            GrantedDate = new DateOnly(2026, 1, 1),
+            GrantedBy = adminId,
+            RevokedDate = null,
+            RevokedReason = null,
+        });
+        _db.DutyRules.Add(new DutyRule
+        {
+            DutyId = dutyId,
+            TierOrder = 1,
+            CriteriaType = "BranchAttendanceRecency",
+            CriteriaValue = "30",
+            IsActive = true,
+        });
+        await _db.SaveChangesAsync();
+
+        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        await service.RunAsync(new GenerateAssignmentCommand
+        {
+            OccurrenceId = occurrenceId,
+        });
+
+        var assignments = await _db.RosterAssignments
+            .Where(a => a.MemberId == memberId)
+            .CountAsync();
+
+        assignments.Should().Be(0,
+            "attendance at a different branch must not satisfy the criterion (5.0 doc line 97)");
+    }
+
+    [Fact]
+    public async Task BranchAttendanceRecency_MatchesAttendanceAtRightBranch()
+    {
+        var (occurrenceId, dutyId, memberId, adminId, _) = await SeedBasicAsync(branchName: "Target");
+
+        // Attendance at the SAME branch as the occurrence.
+        var occurrence = await _db.ServiceOccurrences
+            .FirstAsync(o => o.OccurrenceId == occurrenceId);
+
+        _db.AttendanceRecords.Add(new AttendanceRecord
+        {
+            MemberId = memberId,
+            OccurrenceId = occurrence.OccurrenceId,
+            Timestamp = Now.AddDays(-1),
+        });
+
+        _db.Eligibilities.Add(new Eligibility
+        {
+            MemberId = memberId,
+            DutyId = dutyId,
+            GrantedDate = new DateOnly(2026, 1, 1),
+            GrantedBy = adminId,
+            RevokedDate = null,
+            RevokedReason = null,
+        });
+        _db.DutyRules.Add(new DutyRule
+        {
+            DutyId = dutyId,
+            TierOrder = 1,
+            CriteriaType = "BranchAttendanceRecency",
+            CriteriaValue = "30",
+            IsActive = true,
+        });
+        await _db.SaveChangesAsync();
+
+        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        await service.RunAsync(new GenerateAssignmentCommand
+        {
+            OccurrenceId = occurrenceId,
+        });
+
+        var assignments = await _db.RosterAssignments
+            .Where(a => a.MemberId == memberId)
+            .CountAsync();
+
+        assignments.Should().Be(1,
+            "attendance at the specified branch must satisfy the criterion (5.0 doc line 97)");
+    }
+
+    // -----------------------------------------------------------------
+    // Item 3 — NotificationChannel fallback
+    // -----------------------------------------------------------------
+
+    [Fact]
+    public async Task Notification_WithRequiredChannelAbsent_MustNotDispatch()
+    {
+        var (occurrenceId, dutyId, memberId, adminId, _) = await SeedBasicAsync();
+
+        // Required setting, absent. §14.1.2 + 9.0 doc line 70:
+        // 9.0 refuses to send and surfaces a configuration error.
+        _db.SystemSettings.Add(new SystemSetting
+        {
+            Key = "NotificationChannel",
+            Value = null,
+            Required = true,
+        });
+        await _db.SaveChangesAsync();
+
+        var notification = new FakeDispatchNotificationService();
+        var service = new MknMs.Application.Processes.Operations.DispatchNotification
+            .DispatchNotificationService(_db, new CapturingLogger<MknMs.Application.Processes.Operations.DispatchNotification.DispatchNotificationService>());
+
+        var assignment = new RosterAssignment
+        {
+            MemberId = memberId,
+            DutyId = dutyId,
+            OccurrenceId = occurrenceId,
+            AssignmentStatusId = null,
+            ApprovedBy = null,
+            AssignmentSource = "Automatic",
+            AssignedBy = null,
+            CreatedAt = Now,
+        };
+        _db.RosterAssignments.Add(assignment);
+        await _db.SaveChangesAsync();
+
+        var act = async () => await service.DispatchAssignmentNoticeAsync(assignment);
+
+        await act.Should().ThrowAsync<InvalidOperationException>(
+            "a required NotificationChannel that is absent must surface a configuration error (9.0 doc line 70)");
+    }
+
+    [Fact]
+    public async Task Notification_WithOptionalChannelAbsent_MustNotLog()
+    {
+        var (occurrenceId, dutyId, memberId, adminId, _) = await SeedBasicAsync();
+
+        // Optional setting, absent. §14.1.2 + 9.0 doc line 70:
+        // no notification is sent.
+        _db.SystemSettings.Add(new SystemSetting
+        {
+            Key = "NotificationChannel",
+            Value = null,
+            Required = false,
+        });
+        await _db.SaveChangesAsync();
+
+        var logger = new CapturingLogger<MknMs.Application.Processes.Operations.DispatchNotification.DispatchNotificationService>();
+        var service = new MknMs.Application.Processes.Operations.DispatchNotification
+            .DispatchNotificationService(_db, logger);
+
+        var assignment = new RosterAssignment
+        {
+            MemberId = memberId,
+            DutyId = dutyId,
+            OccurrenceId = occurrenceId,
+            AssignmentStatusId = null,
+            ApprovedBy = null,
+            AssignmentSource = "Automatic",
+            AssignedBy = null,
+            CreatedAt = Now,
+        };
+        _db.RosterAssignments.Add(assignment);
+        await _db.SaveChangesAsync();
+
+        await service.DispatchAssignmentNoticeAsync(assignment);
+
+        logger.Entries.Should().BeEmpty(
+            "an optional NotificationChannel that is absent must not send and must not log a notification (9.0 doc line 70)");
+    }
+
+    [Fact]
+    public async Task Notification_WithInvalidChannel_MustNotLog()
+    {
+        var (occurrenceId, dutyId, memberId, adminId, _) = await SeedBasicAsync();
+
+        _db.SystemSettings.Add(new SystemSetting
+        {
+            Key = "NotificationChannel",
+            Value = "Not/AChannel",
+            Required = false,
+        });
+        await _db.SaveChangesAsync();
+
+        var logger = new CapturingLogger<MknMs.Application.Processes.Operations.DispatchNotification.DispatchNotificationService>();
+        var service = new MknMs.Application.Processes.Operations.DispatchNotification
+            .DispatchNotificationService(_db, logger);
+
+        var assignment = new RosterAssignment
+        {
+            MemberId = memberId,
+            DutyId = dutyId,
+            OccurrenceId = occurrenceId,
+            AssignmentStatusId = null,
+            ApprovedBy = null,
+            AssignmentSource = "Automatic",
+            AssignedBy = null,
+            CreatedAt = Now,
+        };
+        _db.RosterAssignments.Add(assignment);
+        await _db.SaveChangesAsync();
+
+        await service.DispatchAssignmentNoticeAsync(assignment);
+
+        logger.Entries.Should().BeEmpty(
+            "an invalid NotificationChannel must not silently log (9.0 doc line 66)");
     }
 }
 

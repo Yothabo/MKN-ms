@@ -17,6 +17,10 @@ namespace MknMs.Application.Processes.Operations.CreateManualAssignment;
 /// Uniqueness on (MemberId, DutyId, OccurrenceId) is enforced by the
 /// database and is a hard failure, not a soft report.
 ///
+/// Eligibility resolution follows §10.1.4 exactly: the grant must be in
+/// effect today — GrantedDate not in the future, RevokedDate either
+/// absent or in the future.
+///
 /// Specification: §17.
 /// </remarks>
 public sealed class CreateManualAssignmentService : ICreateManualAssignmentService
@@ -41,6 +45,11 @@ public sealed class CreateManualAssignmentService : ICreateManualAssignmentServi
     {
         try
         {
+            // §10.1.4: eligibility is date-bounded. Resolve today once
+            // in the application timezone, as 5.0 and 7.0 do.
+            var timeZone = await TimeZoneResolver.ResolveAsync(_db, cancellationToken);
+            var today = TimeZoneResolver.ToDateInTimeZone(_clock.GetUtcNow(), timeZone);
+
             // Validate referents.
             var member = await _db.Members
                 .FirstOrDefaultAsync(m => m.MemberId == command.MemberId, cancellationToken);
@@ -118,10 +127,12 @@ public sealed class CreateManualAssignmentService : ICreateManualAssignmentServi
                             $"Eligibility Flag rule {rule.RuleId} has a non-integer CriteriaValue.");
                     }
 
+                    // §10.1.4: the grant must be in effect today.
                     var hasEligibility = await _db.Eligibilities
                         .AnyAsync(e => e.MemberId == command.MemberId
                             && e.DutyId == requiredDutyId
-                            && e.RevokedDate == null,
+                            && e.GrantedDate <= today
+                            && (e.RevokedDate == null || e.RevokedDate > today),
                             cancellationToken);
 
                     if (!hasEligibility)

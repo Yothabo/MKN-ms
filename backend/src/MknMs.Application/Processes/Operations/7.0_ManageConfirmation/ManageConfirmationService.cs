@@ -610,7 +610,8 @@ public sealed class ManageConfirmationService : IManageConfirmationService
         int ageRangeMax,
         CancellationToken cancellationToken)
     {
-        var eligibleMemberIds = await ResolveEligibleMembersAsync(dutyId, cancellationToken);
+        var eligibleMemberIds = await ResolveEligibleMembersAsync(
+            dutyId, today, cancellationToken);
         if (eligibleMemberIds.Count == 0)
         {
             return new List<int>();
@@ -648,8 +649,6 @@ public sealed class ManageConfirmationService : IManageConfirmationService
             .OrderBy(g => g.Key)
             .ToList();
 
-        var cache = new Dictionary<int, bool>();
-
         foreach (var tier in tiers)
         {
             var tierMembers = new List<int>();
@@ -663,7 +662,7 @@ public sealed class ManageConfirmationService : IManageConfirmationService
                     var matches = await EvaluateCriterionAsync(
                         member, rule.CriteriaType, rule.CriteriaValue,
                         occurrence, today, tenureThresholdDays,
-                        ageRangeMin, ageRangeMax, cache, cancellationToken);
+                        ageRangeMin, ageRangeMax, cancellationToken);
 
                     if (!matches)
                     {
@@ -687,12 +686,22 @@ public sealed class ManageConfirmationService : IManageConfirmationService
         return new List<int>();
     }
 
+    // -----------------------------------------------------------------
+    // Eligibility resolution (§10.1.4)
+    // -----------------------------------------------------------------
+
     private async Task<HashSet<int>> ResolveEligibleMembersAsync(
         int dutyId,
+        DateOnly today,
         CancellationToken cancellationToken)
     {
+        // §10.1.4 as documented in the 5.0 process contract:
+        //   - the row whose GrantedDate is in the past,
+        //   - whose RevokedDate is either null or in the future.
         var rows = await _db.Eligibilities
-            .Where(e => e.DutyId == dutyId && e.RevokedDate == null)
+            .Where(e => e.DutyId == dutyId
+                && e.GrantedDate <= today
+                && (e.RevokedDate == null || e.RevokedDate > today))
             .ToListAsync(cancellationToken);
 
         return rows
@@ -701,10 +710,13 @@ public sealed class ManageConfirmationService : IManageConfirmationService
                 .OrderByDescending(e => e.GrantedDate)
                 .ThenByDescending(e => e.EligibilityId)
                 .First())
-            .Where(e => e.RevokedDate == null)
             .Select(e => e.MemberId)
             .ToHashSet();
     }
+
+    // -----------------------------------------------------------------
+    // Criteria evaluation (§5)
+    // -----------------------------------------------------------------
 
     private async Task<bool> EvaluateCriterionAsync(
         Member member,
@@ -715,7 +727,6 @@ public sealed class ManageConfirmationService : IManageConfirmationService
         int? tenureThresholdDays,
         int ageRangeMin,
         int ageRangeMax,
-        Dictionary<int, bool> cache,
         CancellationToken cancellationToken)
     {
         switch (criteriaType)
@@ -738,25 +749,16 @@ public sealed class ManageConfirmationService : IManageConfirmationService
                 return string.Equals(member.MembershipStage, criteriaValue, StringComparison.OrdinalIgnoreCase);
 
             case "BranchAttendanceRecency":
-                if (!int.TryParse(criteriaValue, out var windowDays))
-                {
-                    return false;
-                }
-                var cutoff = _clock.GetUtcNow().AddDays(-windowDays);
-                return await _db.AttendanceRecords
-                    .AnyAsync(a => a.MemberId == member.MemberId && a.Timestamp >= cutoff,
-                        cancellationToken);
+                // §10.1.5: "Member has an AttendanceRecord at the
+                // specified branch within the configured window."
+                // CriteriaValue is the window in days. The specified
+                // branch is the branch of the occurrence being filled.
+                return await EvaluateBranchAttendanceRecencyAsync(
+                    member, criteriaValue, occurrence, cancellationToken);
 
             case "EligibilityFlag":
-                if (!int.TryParse(criteriaValue, out var dutyId))
-                {
-                    return false;
-                }
-                return await _db.Eligibilities
-                    .AnyAsync(e => e.MemberId == member.MemberId
-                        && e.DutyId == dutyId
-                        && e.RevokedDate == null,
-                        cancellationToken);
+                return await EvaluateEligibilityFlagAsync(
+                    member, criteriaValue, today, cancellationToken);
 
             case "AcceptanceRate":
             case "DutiesCarried":
@@ -766,6 +768,69 @@ public sealed class ManageConfirmationService : IManageConfirmationService
             default:
                 return false;
         }
+    }
+
+    private async Task<bool> EvaluateBranchAttendanceRecencyAsync(
+        Member member,
+        string criteriaValue,
+        ServiceOccurrence occurrence,
+        CancellationToken cancellationToken)
+    {
+        if (!int.TryParse(criteriaValue, out var windowDays))
+        {
+            return false;
+        }
+
+        var occurrenceBranchId = await _db.ServiceSchedules
+            .Where(s => s.ScheduleId == occurrence.ScheduleId)
+            .Select(s => (int?)s.TimeSlot.BranchId)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (occurrenceBranchId is null)
+        {
+            return false;
+        }
+
+        var cutoff = _clock.GetUtcNow().AddDays(-windowDays);
+
+        var hasRecent = await _db.AttendanceRecords
+            .Where(a => a.MemberId == member.MemberId
+                && a.Timestamp >= cutoff)
+            .Join(
+                _db.ServiceOccurrences,
+                a => a.OccurrenceId,
+                o => o.OccurrenceId,
+                (a, o) => new { Attendance = a, Occurrence = o })
+            .Join(
+                _db.ServiceSchedules,
+                x => x.Occurrence.ScheduleId,
+                s => (int?)s.ScheduleId,
+                (x, s) => new { x.Attendance, BranchId = s.TimeSlot.BranchId })
+            .AnyAsync(x => x.BranchId == occurrenceBranchId.Value, cancellationToken);
+
+        return hasRecent;
+    }
+
+    private async Task<bool> EvaluateEligibilityFlagAsync(
+        Member member,
+        string criteriaValue,
+        DateOnly today,
+        CancellationToken cancellationToken)
+    {
+        if (!int.TryParse(criteriaValue, out var dutyId))
+        {
+            return false;
+        }
+
+        // §10.1.4: the grant must be in effect today.
+        var exists = await _db.Eligibilities
+            .AnyAsync(e => e.MemberId == member.MemberId
+                && e.DutyId == dutyId
+                && e.GrantedDate <= today
+                && (e.RevokedDate == null || e.RevokedDate > today),
+                cancellationToken);
+
+        return exists;
     }
 
     private static bool EvaluateAgeRange(
