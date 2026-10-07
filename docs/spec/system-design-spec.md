@@ -815,6 +815,10 @@ A member is available for a duty on an occurrence if and only if they do not hav
 
 This uses AssignmentStatus.IsTerminal, the same boolean used by 7.0's re-resolution logic and 10.0's capacity calculation.
 
+**Source of the rule.** The occurrence-level exclusion is a fixed default the system applies. It is not a configurable rule in the current specification, and it is not a rule the assignment process is free to alter. The process applies it because the specification states it as the mechanical default.
+
+**Specification gap.** A future revision may define a configurable override that permits a member to hold more than one duty on the same occurrence when the administrator configures it — for example, where two duties are carried by the same role and only one such member is available. That override would be expressed through the Duty Rule criteria vocabulary. **The current criteria vocabulary (see §5) does not include a criterion that evaluates a member's existing assignments on the same occurrence, and therefore cannot currently express this exception.** No such criterion is introduced by this specification. The absence is recorded here so that any future addition is a deliberate specification change, not a silent invention.
+
 #### 10.1.3 Capacity — the slot-count rule
 
 For each (OccurrenceID, DutyID) pair, the effective slot count is:
@@ -1019,6 +1023,10 @@ The timeout check runs as a scheduled part of 7.0.
 
 If ConfirmationTimeoutHours is unset and Required = false, no timeout occurs. If Required = true and unset, 7.0 refuses to run and surfaces a configuration error.
 
+**Past-occurrence guard.** The timeout sweep applies a fixed system rule to guard against acting on a service that has already happened. The timeout transition is recorded for any eligible assignment, regardless of the occurrence's date. However, if the occurrence's date is before today in the configured `ApplicationTimeZone`, the 7.0 process **will not seek a replacement assignment and will not send a notification.**
+
+This is a fixed rule, resolved via `ApplicationTimeZone`. The administrator configures `ConfirmationTimeoutHours`; the specification owns the past-occurrence exclusion. This rule adds no new setting.
+
 #### 11.1.7 Re-resolution on decline or timeout
 
 When a member declines or an assignment times out:
@@ -1071,6 +1079,7 @@ The declining or timed-out row is never modified beyond the status transition. I
 - Status lifecycle ownership: 5.0 creates with NULL; 7.0 owns transitions.
 - Status transitions are unrestricted at the schema level.
 - Timeout rule: `now - CreatedAt >= ConfirmationTimeoutHours`.
+- Past-occurrence guard: the timeout transition is recorded, but no replacement is sought and no notification is sent when the occurrence's date is before today in the configured ApplicationTimeZone. This is a fixed rule, resolved via ApplicationTimeZone. It adds no setting.
 - Required-setting failure: missing InitialAssignmentStatusID or required ConfirmationTimeoutHours → 7.0 refuses to run.
 - Terminal statuses leave slots vacant.
 - Replacement is additive; the declined/timed-out row is not modified beyond the status transition.
@@ -1084,7 +1093,7 @@ The declining or timed-out row is never modified beyond the status transition. I
 - No fill-status evaluation.
 - No occurrence modification.
 - No attendance record.
-- Slot capacity preserved under concurrency (transactional control required).
+- **Slot capacity is preserved under concurrency.** The specification defines the required property: a duty's non-terminal assignment count must never exceed its effective required slot count under any interleaving of concurrent writers. The mechanism that guarantees this property — row-level locking, serializable isolation, or an application-level mutex — is an implementation choice, as listed in §11.5. The process must select and apply a mechanism that satisfies the property.
 
 ### 11.4 Indexes
 
@@ -1765,73 +1774,47 @@ Direct process invocation is the exception. It exists only where a process has j
 The durable invariant is stated as: **9.0 Dispatch Notification is the sole process any other process is permitted to invoke.** The number of processes that invoke it may change as the system grows; the invariant does not.
 
 ### 16.1 The Full Topology
-                 ┌─────────────────────────────┐
-                 │   1.0 Configure vocabulary  │
-                 │   2.0 Configure duty rules  │
-                 │   3.0 Manage membership     │
-                 │   4.0 Manage eligibility    │
-                 │   8.0 Manage events/programs│
-                 └──────────────┬──────────────┘
-                                │ writes
-                                ▼
-┌───────────────────────────────────────────────────────────┐
-│  Configuration stores:  D1 D2 D3 D4 D5 D6 D9 D10 D11      │
-│  (8.0 additionally creates event-sourced ServiceOccurrence │
-│   rows when a ProgramItem is linked to a ServiceDefinition)│
-└───────────────────────────────────────────────────────────┘
-                                │ read by
-                                ▼
-                 ┌─────────────────────────────┐
-                 │  11.0 Materialize           │
-                 │       Occurrences           │
-                 └──────────────┬──────────────┘
-                                │ writes
-                                ▼
-                 ┌─────────────────────────────┐
-                 │   ServiceOccurrence (D3)    │
-                 └──────────────┬──────────────┘
-                                │ read by
-                                ▼
-                 ┌─────────────────────────────┐
-                 │  5.0 Generate Assignment    │
-                 └──────┬────────────────┬─────┘
-                        │ writes         │ invokes
-                        ▼                ▼
-            ┌───────────────────┐   ┌───────────────────┐
-            │  RosterAssignment │   │  9.0 Dispatch     │
-            │  (D7)             │   │  Notification     │
-            └────────┬──────────┘   └───────────────────┘
-                     │                        ▲
-                     │ read/written by        │
-                     ▼                        │
-            ┌───────────────────┐             │
-            │  7.0 Manage       │─────────────┘
-            │  Confirmation     │   invokes (on replacement)
-            └────────┬──────────┘
-                     │
-                     │ feeds
-                     ▼
-            ┌───────────────────┐
-            │  10.0 Evaluate    │
-            │  Fill Status      │
-            └────────┬──────────┘
-                     │ writes
-                     ▼
-            ┌───────────────────┐
-            │  ServiceOccurrence│
-            │  .FillStatusID    │
-            └───────────────────┘
 
+```
+1.0 Configure vocabulary
+2.0 Configure duty rules
+3.0 Manage membership
+4.0 Manage eligibility
+8.0 Manage events/programs
+│ writes
+▼
+Configuration stores: D1 D2 D3 D4 D5 D6 D9 D10 D11
+(8.0 additionally creates event-sourced ServiceOccurrence rows
+when a ProgramItem is linked to a ServiceDefinition)
+│ read by
+▼
+11.0 Materialize Occurrences
+│ writes
+▼
+ServiceOccurrence (D3)
+│ read by
+▼
+5.0 Generate Assignment
+│ writes                │ invokes
+▼                       ▼
+RosterAssignment (D7)      9.0 Dispatch Notification
+│ read/written by       ▲
+▼                       │
+7.0 Manage Confirmation ────────┘
+│                       (invokes on replacement)
+│ feeds
+▼
+10.0 Evaluate Fill Status
+│ writes
+▼
+ServiceOccurrence.FillStatusID
 
-┌──────────────────────────────────────────────────┐
-│  6.0 Record Attendance                           │
-│      │ writes                                    │
-│      ▼                                           │
-│  AttendanceRecord (D8)                           │
-│                                                  │
-│  Read by 5.0 only when a Branch-Attendance       │
-│  Recency criterion exists.                       │
-└──────────────────────────────────────────────────┘
+6.0 Record Attendance
+│ writes
+▼
+AttendanceRecord (D8)
+(Read by 5.0 only when a Branch-Attendance Recency criterion exists.)
+```
 
 ### 16.2 The Direct Invocation Edges
 
@@ -1981,6 +1964,7 @@ Every process has an independent trigger mechanism except 9.0. Operational data 
 
 Editing or removing an existing assignment (manual or automatic) is a different operation from creating one, and is out of scope here. If and when that capability is needed, it gets its own contract rather than being folded into this one.
 
+---
 ### 17.2 Process Boundary
 
 12.0 Create Manual Assignment is the process by which an administrator directly creates a Roster Assignment, bypassing 5.0's tiered candidate selection while still respecting Eligibility Flag criteria and the uniqueness constraint. It is the only process other than 5.0 that writes a new Roster Assignment row from scratch.
