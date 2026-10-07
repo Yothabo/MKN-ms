@@ -14,11 +14,28 @@ namespace MknMs.Application.Processes.Operations.ManageConfirmation;
 /// (OccurrenceId, DutyId) slot by running the same candidate selection
 /// 5.0 uses, scoped to that slot.
 ///
-/// The service does not enforce a status state machine — §11.1.3 states
-/// that any transition is permitted at the schema level and that the
-/// lifecycle semantics are the administrator's concern. The service
-/// records the target status the caller supplied and observes whether
-/// it is terminal, which determines whether re-resolution runs.
+/// §11.1.3: no state machine. Any transition is permitted at the schema
+/// level. The service records the target status the caller supplied and
+/// observes whether it is terminal. Two consequences follow from
+/// reading §11.1.3 together with §11.3, and neither restricts which
+/// statuses may follow which:
+///
+///   - Re-resolution runs only when a transition lands on a terminal
+///     status. A move from one terminal status to another (for example
+///     Declined after TimedOut) vacates nothing and is not counted as
+///     a vacancy.
+///
+///   - §11.3 requires a duty's non-terminal count never to exceed its
+///     required slot count. A transition from a terminal status back
+///     to a non-terminal one would add to that count. If the slot is
+///     already full, the transition is rejected and nothing is
+///     written.
+///
+/// Sweep and past occurrences: the timeout transition is recorded as
+/// §11.1.6 states. If the occurrence's date is before today in the
+/// application timezone, no replacement is sought and no notice is
+/// sent, because the service has already happened. This compares dates
+/// only, using the same resolver the materializer uses.
 ///
 /// Invokes 9.0 Dispatch Notification on each replacement created.
 /// Fire-and-forget: the notification's success or failure does not
@@ -157,6 +174,10 @@ public sealed class ManageConfirmationService : IManageConfirmationService
         return exists ? value : null;
     }
 
+    // -----------------------------------------------------------------
+    // Respond — a member confirmed or declined
+    // -----------------------------------------------------------------
+
     private async Task<ManageConfirmationResult> RespondAsync(
         int assignmentId,
         AssignmentStatus targetStatus,
@@ -168,6 +189,47 @@ public sealed class ManageConfirmationService : IManageConfirmationService
         if (assignment is null)
         {
             throw new EntityNotFoundException(nameof(RosterAssignment), assignmentId);
+        }
+
+        // §11.3 capacity invariant applied to a sequential transition.
+        // §11.1.3 permits any transition, so this is not a state-machine
+        // restriction; it refuses only a terminal-to-non-terminal move
+        // that would push the slot's live count above its required
+        // count. Non-terminal-to-anything, terminal-to-terminal, and
+        // terminal-to-non-terminal-when-there-is-room are all allowed.
+        var wasTerminal = false;
+        if (assignment.AssignmentStatusId is int previousStatusId)
+        {
+            wasTerminal = await _db.AssignmentStatuses
+                .Where(s => s.AssignmentStatusId == previousStatusId)
+                .Select(s => s.IsTerminal)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+
+        if (wasTerminal && !targetStatus.IsTerminal)
+        {
+            var requiredSlots = await ResolveRequiredSlotCountAsync(
+                assignment.OccurrenceId, assignment.DutyId, cancellationToken);
+
+            if (requiredSlots is not null)
+            {
+                var liveCount = await CountNonTerminalAsync(
+                    assignment.OccurrenceId, assignment.DutyId, cancellationToken);
+
+                if (liveCount >= requiredSlots.Value)
+                {
+                    return new ManageConfirmationResult
+                    {
+                        Status = "Failure",
+                        AssignmentsTransitioned = 0,
+                        ReplacementsCreated = 0,
+                        SlotsLeftVacant = 0,
+                        ErrorDetail =
+                            $"Assignment {assignmentId} cannot move to '{targetStatus.Name}': " +
+                            "its slot is already filled by another member.",
+                    };
+                }
+            }
         }
 
         assignment.AssignmentStatusId = targetStatus.AssignmentStatusId;
@@ -253,12 +315,22 @@ public sealed class ManageConfirmationService : IManageConfirmationService
         var now = _clock.GetUtcNow();
         var cutoff = now.AddHours(-timeoutHours);
 
-        // Every NULL-status assignment whose CreatedAt is at or before
-        // the cutoff. This is the "waiting for a response past the
-        // configured window" set.
+        // Every NULL-status assignment at or past the window, carrying
+        // its occurrence's date so the re-resolution decision can be
+        // made per row. The transition itself is always recorded; the
+        // occurrence's date only governs whether a replacement is
+        // sought.
         var timedOut = await _db.RosterAssignments
             .Where(a => a.AssignmentStatusId == null && a.CreatedAt <= cutoff)
-            .OrderBy(a => a.AssignmentId)
+            .Select(a => new
+            {
+                Assignment = a,
+                OccurrenceDate = _db.ServiceOccurrences
+                    .Where(o => o.OccurrenceId == a.OccurrenceId)
+                    .Select(o => o.Date)
+                    .First(),
+            })
+            .OrderBy(x => x.Assignment.AssignmentId)
             .ToListAsync(cancellationToken);
 
         if (timedOut.Count == 0)
@@ -272,27 +344,48 @@ public sealed class ManageConfirmationService : IManageConfirmationService
             };
         }
 
+        // Date-level guard: an occurrence dated before today is in the
+        // past in the application timezone. The timeout transition is
+        // still recorded (the member did not respond), but no
+        // replacement is sought and no notice goes out — the service
+        // has already happened. This compares dates only. It does not
+        // add a setting and it does not assume when any service runs.
+        var timeZone = await TimeZoneResolver.ResolveAsync(_db, cancellationToken);
+        var today = TimeZoneResolver.ToDateInTimeZone(_clock.GetUtcNow(), timeZone);
+
         var transitions = 0;
         var replacements = 0;
         var vacant = 0;
 
-        foreach (var assignment in timedOut)
+        foreach (var item in timedOut)
         {
+            var assignment = item.Assignment;
+
             assignment.AssignmentStatusId = targetStatus.AssignmentStatusId;
             await _db.SaveChangesAsync(cancellationToken);
             transitions++;
 
-            if (targetStatus.IsTerminal)
+            if (!targetStatus.IsTerminal)
             {
-                var reResolved = await ReResolveAsync(assignment, cancellationToken);
-                if (reResolved)
-                {
-                    replacements++;
-                }
-                else
-                {
-                    vacant++;
-                }
+                continue;
+            }
+
+            if (item.OccurrenceDate < today)
+            {
+                // The service has already happened. The transition is
+                // recorded; nothing is announced and the slot is not
+                // refilled.
+                continue;
+            }
+
+            var reResolved = await ReResolveAsync(assignment, cancellationToken);
+            if (reResolved)
+            {
+                replacements++;
+            }
+            else
+            {
+                vacant++;
             }
         }
 

@@ -197,54 +197,71 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
             return new OccurrenceFillOutcome(Array.Empty<DutyFillOutcome>(), 0);
         }
 
-        // Existing non-terminal assignments for this occurrence, grouped
-        // by duty. Terminal assignments do not count toward capacity
-        // (§10.1.2, §10.1.3).
-        var existingByDuty = await _db.RosterAssignments
+        // Every row on the occurrence, with duty and terminality. Used
+        // for capacity counting (non-terminal only), occurrence
+        // availability (non-terminal only), and slot history (any row,
+        // terminal or not — §15.2.1 makes a second row impossible).
+        var existingRows = await _db.RosterAssignments
             .Where(a => a.OccurrenceId == occurrence.OccurrenceId)
-            .Join(_db.AssignmentStatuses,
-                a => a.AssignmentStatusId,
-                s => s.AssignmentStatusId,
-                (a, s) => new { a.DutyId, a.MemberId, s.IsTerminal, HasStatus = true })
+            .Select(a => new
+            {
+                a.DutyId,
+                a.MemberId,
+                IsTerminal = a.AssignmentStatusId != null
+                    && _db.AssignmentStatuses
+                        .Where(s => s.AssignmentStatusId == a.AssignmentStatusId)
+                        .Select(s => s.IsTerminal)
+                        .FirstOrDefault(),
+                IsNull = a.AssignmentStatusId == null,
+            })
             .ToListAsync(cancellationToken);
 
-        // Assignments with null status are also non-terminal — they are
-        // awaiting the initial status transition by 7.0.
-        var nullStatusAssignments = await _db.RosterAssignments
-            .Where(a => a.OccurrenceId == occurrence.OccurrenceId
-                && a.AssignmentStatusId == null)
-            .Select(a => new { a.DutyId, a.MemberId })
-            .ToListAsync(cancellationToken);
-
-        var nonTerminalByDuty = existingByDuty
-            .Where(x => !x.IsTerminal)
+        // Non-terminal rows (including NULL status, which awaits 7.0's
+        // initial transition) — the capacity and availability rule
+        // (§10.1.2, §10.1.3).
+        var nonTerminalRows = existingRows
+            .Where(x => x.IsNull || !x.IsTerminal)
             .Select(x => (x.DutyId, x.MemberId))
-            .Concat(nullStatusAssignments.Select(x => (x.DutyId, x.MemberId)))
             .ToList();
 
-        // Members already assigned (non-terminal) on this occurrence —
-        // the one-member-per-occurrence rule (§10.1.2).
-        var membersOnOccurrence = nonTerminalByDuty
+        var membersOnOccurrence = nonTerminalRows
             .Select(x => x.MemberId)
             .ToHashSet();
+
+        // Slot history: anyone holding ANY row on a duty's slot. This
+        // honours the unique constraint on (MemberId, DutyId,
+        // OccurrenceId) (§15.2.1): a member who already holds a row on
+        // the slot — even a terminal one — cannot be offered it again.
+        var slotHistory = existingRows
+            .GroupBy(x => x.DutyId)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.MemberId).ToHashSet());
 
         var dutyOutcomes = new List<DutyFillOutcome>(requiredDuties.Count);
         var totalCreated = 0;
 
         foreach (var duty in requiredDuties)
         {
-            var existingCount = nonTerminalByDuty.Count(x => x.DutyId == duty.DutyId);
+            var existingCount = nonTerminalRows.Count(x => x.DutyId == duty.DutyId);
             var filledForThisDuty = existingCount;
 
             var remaining = duty.RequiredSlotCount - existingCount;
             if (remaining > 0)
             {
+                // Exclusion for this duty's candidates: anyone with a
+                // live row anywhere on the occurrence (§10.1.2), plus
+                // anyone with any row on this duty's slot (§15.2.1).
+                var exclusion = new HashSet<int>(membersOnOccurrence);
+                if (slotHistory.TryGetValue(duty.DutyId, out var onSlot))
+                {
+                    exclusion.UnionWith(onSlot);
+                }
+
                 var candidates = await FindCandidatesAsync(
                     occurrence,
                     duty.DutyId,
                     duty.RequiredSlotCount,
                     existingCount,
-                    membersOnOccurrence,
+                    exclusion,
                     today,
                     tenureThresholdDays,
                     ageRangeMin,
@@ -287,10 +304,6 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
 
         return new OccurrenceFillOutcome(dutyOutcomes, totalCreated);
     }
-
-    // -----------------------------------------------------------------
-    // Effective duty list
-    // -----------------------------------------------------------------
 
     private sealed record RequiredDuty(int DutyId, int RequiredSlotCount);
 
