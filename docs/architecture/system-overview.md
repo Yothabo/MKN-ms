@@ -112,7 +112,7 @@ This is why processes like the Occurrence Materializer refuse to run when `Occur
 - **`fixed-vs-configurable.md`** — what the system knows vs. what administrators decide.
 - **`data-model.md`** — the entities and their relationships.
 - **`entity-reference.md`** — every table, every column.
-- **`process-model.md`** — the twelve processes.
+- **`process-model.md`** — the thirteen processes.
 - **`invocation-model.md`** — how processes communicate.
 
 ---

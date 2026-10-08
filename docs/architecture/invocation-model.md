@@ -210,20 +210,22 @@ The following topology matches §16 of the System Design Specification. Only con
 | 6.0 Record Attendance | — | — |
 | 7.0 Manage Confirmation | 9.0 | — |
 | 8.0 Manage Events and Programs | — | — |
-| 9.0 Dispatch Notification | — | 5.0, 7.0 |
+| 9.0 Dispatch Notification | — | 5.0, 7.0, 12.0 |
 | 10.0 Evaluate Fill Status | — | — |
 | 11.0 Materialize Occurrences | — | — |
 | 12.0 Create Manual Assignment | 9.0 | — |
+| 13.0 Attendance Rule Engine | — | — |
 
-**Confirmation of the three-edge claim:**
+**Confirmation of the invocation topology:**
 
 - 5.0 invokes 9.0, unconditionally. Nothing invokes 5.0.
 - 7.0 invokes 9.0, on replacement only. Nothing invokes 7.0.
 - 12.0 invokes 9.0, only when the created assignment's AssignmentStatusID is NULL. Nothing invokes 12.0.
-- 9.0 invokes nothing. It is invoked by 5.0, 7.0, and 12.0.
+- 9.0 invokes nothing. It is invoked by 5.0, 7.0, and 12.0. It also carries its own independent scheduled trigger, which is a trigger and not an invocation. The trigger reads new Configuration Audit Log entries and dispatches authority notifications.
+- 13.0 Attendance Rule Engine invokes nothing and is invoked by nothing. It is triggered by the scheduler or by an administrator.
 - No other process invokes another, and 9.0 is the only process any process invokes.
 
-This is the entire invocation topology of the system.
+This is the entire invocation topology of the system. The invocation matrix is separate from the trigger matrix because a process may have triggers that are not invocations.
 
 ---
 

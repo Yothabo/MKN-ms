@@ -22372,7 +22372,7 @@ These are deliberately excluded. They are not the absence of a decision; they ar
 
 ==============================================================================
 FILE: docs/architecture/invocation-model.md
-LINES: 316
+LINES: 318
 ==============================================================================
 
 # Invocation Model
@@ -22587,20 +22587,22 @@ The following topology matches §16 of the System Design Specification. Only con
 | 6.0 Record Attendance | — | — |
 | 7.0 Manage Confirmation | 9.0 | — |
 | 8.0 Manage Events and Programs | — | — |
-| 9.0 Dispatch Notification | — | 5.0, 7.0 |
+| 9.0 Dispatch Notification | — | 5.0, 7.0, 12.0 |
 | 10.0 Evaluate Fill Status | — | — |
 | 11.0 Materialize Occurrences | — | — |
 | 12.0 Create Manual Assignment | 9.0 | — |
+| 13.0 Attendance Rule Engine | — | — |
 
-**Confirmation of the three-edge claim:**
+**Confirmation of the invocation topology:**
 
 - 5.0 invokes 9.0, unconditionally. Nothing invokes 5.0.
 - 7.0 invokes 9.0, on replacement only. Nothing invokes 7.0.
 - 12.0 invokes 9.0, only when the created assignment's AssignmentStatusID is NULL. Nothing invokes 12.0.
-- 9.0 invokes nothing. It is invoked by 5.0, 7.0, and 12.0.
+- 9.0 invokes nothing. It is invoked by 5.0, 7.0, and 12.0. It also carries its own independent scheduled trigger, which is a trigger and not an invocation. The trigger reads new Configuration Audit Log entries and dispatches authority notifications.
+- 13.0 Attendance Rule Engine invokes nothing and is invoked by nothing. It is triggered by the scheduler or by an administrator.
 - No other process invokes another, and 9.0 is the only process any process invokes.
 
-This is the entire invocation topology of the system.
+This is the entire invocation topology of the system. The invocation matrix is separate from the trigger matrix because a process may have triggers that are not invocations.
 
 ---
 
@@ -22694,18 +22696,18 @@ In every case, the reader finds what it needs by querying the store, not by bein
 
 ==============================================================================
 FILE: docs/architecture/process-model.md
-LINES: 252
+LINES: 254
 ==============================================================================
 
 # Process Model
 
-*The twelve processes that make up the system, grouped by layer. Derived from the System Design Specification §3 and the Data Flow Diagrams. Where this document conflicts with the specification, the specification wins.*
+*The thirteen processes that make up the system, grouped by layer. Derived from the System Design Specification §3 and the Data Flow Diagrams. Where this document conflicts with the specification, the specification wins.*
 
 ---
 
 ## Overview
 
-The system is composed of twelve processes. Each has a defined trigger, a defined boundary, a defined read and write footprint, and a defined set of invariants. No process embeds an organization's rules; each reads configuration at run time.
+The system is composed of thirteen processes. Each has a defined trigger, a defined boundary, a defined read and write footprint, and a defined set of invariants. No process embeds an organization's rules; each reads configuration at run time.
 
 The processes divide into two layers:
 
@@ -22882,17 +22884,18 @@ Directly creates a Roster Assignment from an administrator's selection, bypassin
 | 10.0 | Evaluate Fill Status | Operations | After assignment changes / Scheduled | Occurrence FillStatusID |
 | 11.0 | Materialize Occurrences | Operations | Scheduled / Manual | Service Occurrences, Materializer Run records |
 | 12.0 | Create Manual Assignment | Operations | Admin | Manually-created Roster Assignment |
+| 13.0 | Attendance Rule Engine | Operations | Scheduled / Manual | Member status changes, readmission events |
 
 ---
 
 ## Trigger summary
 
-Every process has at least one trigger. Only 9.0 has no independent trigger — it exists solely to be invoked by 5.0, 7.0, and 12.0.
+Every process has at least one trigger. Only 9.0 is both invoked by other processes and carries its own scheduled trigger.
 
 | Trigger type | Processes |
 | --- | --- |
-| Administrator action | 1.0, 2.0, 3.0, 4.0, 5.0, 8.0, 11.0 |
-| Scheduled execution | 5.0, 7.0, 10.0, 11.0 |
+| Administrator action | 1.0, 2.0, 3.0, 4.0, 5.0, 8.0, 11.0, 13.0 |
+| Scheduled execution | 5.0, 7.0, 10.0, 11.0, 13.0 |
 | Member action | 6.0, 7.0 |
 | Invoked by another process | 9.0 |
 
@@ -22916,6 +22919,7 @@ Each process reads from and writes to a defined set of stores. No process writes
 | 10.0 | D3, D7, D10, D11 | D3 |
 | 11.0 | D3, D11 | D3, D12 |
 | 12.0 | D2, D3, D4, D6, D7 | D7 |
+| 13.0 | D2, D3, D4, D5, D7, D10 | D4 |
 
 ---
 
@@ -23069,7 +23073,7 @@ This is why processes like the Occurrence Materializer refuse to run when `Occur
 - **`fixed-vs-configurable.md`** — what the system knows vs. what administrators decide.
 - **`data-model.md`** — the entities and their relationships.
 - **`entity-reference.md`** — every table, every column.
-- **`process-model.md`** — the twelve processes.
+- **`process-model.md`** — the thirteen processes.
 - **`invocation-model.md`** — how processes communicate.
 
 ---
@@ -27293,7 +27297,7 @@ No index is prescribed at specification level for 9.0.
 
 ==============================================================================
 FILE: docs/processes/operations/README.md
-LINES: 139
+LINES: 140
 ==============================================================================
 
 
@@ -27322,6 +27326,7 @@ These processes read configuration at run time. None of them embeds an organizat
 | 10.0 | Evaluate Fill Status | Computes each occurrence's fill state and writes FillStatusID |
 | 11.0 | Materialize Occurrences | Generates Service Occurrences from active Service Schedules on a rolling horizon |
 | 12.0 | Create Manual Assignment | Directly creates a Roster Assignment from an administrator's selection |
+| 13.0 | Attendance Rule Engine | Reads Attendance Rules and applies configured outcomes |
 
 ---
 

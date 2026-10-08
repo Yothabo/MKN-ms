@@ -1,12 +1,12 @@
 # Process Model
 
-*The twelve processes that make up the system, grouped by layer. Derived from the System Design Specification §3 and the Data Flow Diagrams. Where this document conflicts with the specification, the specification wins.*
+*The thirteen processes that make up the system, grouped by layer. Derived from the System Design Specification §3 and the Data Flow Diagrams. Where this document conflicts with the specification, the specification wins.*
 
 ---
 
 ## Overview
 
-The system is composed of twelve processes. Each has a defined trigger, a defined boundary, a defined read and write footprint, and a defined set of invariants. No process embeds an organization's rules; each reads configuration at run time.
+The system is composed of thirteen processes. Each has a defined trigger, a defined boundary, a defined read and write footprint, and a defined set of invariants. No process embeds an organization's rules; each reads configuration at run time.
 
 The processes divide into two layers:
 
@@ -183,17 +183,18 @@ Directly creates a Roster Assignment from an administrator's selection, bypassin
 | 10.0 | Evaluate Fill Status | Operations | After assignment changes / Scheduled | Occurrence FillStatusID |
 | 11.0 | Materialize Occurrences | Operations | Scheduled / Manual | Service Occurrences, Materializer Run records |
 | 12.0 | Create Manual Assignment | Operations | Admin | Manually-created Roster Assignment |
+| 13.0 | Attendance Rule Engine | Operations | Scheduled / Manual | Member status changes, readmission events |
 
 ---
 
 ## Trigger summary
 
-Every process has at least one trigger. Only 9.0 has no independent trigger — it exists solely to be invoked by 5.0, 7.0, and 12.0.
+Every process has at least one trigger. Only 9.0 is both invoked by other processes and carries its own scheduled trigger.
 
 | Trigger type | Processes |
 | --- | --- |
-| Administrator action | 1.0, 2.0, 3.0, 4.0, 5.0, 8.0, 11.0 |
-| Scheduled execution | 5.0, 7.0, 10.0, 11.0 |
+| Administrator action | 1.0, 2.0, 3.0, 4.0, 5.0, 8.0, 11.0, 13.0 |
+| Scheduled execution | 5.0, 7.0, 10.0, 11.0, 13.0 |
 | Member action | 6.0, 7.0 |
 | Invoked by another process | 9.0 |
 
@@ -217,6 +218,7 @@ Each process reads from and writes to a defined set of stores. No process writes
 | 10.0 | D3, D7, D10, D11 | D3 |
 | 11.0 | D3, D11 | D3, D12 |
 | 12.0 | D2, D3, D4, D6, D7 | D7 |
+| 13.0 | D2, D3, D4, D5, D7, D10 | D4 |
 
 ---
 

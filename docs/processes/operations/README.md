@@ -24,6 +24,7 @@ These processes read configuration at run time. None of them embeds an organizat
 | 10.0 | Evaluate Fill Status | Computes each occurrence's fill state and writes FillStatusID |
 | 11.0 | Materialize Occurrences | Generates Service Occurrences from active Service Schedules on a rolling horizon |
 | 12.0 | Create Manual Assignment | Directly creates a Roster Assignment from an administrator's selection |
+| 13.0 | Attendance Rule Engine | Reads Attendance Rules and applies configured outcomes |
 
 ---
 
