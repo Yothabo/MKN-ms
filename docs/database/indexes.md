@@ -24,8 +24,8 @@ These are correctness constraints, not performance indexes. Their physical imple
 | --- | --- | --- |
 | ServiceOccurrence | UNIQUE (ScheduleID, Date), schedule-sourced rows | §7, §8, §15.2.4 |
 | ServiceSchedule | UNIQUE (ServiceDefID, TimeSlotID), rows where IsActive = true AND IsDeleted = false | §9.1.5, §15.2.3 |
-| RosterAssignment | UNIQUE (MemberID, DutyID, OccurrenceID) | §10.4.1, §15.2.1 |
-| AttendanceRecord | UNIQUE (MemberID, OccurrenceID) | §13.4.1, §15.2.2 |
+| RosterAssignment | UNIQUE (MemberID, DutyID, OccurrenceID) | §10.4, §15.2.1 |
+| AttendanceRecord | UNIQUE (MemberID, OccurrenceID) | §13.4, §15.2.2 |
 
 Each of these is required as a rule. Whether it creates a backing index, and how, depends on the target database and on how the constraint is expressed.
 

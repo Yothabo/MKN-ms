@@ -6,7 +6,7 @@
 
 ## Status
 
-This document describes the **anticipated** mapping from the eventual API endpoints to the system's twelve processes. It is not a finalized API design contract — the API contract does not exist yet, and it will not until the technology stack is chosen.
+This document describes the **anticipated** mapping from the eventual API endpoints to the system's thirteen processes. It is not a finalized API design contract — the API contract does not exist yet, and it will not until the technology stack is chosen.
 
 What this document does establish is the shape of the mapping: every endpoint will invoke exactly one process or subprocess, and no endpoint will introduce behavior beyond what the process defines. Those constraints come from the process model, not from any API design choice, and they hold regardless of stack.
 

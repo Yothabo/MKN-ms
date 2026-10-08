@@ -48,7 +48,7 @@ Then move outward into the derived documentation:
 8. **`architecture/system-overview.md`** — the top-down view.
 9. **`architecture/core-design-principle.md`** — the fixed/configurable separation, in full.
 10. **`architecture/data-model.md`** and **`entity-reference.md`** — the entities.
-11. **`architecture/process-model.md`** — the twelve processes.
+11. **`architecture/process-model.md`** — the thirteen processes.
 12. **`architecture/invocation-model.md`** — the direct invocation edges and the data-mediated relationships.
 13. **`processes/configuration/README.md`** and **`processes/operations/README.md`** — the two process layers.
 14. **The individual process documents** — one per process.
@@ -96,12 +96,12 @@ Eight documents describing the system as a whole:
 - **`fixed-vs-configurable.md`** — what the system knows vs. what administrators decide.
 - **`data-model.md`** — the entities and their relationships.
 - **`entity-reference.md`** — every table, every column.
-- **`process-model.md`** — the twelve processes, grouped by layer.
+- **`process-model.md`** — the thirteen processes, grouped by layer.
 - **`invocation-model.md`** — the direct invocation edges and the data-mediated relationships.
 
 ### `processes/`
 
-The twelve processes, split into two layers:
+The thirteen processes, split into two layers:
 
 - **`configuration/`** — the five processes that create and maintain administrator-entered values.
 - **`operations/`** — the seven processes that produce operational records.

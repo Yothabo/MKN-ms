@@ -41,6 +41,78 @@ coverage/
 .nyc_output/
 
 ==============================================================================
+FILE: FREEZE.md
+LINES: 66
+==============================================================================
+
+# Specification Freeze
+
+**Frozen at commit:** `6abb13e`
+**Frozen on:** 2026-10-08
+
+---
+
+## What is frozen
+
+The specification at `docs/spec/system-design-spec.md` is the authority for the system. It is frozen at the commit named above. From this point forward, the specification is what the implementation is built from.
+
+The derived documents under `docs/architecture/`, `docs/database/`, `docs/processes/`, and `docs/api/` are subordinate to the specification. Where they conflict with the specification, the specification wins.
+
+## What this means for implementation
+
+Implementation proceeds against the frozen specification only. Every entity, every column, every process, every rule in the frozen specification is a contract. Nothing is added to the implementation that is not in the specification. Nothing in the specification is left unimplemented except where the specification itself marks a feature as deferred.
+
+The following are explicitly deferred by the specification and are not to be implemented at this phase:
+
+- The tap ingestion path. `AttendanceRecord.Source` defines the value `Tap`, but no process produces it. Manual register marking is the only implemented attendance source.
+- The capability matrix. `Capability` names actions; no assignment of capabilities to roles, tiers, or admins is modelled.
+- Notification templates as entities. Message content is composed in code.
+- Per-member channel preferences. A single global channel is used.
+- The permission model's enforcement. The specification assumes callers have passed the applicable authority check, but the check itself is not defined by the specification.
+- The attendance-driven status transitions are implemented, but the youth exemption and any other scope-based exemption is expressed as separate Attendance Rules the administrator configures. The system does not hardcode any exemption.
+
+## What a change to the specification requires
+
+Any change to the frozen specification is an amendment. An amendment is:
+
+1. A stated rule, with its source in the specification and the section it affects.
+2. Applied as a change to the specification file itself, not to a derived document.
+3. Propagated to every derived document that references the affected rule.
+4. Recorded as a new commit that names the amendment.
+
+There is no way to change the implementation's behaviour without changing the specification, and there is no way to change the specification without recording the amendment.
+
+## The current amendment history
+
+The specification was frozen after three amendment sets were applied:
+
+- The initial schema and amendment set (§15.1 through §15.7).
+- The A–G amendment set (§15.8.1 through §15.8.18). Member Status, attributes, event restructuring, the two-flag lifecycle, the configuration audit log, the deletion policy, notification subscriptions, the Capability vocabulary.
+- The attendance amendment set (§15.8.19 through §15.8.26). The register scope, the Attendance Rule entity, the Readmission entity, and the thirteenth process.
+
+Earlier corrections — the invocation-versus-triggering distinction, the past-occurrence guard, the slot-capacity property statement, the eligibility rule alignment — were folded into the specification before the freeze and are recorded in the git history.
+
+## The conformance position
+
+The specification is conformant with the brain-and-organs architectural model. The configuration layer is the sole authority for organisational policy. The processes execute mechanical operations against configured values and operational data. Fixed system behaviour remains distinguishable from administrator-configured behaviour. The one flagged conformance item — the invocation-versus-triggering distinction — was normalized before the freeze.
+
+## The next phase
+
+Implementation begins. The first work is to bring the current code base into line with the frozen specification. The code at the freeze commit implements twelve processes; the specification defines thirteen. The additions are:
+
+- The Attendance Rule Engine (13.0) and its entities.
+- The `AttendanceRecord.Source` column.
+- `Branch.UsesAttendanceRegister` and `Event.UsesAttendanceRegister`.
+- The attendance register scope resolution.
+- The changes from the A–G amendment set that have not yet been brought into the code.
+
+Implementation is scoped to those additions and to any existing code that has drifted from the specification.
+
+---
+
+*This file records the freeze. It is not itself part of the specification. The specification remains the authority.*
+
+==============================================================================
 FILE: README.md
 LINES: 17
 ==============================================================================
@@ -20579,7 +20651,7 @@ Then move outward into the derived documentation:
 8. **`architecture/system-overview.md`** — the top-down view.
 9. **`architecture/core-design-principle.md`** — the fixed/configurable separation, in full.
 10. **`architecture/data-model.md`** and **`entity-reference.md`** — the entities.
-11. **`architecture/process-model.md`** — the twelve processes.
+11. **`architecture/process-model.md`** — the thirteen processes.
 12. **`architecture/invocation-model.md`** — the direct invocation edges and the data-mediated relationships.
 13. **`processes/configuration/README.md`** and **`processes/operations/README.md`** — the two process layers.
 14. **The individual process documents** — one per process.
@@ -20627,12 +20699,12 @@ Eight documents describing the system as a whole:
 - **`fixed-vs-configurable.md`** — what the system knows vs. what administrators decide.
 - **`data-model.md`** — the entities and their relationships.
 - **`entity-reference.md`** — every table, every column.
-- **`process-model.md`** — the twelve processes, grouped by layer.
+- **`process-model.md`** — the thirteen processes, grouped by layer.
 - **`invocation-model.md`** — the direct invocation edges and the data-mediated relationships.
 
 ### `processes/`
 
-The twelve processes, split into two layers:
+The thirteen processes, split into two layers:
 
 - **`configuration/`** — the five processes that create and maintain administrator-entered values.
 - **`operations/`** — the seven processes that produce operational records.
@@ -20721,7 +20793,7 @@ When the API contract is defined, this directory will hold:
 
 - **`endpoints.md`** — the endpoint list, grouped by the processes they serve.
 - **`request-response.md`** — request and response shapes, error conventions, and any versioning policy.
-- **`process-mapping.md`** — the anticipated process exposure, mapped against the twelve processes in `../processes/`.
+- **`process-mapping.md`** — the anticipated process exposure, mapped against the thirteen processes in `../processes/`.
 
 ---
 
@@ -20870,7 +20942,7 @@ LINES: 113
 
 ## Status
 
-This document describes the **anticipated** mapping from the eventual API endpoints to the system's twelve processes. It is not a finalized API design contract — the API contract does not exist yet, and it will not until the technology stack is chosen.
+This document describes the **anticipated** mapping from the eventual API endpoints to the system's thirteen processes. It is not a finalized API design contract — the API contract does not exist yet, and it will not until the technology stack is chosen.
 
 What this document does establish is the shape of the mapping: every endpoint will invoke exactly one process or subprocess, and no endpoint will introduce behavior beyond what the process defines. Those constraints come from the process model, not from any API design choice, and they hold regardless of stack.
 
@@ -23834,8 +23906,8 @@ These are correctness constraints, not performance indexes. Their physical imple
 | --- | --- | --- |
 | ServiceOccurrence | UNIQUE (ScheduleID, Date), schedule-sourced rows | §7, §8, §15.2.4 |
 | ServiceSchedule | UNIQUE (ServiceDefID, TimeSlotID), rows where IsActive = true AND IsDeleted = false | §9.1.5, §15.2.3 |
-| RosterAssignment | UNIQUE (MemberID, DutyID, OccurrenceID) | §10.4.1, §15.2.1 |
-| AttendanceRecord | UNIQUE (MemberID, OccurrenceID) | §13.4.1, §15.2.2 |
+| RosterAssignment | UNIQUE (MemberID, DutyID, OccurrenceID) | §10.4, §15.2.1 |
+| AttendanceRecord | UNIQUE (MemberID, OccurrenceID) | §13.4, §15.2.2 |
 
 Each of these is required as a rule. Whether it creates a backing index, and how, depends on the target database and on how the constraint is expressed.
 
@@ -26266,7 +26338,7 @@ Both are candidate indexes; the physical form is implementation-dependent.
 *Source: System Design Specification §7, §8.*
 
 ==============================================================================
-FILE: docs/processes/operations/12.0-manual-assignment.md
+FILE: docs/processes/operations/12.0-create-manual-assignment.md
 LINES: 212
 ==============================================================================
 
@@ -27699,7 +27771,7 @@ For a reader new to the operations layer:
 5. **`10.0-evaluate-fill-status.md`** — the fill state evaluation.
 6. **`6.0-record-attendance.md`** — the raw presence fact.
 7. **`9.0-dispatch-notification.md`** — the outbound channel.
-8. **`12.0-manual-assignment.md`** — the direct admin override.
+8. **`12.0-create-manual-assignment.md`** — the direct admin override.
 
 ---
 

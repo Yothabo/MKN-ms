@@ -133,7 +133,7 @@ For a reader new to the operations layer:
 5. **`10.0-evaluate-fill-status.md`** — the fill state evaluation.
 6. **`6.0-record-attendance.md`** — the raw presence fact.
 7. **`9.0-dispatch-notification.md`** — the outbound channel.
-8. **`12.0-manual-assignment.md`** — the direct admin override.
+8. **`12.0-create-manual-assignment.md`** — the direct admin override.
 
 ---
 

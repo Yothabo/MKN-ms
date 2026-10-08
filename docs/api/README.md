@@ -18,7 +18,7 @@ When the API contract is defined, this directory will hold:
 
 - **`endpoints.md`** — the endpoint list, grouped by the processes they serve.
 - **`request-response.md`** — request and response shapes, error conventions, and any versioning policy.
-- **`process-mapping.md`** — the anticipated process exposure, mapped against the twelve processes in `../processes/`.
+- **`process-mapping.md`** — the anticipated process exposure, mapped against the thirteen processes in `../processes/`.
 
 ---
 
