@@ -1800,7 +1800,7 @@ The Attendance Rule engine is the process that reads Attendance Rules, evaluates
 
 **Writes:** `Member.MemberStatusID` when a `SetStatus` outcome fires. Notification dispatches when a `Notify` outcome fires. `ConfigurationAuditLog` is not written by this process; it is a configuration-lifecycle record. The engine does not write `Readmission`; readmissions are recorded by administrative action through the member-management process. A `Manual` rule is applied through a distinct administrative invocation that names exactly one rule and applies its outcome to every member matching its scope.
 
-**Does not:** modify `AttendanceRecord`, invoke any other process, or modify any operational record other than the member status and the readmission count.
+**Does not:** modify `AttendanceRecord`, invoke any other process, or modify any operational record other than `Member.MemberStatusID`. The readmission count is derived from `Readmission` rows and is not a stored field; the engine reads `Readmission` and never writes it.
 
 For each enabled Attendance Rule, the process:
 
@@ -1885,7 +1885,7 @@ The current scope assumes a single global channel. Per-member channel preference
 
 9.0 has two trigger paths.
 
-**Path 1 — member-facing, invoked.** Invoked by three processes, under the conditions below:
+**Path 1 — member-facing, invoked.** Invoked by four processes, under the conditions below:
 
 | Invoked by | When |
 | --- | --- |
@@ -2375,7 +2375,7 @@ Edge I4 was added by the attendance amendment set. The Attendance Rule engine in
 | 6.0 Record attendance | — | — |
 | 7.0 Manage confirmation | 9.0 | — |
 | 8.0 Manage events and programs | — | — |
-| 9.0 Dispatch notification | — | 5.0, 7.0, 12.0 |
+| 9.0 Dispatch notification | — | 5.0, 7.0, 12.0, 13.0 |
 | 10.0 Evaluate fill status | — | — |
 | 11.0 Materialize occurrences | — | — |
 | 12.0 Create manual assignment | 9.0 | — |
@@ -2422,7 +2422,7 @@ Every process has an independent trigger mechanism except 9.0. Operational data 
 
 - **9.0 Dispatch Notification is the sole process any other process is permitted to invoke.** This is the durable form of the invariant; the current count of invoking processes is four (5.0, 7.0, 12.0, 13.0), but the invariant is stated without a count so it survives future growth. This invariant concerns invocation, not triggering.
 - **Four direct invocation edges currently exist.** 5.0 → 9.0 (unconditional), 7.0 → 9.0 (conditional, on replacement only), 12.0 → 9.0 (conditional, only when AssignmentStatusID is NULL at creation), 13.0 → 9.0 (conditional, only when an Attendance Rule's outcome is Notify). All four terminate at 9.0.
-- **13.0 Attendance Rule Engine is invoked by nothing.** It is triggered by the scheduler or by an administrator. It writes Member Status and Readmission rows. Its only invocation is to 9.0, and only on Notify outcomes.
+- **13.0 Attendance Rule Engine is invoked by nothing.** It is triggered by the scheduler or by an administrator. It writes `Member.MemberStatusID` only; it does not write `Readmission`. Its only invocation is to 9.0, and only on Notify outcomes.
 - **9.0 additionally has an independent scheduled trigger.** The authority-notification sweep is a scheduled trigger of 9.0, not an invocation. It reads new ConfigurationAuditLog entries and dispatches notifications for them. No process invokes 9.0 for this path; the scheduler starts 9.0 directly.
 - **Shared data is the default integration mechanism.**
 - **No orchestration.** No process orchestrates another.
