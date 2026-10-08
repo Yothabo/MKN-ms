@@ -28218,7 +28218,7 @@ Authentication, session management, authorization/RBAC, privilege escalation pro
 
 ==============================================================================
 FILE: docs/spec/system-design-spec.md
-LINES: 2516
+LINES: 2546
 ==============================================================================
 
 # System Design Specification
@@ -29135,7 +29135,7 @@ D10 contains admin-defined lookups referenced elsewhere in the schema: Outcome S
 The configuration layer writes SystemSetting rows. Some are consumed only by operational processes:
 
 - OccurrenceHorizonDays — required; consumed by 11.0.
-- InitialAssignmentStatusID — required; consumed by 7.0.
+- InitialAssignmentStatusID, DeclinedStatusID, TimedOutStatusID — required; consumed by 7.0.
 - OutcomeStateUnfilledID, OutcomeStatePartiallyFilledID, OutcomeStateFilledID — required; consumed by 10.0.
 - OutcomeStateCancelledID — non-required; consumed by 10.0.
 - NotificationChannel — deployment choice; consumed by 9.0.
@@ -29602,7 +29602,17 @@ An administrator may configure any status names and any `IsTerminal` values. The
 
 #### 11.1.5 Initial status designation
 
-7.0 transitions an assignment from NULL to the admin-designated initial status. This status is identified via SystemSetting.InitialAssignmentStatusID, a required setting. If the setting is unset or invalid, 7.0 refuses to run and surfaces a configuration error.
+7.0 transitions an assignment from NULL to the admin-designated initial status. This status is identified via `SystemSetting.InitialAssignmentStatusID`, a required setting. If the setting is unset or invalid, 7.0 refuses to run and surfaces a configuration error.
+
+7.0 resolves three target statuses from settings, one per operation:
+
+| Operation | Setting | Applies to |
+| --- | --- | --- |
+| Confirm | `InitialAssignmentStatusID` | A NULL assignment |
+| Decline | `DeclinedStatusID` | A NULL or non-terminal assignment |
+| Timeout sweep | `TimedOutStatusID` | A NULL assignment past the timeout |
+
+All three settings are required. The system does not name or interpret any AssignmentStatus; the settings point at admin-created rows. Changing any setting takes effect on the next 7.0 run and does not rewrite existing assignments.
 
 #### 11.1.6 Timeout measurement
 
@@ -29621,7 +29631,7 @@ This is a fixed rule, resolved via `ApplicationTimeZone`. The administrator conf
 
 When a member declines or an assignment times out:
 
-1. The assignment's AssignmentStatusID transitions to the admin-designated declined or timed-out status.
+1. The assignment's AssignmentStatusID transitions to the admin-designated target status. On the decline path, the target is `SystemSetting.DeclinedStatusID`; the decline operation applies to a NULL or a non-terminal assignment. On the timeout sweep path, the target is `SystemSetting.TimedOutStatusID`; the timeout sweep applies only to assignments whose AssignmentStatusID is NULL and whose elapsed age meets the configured timeout. Both settings are required; if either is absent, 7.0 refuses the corresponding operation and surfaces a configuration error.
 2. The status must have IsTerminal = true for the slot to be considered vacant; if the admin marks a decline status as non-terminal, the slot remains occupied and 7.0 does not re-resolve.
 3. 7.0 runs the same candidate selection logic 5.0 uses, scoped to the affected (OccurrenceID, DutyID) slot only.
 4. **Any member who has previously declined or timed out for this specific (OccurrenceID, DutyID) slot is excluded from the replacement candidate set.** The exclusion is cumulative: it is not limited to the member whose assignment just became terminal. A member who declined this slot earlier in the occurrence's lifecycle — and was replaced — remains excluded from all subsequent replacement attempts for that slot. Their terminal assignment does not exclude them under the general availability rule; this is an additional re-resolution rule specific to 7.0.
@@ -30260,6 +30270,26 @@ Event-sourced occurrences are excluded. Their uniqueness is governed by the 8.0 
 | Required | true |
 | Consumed by | 7.0 |
 | Behavior if absent | 7.0 refuses to run and surfaces a configuration error |
+| Source | §11 |
+
+#### 15.3.2a DeclinedStatusID
+
+| Property | Value |
+| --- | --- |
+| Type | integer — an AssignmentStatusID |
+| Required | true |
+| Consumed by | 7.0, on the decline path |
+| Behavior if absent | 7.0 refuses the decline operation and surfaces a configuration error |
+| Source | §11 |
+
+#### 15.3.2b TimedOutStatusID
+
+| Property | Value |
+| --- | --- |
+| Type | integer — an AssignmentStatusID |
+| Required | true |
+| Consumed by | 7.0, on the timeout sweep path |
+| Behavior if absent | 7.0 refuses the sweep operation and surfaces a configuration error |
 | Source | §11 |
 
 #### 15.3.3 ConfirmationTimeoutHours
