@@ -8,7 +8,9 @@
 
 Each entity is presented as a table with columns, types, and notes. Nullable columns are marked. Foreign keys are noted with their target. Constraint references point to `../database/constraints.md` where the full constraint list lives.
 
-Types are stated generically — integer, string, boolean, timestamp, date, time, decimal. Physical types are an implementation choice (see `../database/schema.md`).
+Types are stated generically — integer, string, boolean, timestamp, date, time. Physical types are an implementation choice.
+
+Configuration entities carry both `IsActive` and `IsDeleted`. Operational entities carry neither. The two-flag lifecycle is stated in Specification §9.6.
 
 ---
 
@@ -20,7 +22,9 @@ Types are stated generically — integer, string, boolean, timestamp, date, time
 | --- | --- | --- | --- |
 | RoleID | integer | No | Primary key |
 | Name | string | No | Administrator-defined label. Not unique. |
-| IsActive | boolean | No | True at creation. Deactivated, never deleted. |
+| IsDefault | boolean | No | Exactly one Role is the default. The default Role cannot be soft-deleted. |
+| IsActive | boolean | No | True at creation. |
+| IsDeleted | boolean | No | False at creation. |
 
 ### Duty
 
@@ -28,24 +32,29 @@ Types are stated generically — integer, string, boolean, timestamp, date, time
 | --- | --- | --- | --- |
 | DutyID | integer | No | Primary key |
 | Name | string | No | Administrator-defined label. Not unique. |
-| IsActive | boolean | No | True at creation. Deactivated, never deleted. |
+| IsActive | boolean | No | True at creation. |
+| IsDeleted | boolean | No | False at creation. |
 
-Duty carries no reference to Role. The relationship is expressed via Duty Rule.
+Duty carries no reference to Role. The relationship, when one exists, is expressed via Duty Rule.
 
 ---
 
 ## D2 — Duty Rule
 
+### DutyRule
+
 | Column | Type | Nullable | Notes |
 | --- | --- | --- | --- |
 | RuleID | integer | No | Primary key |
 | DutyID | integer | No | Foreign key → Duty |
+| ServiceDefID | integer | Yes | Foreign key → Service Definition. Null means the rule applies to the Duty wherever it appears. Set means the rule applies only where the Duty is required by that Service Definition. |
 | TierOrder | integer | No | Administrator-defined sequence position |
 | CriteriaType | string | No | One of the supported criteria types |
-| CriteriaValue | string | No | Administrator-entered value, interpreted per CriteriaType |
-| IsActive | boolean | No | True at creation. Deactivated, never deleted. |
+| CriteriaValue | string | No | Interpreted per CriteriaType at evaluation time |
+| IsActive | boolean | No | True at creation. |
+| IsDeleted | boolean | No | False at creation. |
 
-Multiple rules may share the same (DutyID, TierOrder). Same-tier rules are ANDed. Gaps in TierOrder are permitted.
+Per-service rules override duty-global rules entirely for that (Service, Duty) pair. Same-tier rules are ANDed.
 
 ---
 
@@ -58,7 +67,8 @@ Multiple rules may share the same (DutyID, TierOrder). Same-tier rules are ANDed
 | BranchID | integer | No | Primary key |
 | Name | string | No | Administrator-defined label |
 | Location | structured | No | Single entry, structured internally |
-| IsActive | boolean | No | True at creation. Deactivated, never deleted. |
+| IsActive | boolean | No | True at creation. |
+| IsDeleted | boolean | No | False at creation. |
 
 ### BranchTimeSlot
 
@@ -68,7 +78,8 @@ Multiple rules may share the same (DutyID, TierOrder). Same-tier rules are ANDed
 | BranchID | integer | No | Foreign key → Branch |
 | DayOfWeek | string | No |  |
 | TimeOfDayID | integer | No | Foreign key → TimeOfDay |
-| IsActive | boolean | No | True at creation. Deactivated, never deleted. |
+| IsActive | boolean | No | True at creation. |
+| IsDeleted | boolean | No | False at creation. |
 
 Multiple slots per (BranchID, DayOfWeek) are permitted. StartTime does not live here.
 
@@ -78,81 +89,137 @@ Multiple slots per (BranchID, DayOfWeek) are permitted. StartTime does not live 
 | --- | --- | --- | --- |
 | ServiceDefID | integer | No | Primary key |
 | Name | string | No | Administrator-assigned label |
-| ServiceTypeID | integer | No | Foreign key → ServiceType |
-| OwningBranchID | integer | Yes | Null = shared across branches; set = exclusive to one |
-| IsActive | boolean | No | True at creation. Deactivated, never deleted. |
+| ServiceTypeID | integer | No | Foreign key → Service Type |
+| OwningBranchID | integer | Yes | Foreign key → Branch. Null means available to any branch; set means exclusive to one. |
+| IsActive | boolean | No | True at creation. |
+| IsDeleted | boolean | No | False at creation. |
 
 ### ServiceDefinitionDuty
 
 | Column | Type | Nullable | Notes |
 | --- | --- | --- | --- |
-| ServiceDefID | integer | No | Foreign key → ServiceDefinition |
-| DutyID | integer | No | Foreign key → Duty |
+| ServiceDefID | integer | No | Foreign key → Service Definition. Part of composite primary key. |
+| DutyID | integer | No | Foreign key → Duty. Part of composite primary key. |
 | RequiredSlotCount | integer | No | Administrator-set. No default. |
-| IsActive | boolean | No | True at creation. Deactivated, never deleted. |
+| IsActive | boolean | No | True at creation. |
+| IsDeleted | boolean | No | False at creation. |
 
 ### ServiceSchedule
 
 | Column | Type | Nullable | Notes |
 | --- | --- | --- | --- |
 | ScheduleID | integer | No | Primary key |
-| ServiceDefID | integer | No | Foreign key → ServiceDefinition |
-| TimeSlotID | integer | No | Foreign key → BranchTimeSlot |
+| ServiceDefID | integer | No | Foreign key → Service Definition |
+| TimeSlotID | integer | No | Foreign key → Branch Time Slot |
 | StartTime | time | No | Concrete clock time |
-| IsActive | boolean | No | True at creation. Deactivated, never deleted. |
+| IsActive | boolean | No | True at creation. |
+| IsDeleted | boolean | No | False at creation. |
 
-Unique on (ServiceDefID, TimeSlotID) for active rows.
+Active-and-not-deleted uniqueness on (ServiceDefID, TimeSlotID).
 
 ### ServiceOccurrence
 
 | Column | Type | Nullable | Notes |
 | --- | --- | --- | --- |
 | OccurrenceID | integer | No | Primary key |
-| ScheduleID | integer | Yes | Foreign key → ServiceSchedule. Set for schedule-sourced occurrences. |
-| EventID | integer | Yes | Foreign key → Event. Set for event-sourced occurrences. |
-| Date | date | No | Date-only; start time represented separately |
-| ServiceTypeID (override) | integer | Yes | Foreign key → ServiceType. Inherited from service definition; overridable. |
-| StartTime (override) | time | Yes | Inherited from schedule; overridable. |
-| FillStatusID | integer | Yes | Foreign key → OutcomeState. Null at creation. |
-| GeneratedBy | enum | No | System or Administrator. Permanent provenance. |
+| ScheduleID | integer | Yes | Foreign key → Service Schedule. Present for schedule-sourced occurrences. |
+| EventID | integer | Yes | Foreign key → Event. Present for event-sourced occurrences. |
+| Date | date | No | Date-only. Start time represented separately. |
+| ServiceTypeID | integer | Yes | Foreign key → Service Type. Override. |
+| StartTime | time | Yes | Override. |
+| FillStatusID | integer | Yes | Foreign key → Outcome State. Null at creation. |
+| GeneratedBy | string | No | System or Administrator. Permanent provenance. |
 | CreatedBy | integer | Yes | Foreign key → Admin. Populated only when GeneratedBy = Administrator. |
-| ChangedBy | integer | Yes | Foreign key → Admin. Null at creation. |
+| ChangedBy | integer | Yes | Foreign key → Admin. |
 
-Unique on (ScheduleID, Date) for schedule-sourced rows (ScheduleID NOT NULL).
+Operational entity. No `IsActive` and no `IsDeleted`.
 
 ### ServiceOccurrenceDuty
 
 | Column | Type | Nullable | Notes |
 | --- | --- | --- | --- |
-| OccurrenceID | integer | No | Foreign key → ServiceOccurrence |
-| DutyID | integer | No | Foreign key → Duty |
-| Action | enum | No | Added or Removed |
-| RequiredSlotCount (override) | integer | Yes | Overrides the service definition's slot count for this date only |
+| OccurrenceID | integer | No | Foreign key → Service Occurrence. Part of composite primary key. |
+| DutyID | integer | No | Foreign key → Duty. Part of composite primary key. |
+| Action | string | No | Added or Removed |
+| RequiredSlotCount | integer | Yes | Override for this date only |
 
-Only occurrences with an actual override need a row here.
+Operational entity. No `IsActive` and no `IsDeleted`.
 
 ---
 
 ## D4 — Member
 
+### MemberStatus
+
 | Column | Type | Nullable | Notes |
 | --- | --- | --- | --- |
-| MemberID | integer | No | Primary key |
+| MemberStatusID | integer | No | Primary key |
+| Name | string | No | Administrator-defined label |
+| IsRosterable | boolean | No | Whether a member with this status may be rostered. |
+| Description | string | Yes | Administrator-facing. |
+| IsActive | boolean | No | True at creation. |
+| IsDeleted | boolean | No | False at creation. |
+
+### Member
+
+| Column | Type | Nullable | Notes |
+| --- | --- | --- | --- |
+| MemberID | integer | No | Primary key. System identifier. Never changes. |
+| ReceiptNumber | string | Yes | Congregational identifier held for the first configured duration. Admin-supplied. |
+| CardNumber | string | Yes | Congregational identifier issued after the configured duration. Admin-supplied. Permanent; never reassigned. |
 | JoinDate | date | No |  |
+| JoinReason | string | Yes | Free text. The system does not interpret, summarise, or report on it. |
 | DateOfBirth | date | No |  |
-| MembershipStage | string | No | Administrator-defined |
+| MembershipStage | string | No | Administrator-defined. Free text, not a lookup. |
 | Name | string | No |  |
 | Surname | string | No |  |
 | Gender | string | No |  |
 | Phone | string | No |  |
-| Email | string | Yes | Optional |
+| Email | string | Yes |  |
 | BranchID | integer | No | Foreign key → Branch |
 | RoleID | integer | No | Foreign key → Role |
-| IsActive | boolean | No | True at creation. Deactivated, never deleted. |
+| MemberStatusID | integer | No | Foreign key → Member Status |
+
+Member carries no boolean `IsActive`. A member's operational status is expressed by `MemberStatusID`.
+
+### AttributeType
+
+| Column | Type | Nullable | Notes |
+| --- | --- | --- | --- |
+| AttributeTypeID | integer | No | Primary key |
+| Name | string | No | Administrator-defined attribute name |
+| Description | string | Yes |  |
+| IsActive | boolean | No | True at creation. |
+| IsDeleted | boolean | No | False at creation. |
+
+### MemberAttributeValue
+
+| Column | Type | Nullable | Notes |
+| --- | --- | --- | --- |
+| MemberAttributeValueID | integer | No | Primary key |
+| MemberID | integer | No | Foreign key → Member |
+| AttributeTypeID | integer | No | Foreign key → Attribute Type |
+| Value | string | No | Administrator-supplied |
+| RecordedDate | date | No |  |
+| RecordedBy | integer | No | Foreign key → Admin |
+
+Unique on (MemberID, AttributeTypeID). Operational fact, no lifecycle flags.
+
+### Admin
+
+| Column | Type | Nullable | Notes |
+| --- | --- | --- | --- |
+| AdminID | integer | No | Primary key |
+| MemberID | integer | No | Foreign key → Member |
+| PermissionTierID | integer | No | Foreign key → Permission Tier |
+
+Records that a member has been granted admin status.
 
 ---
 
 ## D5 — Identifier History
+
+### IdentifierHistory
 
 | Column | Type | Nullable | Notes |
 | --- | --- | --- | --- |
@@ -161,58 +228,64 @@ Only occurrences with an actual override need a row here.
 | Type | string | No | Administrator-defined identifier category |
 | Number | string | No | Administrator-supplied |
 | AssignedDate | date | No |  |
-| UnassignedDate | date | Yes | Optional. Set on retirement. |
-| Reason | string | Yes | Optional |
+| UnassignedDate | date | Yes |  |
+| Reason | string | Yes |  |
 | AuthorizedBy | integer | No | Foreign key → Admin |
 
-Identifier History has no IsActive flag. Entries are added and retired via UnassignedDate; they are never deleted.
+No `IsActive` and no `IsDeleted`. Entries are historical facts.
 
 ---
 
 ## D6 — Eligibility
 
+### Eligibility
+
 | Column | Type | Nullable | Notes |
 | --- | --- | --- | --- |
-| EligibilityID | integer | No | Primary key — durable identifier |
+| EligibilityID | integer | No | Primary key |
 | MemberID | integer | No | Foreign key → Member |
 | DutyID | integer | No | Foreign key → Duty |
 | GrantedDate | date | No |  |
 | GrantedBy | integer | No | Foreign key → Admin |
-| RevokedDate | date | Yes | Optional. Set on revocation. |
-| RevokedReason | string | Yes | Optional |
+| RevokedDate | date | Yes |  |
+| RevokedReason | string | Yes |  |
 
-Each grant/revoke cycle is its own row. Current eligibility is determined by the applicable grant/revoke record.
+Each grant/revoke cycle is its own row. Absence of a row means not eligible. No `IsActive` and no `IsDeleted`.
 
 ---
 
 ## D7 — Roster Assignment
+
+### RosterAssignment
 
 | Column | Type | Nullable | Notes |
 | --- | --- | --- | --- |
 | AssignmentID | integer | No | Primary key |
 | MemberID | integer | No | Foreign key → Member |
 | DutyID | integer | No | Foreign key → Duty |
-| OccurrenceID | integer | No | Foreign key → ServiceOccurrence |
-| AssignmentStatusID | integer | Yes | Foreign key → AssignmentStatus. Null at automatic creation. |
+| OccurrenceID | integer | No | Foreign key → Service Occurrence |
+| AssignmentStatusID | integer | Yes | Foreign key → Assignment Status |
 | ApprovedBy | integer | Yes | Foreign key → Admin |
-| AssignmentSource | enum | No | Automatic or Manual |
+| AssignmentSource | string | No | Automatic or Manual |
 | AssignedBy | integer | Yes | Foreign key → Admin. Populated only when Manual. |
 | CreatedAt | timestamp | No | Basis for confirmation timeout |
 
-Unique on (MemberID, DutyID, OccurrenceID).
+Unique on (MemberID, DutyID, OccurrenceID). Operational entity. No `IsActive` and no `IsDeleted`.
 
 ---
 
 ## D8 — Attendance Record
 
+### AttendanceRecord
+
 | Column | Type | Nullable | Notes |
 | --- | --- | --- | --- |
 | RecordID | integer | No | Primary key |
 | MemberID | integer | No | Foreign key → Member |
-| OccurrenceID | integer | No | Foreign key → ServiceOccurrence |
+| OccurrenceID | integer | No | Foreign key → Service Occurrence |
 | Timestamp | timestamp | No |  |
 
-Unique on (MemberID, OccurrenceID).
+Unique on (MemberID, OccurrenceID). Operational entity. No `IsActive` and no `IsDeleted`.
 
 ---
 
@@ -226,17 +299,30 @@ Unique on (MemberID, OccurrenceID).
 | Name | string | No |  |
 | StartDate | date | No |  |
 | EndDate | date | No |  |
-| Location | string | No |  |
 | Type | string | No | Free text |
-| IsActive | boolean | No | True at creation. Deactivated, never deleted. |
+| HostBranchID | integer | No | Foreign key → Branch. The branch at which the event is held. |
+| IsActive | boolean | No | True at creation. |
+| IsDeleted | boolean | No | False at creation. |
+
+The Event carries no Location. The host branch expresses where the event is held.
+
+### EventBranch
+
+| Column | Type | Nullable | Notes |
+| --- | --- | --- | --- |
+| EventID | integer | No | Foreign key → Event. Part of composite primary key. |
+| BranchID | integer | No | Foreign key → Branch. Part of composite primary key. |
+
+The set of branches attending the event. Determines roster scope across branches. No lifecycle flags.
 
 ### Program
 
 | Column | Type | Nullable | Notes |
 | --- | --- | --- | --- |
 | ProgramID | integer | No | Primary key |
-| EventID | integer | No | Foreign key → Event. One program per event. |
+| EventID | integer | No | Foreign key → Event. One Program per Event. |
 | Title | string | No |  |
+| IsDeleted | boolean | No | False at creation. |
 
 ### ProgramItem
 
@@ -248,19 +334,25 @@ Unique on (MemberID, OccurrenceID).
 | Title | string | No |  |
 | ScheduledStart | timestamp | No |  |
 | ScheduledEnd | timestamp | No |  |
-| ServiceDefID | integer | Yes | Foreign key → ServiceDefinition. Optional. |
+| ServiceDefID | integer | Yes | Foreign key → Service Definition |
+| Location | string | Yes | Finer location than the branch |
+| IsDeleted | boolean | No | False at creation. |
 
-Status is not stored. It is computed from ScheduledStart/ScheduledEnd and the current time.
+Program Item has no stored status field — its live state is computed from scheduled times.
 
 ### EventDuty
 
 | Column | Type | Nullable | Notes |
 | --- | --- | --- | --- |
 | EventDutyID | integer | No | Primary key |
-| ProgramItemID | integer | No | Foreign key → ProgramItem |
-| Label | string | No | Free text, admin-typed, no preset list |
-| AssignedMemberID | integer | No | Foreign key → Member. Direct pick; no eligibility or priority run. |
-| AssignmentStatusID | integer | Yes | Foreign key → AssignmentStatus. Optional. |
+| EventID | integer | No | Foreign key → Event |
+| DutyID | integer | No | Foreign key → Duty |
+| ServiceDefID | integer | Yes | Foreign key → Service Definition. When set, the duty uses that service's per-service rules on this event. When null, the duty's global rules apply. |
+| RequiredSlotCount | integer | No |  |
+| IsActive | boolean | No | True at creation. |
+| IsDeleted | boolean | No | False at creation. |
+
+An event duty references a real Duty. Eligibility for the duty comes from the Eligibility and Duty Rule modules.
 
 ---
 
@@ -272,6 +364,8 @@ Status is not stored. It is computed from ScheduledStart/ScheduledEnd and the cu
 | --- | --- | --- | --- |
 | OutcomeStateID | integer | No | Primary key |
 | Name | string | No | Administrator-defined, open list |
+| IsActive | boolean | No | True at creation. |
+| IsDeleted | boolean | No | False at creation. |
 
 ### AssignmentStatus
 
@@ -280,6 +374,8 @@ Status is not stored. It is computed from ScheduledStart/ScheduledEnd and the cu
 | AssignmentStatusID | integer | No | Primary key |
 | Name | string | No | Administrator-defined, open list |
 | IsTerminal | boolean | No | Distinguishes slot-occupying from vacant statuses |
+| IsActive | boolean | No | True at creation. |
+| IsDeleted | boolean | No | False at creation. |
 
 ### PermissionTier
 
@@ -287,6 +383,8 @@ Status is not stored. It is computed from ScheduledStart/ScheduledEnd and the cu
 | --- | --- | --- | --- |
 | PermissionTierID | integer | No | Primary key |
 | Name | string | No | Administrator-defined |
+| IsActive | boolean | No | True at creation. |
+| IsDeleted | boolean | No | False at creation. |
 
 ### TimeOfDay
 
@@ -294,6 +392,8 @@ Status is not stored. It is computed from ScheduledStart/ScheduledEnd and the cu
 | --- | --- | --- | --- |
 | TimeOfDayID | integer | No | Primary key |
 | Name | string | No | Administrator-defined, open list |
+| IsActive | boolean | No | True at creation. |
+| IsDeleted | boolean | No | False at creation. |
 
 ### ServiceType
 
@@ -301,45 +401,107 @@ Status is not stored. It is computed from ScheduledStart/ScheduledEnd and the cu
 | --- | --- | --- | --- |
 | ServiceTypeID | integer | No | Primary key |
 | Name | string | No | Administrator-defined, open list |
+| IsActive | boolean | No | True at creation. |
+| IsDeleted | boolean | No | False at creation. |
+
+### Capability
+
+| Column | Type | Nullable | Notes |
+| --- | --- | --- | --- |
+| CapabilityID | integer | No | Primary key |
+| Name | string | No | Administrator-defined action name |
+| Description | string | Yes |  |
+| IsActive | boolean | No | True at creation. |
+| IsDeleted | boolean | No | False at creation. |
+
+Capability names actions the system can perform. It carries no reference to Role, Admin, or Permission Tier. The assignment of capabilities is deliberately deferred.
 
 ---
 
 ## D11 — System Setting
 
+### SystemSetting
+
 | Column | Type | Nullable | Notes |
 | --- | --- | --- | --- |
-| Key | string | No | Primary key — administrator-facing setting name |
+| Key | string | No | Primary key |
 | Value | string | Yes | The configured value |
-| Required | boolean | No | If true, absence causes consumer to refuse to run |
-| Description | string | Yes | Optional, administrator-facing explanation |
+| Required | boolean | No | Absence of a required value causes the consumer to refuse to run |
+| Description | string | Yes |  |
+
+No `IsActive` and no `IsDeleted`.
 
 ---
 
 ## D12 — Materializer Run
 
+### MaterializerRun
+
 | Column | Type | Nullable | Notes |
 | --- | --- | --- | --- |
 | RunID | integer | No | Primary key |
-| TriggerType | enum | No | Scheduled or Manual |
-| TriggeredBy | integer | Yes | Foreign key → Admin. Populated only when TriggerType = Manual. |
+| TriggerType | string | No | Scheduled or Manual |
+| TriggeredBy | integer | Yes | Foreign key → Admin. Populated only when Manual. |
 | StartedAt | timestamp | No |  |
-| CompletedAt | timestamp | Yes | Null if the run failed before completing |
+| CompletedAt | timestamp | Yes |  |
 | SchedulesEvaluated | integer | No | Count |
 | OccurrencesCreated | integer | No | Count |
-| Status | enum | No | Success or Failure |
-| ErrorDetail | string | Yes | Populated on failure |
+| Status | string | No | Success or Failure |
+| ErrorDetail | string | Yes |  |
+
+No `IsActive` and no `IsDeleted`.
 
 ---
 
-## D-Admin
+## Configuration-layer entities
 
-### Admin
+### ConfigurationAuditLog
 
 | Column | Type | Nullable | Notes |
 | --- | --- | --- | --- |
-| AdminID | integer | No | Primary key |
-| MemberID | integer | No | Foreign key → Member |
-| PermissionTierID | integer | No | Foreign key → PermissionTier |
+| AuditID | integer | No | Primary key |
+| EntityType | string | No | The CLR type name of the affected entity |
+| EntityID | integer | No | The primary key of the affected row |
+| EntityName | string | No | The affected row's name at the time of action |
+| Action | string | No | Deactivate or SoftDelete |
+| Reason | string | Yes | Required for SoftDelete. Optional for Deactivate. |
+| InitiatedByAdminID | integer | No | Foreign key → Admin |
+| ApprovedByAdminID | integer | No | Foreign key → Admin |
+| InitiatedAt | timestamp | No |  |
+| ApprovedAt | timestamp | No |  |
+| ConsequencesPreviewed | string | No | Serialized description of the consequences shown |
+| ConsequencesOccurred | string | No | Serialized description of what happened |
+| NotifiedAt | timestamp | Yes | Set once the authority-notification sweep has processed this entry |
+
+No `IsActive` and no `IsDeleted`. Audit records are permanent facts.
+
+### EntityDeletionPolicy
+
+| Column | Type | Nullable | Notes |
+| --- | --- | --- | --- |
+| PolicyID | integer | No | Primary key |
+| EntityType | string | No | Unique. One row per configuration entity type. |
+| RequiresApprovalForDelete | boolean | No |  |
+| RequiresApprovalForDeactivate | boolean | No |  |
+| RequiredDeletePermissionTierID | integer | Yes | Foreign key → Permission Tier |
+| RequiredDeactivatePermissionTierID | integer | Yes | Foreign key → Permission Tier |
+| RequiresReasonForDelete | boolean | No |  |
+| RequiresReasonForDeactivate | boolean | No |  |
+| IsActive | boolean | No | True at creation. |
+| IsDeleted | boolean | No | False at creation. |
+
+### NotificationSubscription
+
+| Column | Type | Nullable | Notes |
+| --- | --- | --- | --- |
+| SubscriptionID | integer | No | Primary key |
+| EventType | string | No | The kind of event that triggers the notification |
+| RecipientTierID | integer | Yes | Foreign key → Permission Tier |
+| RecipientAdminID | integer | Yes | Foreign key → Admin |
+| IsActive | boolean | No | True at creation. |
+| IsDeleted | boolean | No | False at creation. |
+
+Exactly one of RecipientTierID or RecipientAdminID is set per row.
 
 ---
 
@@ -348,6 +510,7 @@ Status is not stored. It is computed from ScheduledStart/ScheduledEnd and the cu
 | From | Column | To |
 | --- | --- | --- |
 | DutyRule | DutyID | Duty |
+| DutyRule | ServiceDefID | ServiceDefinition |
 | BranchTimeSlot | BranchID | Branch |
 | BranchTimeSlot | TimeOfDayID | TimeOfDay |
 | ServiceDefinition | ServiceTypeID | ServiceType |
@@ -358,6 +521,7 @@ Status is not stored. It is computed from ScheduledStart/ScheduledEnd and the cu
 | ServiceSchedule | TimeSlotID | BranchTimeSlot |
 | ServiceOccurrence | ScheduleID | ServiceSchedule |
 | ServiceOccurrence | EventID | Event |
+| ServiceOccurrence | ServiceTypeID | ServiceType |
 | ServiceOccurrence | FillStatusID | OutcomeState |
 | ServiceOccurrence | CreatedBy | Admin |
 | ServiceOccurrence | ChangedBy | Admin |
@@ -365,6 +529,10 @@ Status is not stored. It is computed from ScheduledStart/ScheduledEnd and the cu
 | ServiceOccurrenceDuty | DutyID | Duty |
 | Member | BranchID | Branch |
 | Member | RoleID | Role |
+| Member | MemberStatusID | MemberStatus |
+| MemberAttributeValue | MemberID | Member |
+| MemberAttributeValue | AttributeTypeID | AttributeType |
+| MemberAttributeValue | RecordedBy | Admin |
 | IdentifierHistory | MemberID | Member |
 | IdentifierHistory | AuthorizedBy | Admin |
 | Eligibility | MemberID | Member |
@@ -378,15 +546,24 @@ Status is not stored. It is computed from ScheduledStart/ScheduledEnd and the cu
 | RosterAssignment | AssignedBy | Admin |
 | AttendanceRecord | MemberID | Member |
 | AttendanceRecord | OccurrenceID | ServiceOccurrence |
+| Event | HostBranchID | Branch |
+| EventBranch | EventID | Event |
+| EventBranch | BranchID | Branch |
 | Program | EventID | Event |
 | ProgramItem | ProgramID | Program |
 | ProgramItem | ServiceDefID | ServiceDefinition |
-| EventDuty | ProgramItemID | ProgramItem |
-| EventDuty | AssignedMemberID | Member |
-| EventDuty | AssignmentStatusID | AssignmentStatus |
+| EventDuty | EventID | Event |
+| EventDuty | DutyID | Duty |
+| EventDuty | ServiceDefID | ServiceDefinition |
 | Admin | MemberID | Member |
 | Admin | PermissionTierID | PermissionTier |
 | MaterializerRun | TriggeredBy | Admin |
+| ConfigurationAuditLog | InitiatedByAdminID | Admin |
+| ConfigurationAuditLog | ApprovedByAdminID | Admin |
+| EntityDeletionPolicy | RequiredDeletePermissionTierID | PermissionTier |
+| EntityDeletionPolicy | RequiredDeactivatePermissionTierID | PermissionTier |
+| NotificationSubscription | RecipientTierID | PermissionTier |
+| NotificationSubscription | RecipientAdminID | Admin |
 
 ---
 

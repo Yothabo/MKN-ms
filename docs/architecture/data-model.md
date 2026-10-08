@@ -19,15 +19,17 @@ The system groups its data into twelve conceptual stores. Each holds a distinct 
 | D1 | Role, Duty |
 | D2 | Duty Rule |
 | D3 | Branch, Branch Time Slot, Service Definition, Service Definition Duty, Service Schedule, Service Occurrence, Service Occurrence Duty |
-| D4 | Member |
+| D4 | Member, Member Status, Attribute Type, Member Attribute Value, Admin |
 | D5 | Identifier History |
 | D6 | Eligibility |
 | D7 | Roster Assignment |
 | D8 | Attendance Record |
-| D9 | Event, Program, Program Item, Event Duty |
-| D10 | Outcome State, Assignment Status, Permission Tier, TimeOfDay, ServiceType |
+| D9 | Event, Event Branch, Program, Program Item, Event Duty |
+| D10 | Outcome State, Assignment Status, Permission Tier, TimeOfDay, ServiceType, Capability |
 | D11 | System Setting |
 | D12 | Materializer Run |
+
+A configuration-audit store is also present. It holds Configuration Audit Log, Entity Deletion Policy, and Notification Subscription. These entities are not part of D1 through D12; they record the configuration lifecycle and its notification fan-out.
 
 ---
 
@@ -40,6 +42,8 @@ erDiagram
     Branch ||--o{ BranchTimeSlot : has
     Branch ||--o{ Member : "home for"
     Branch ||--o{ ServiceDefinition : "may own"
+    Branch ||--o{ Event : hosts
+    Branch ||--o{ EventBranch : attends
 
     TimeOfDay ||--o{ BranchTimeSlot : classifies
 
@@ -67,22 +71,31 @@ erDiagram
     Duty ||--o{ DutyRule : ranks
     Duty ||--o{ Eligibility : "granted for"
     Duty ||--o{ RosterAssignment : "assigned as"
+    Duty ||--o{ EventDuty : "required by"
 
     Member ||--o{ IdentifierHistory : has
     Member ||--o{ Eligibility : "granted to"
     Member ||--o{ RosterAssignment : "assigned as"
     Member ||--o{ AttendanceRecord : attends
     Member ||--o| Admin : "may be"
+    Member ||--o{ MemberAttributeValue : has
+    MemberStatus ||--o{ Member : "status of"
+
+    AttributeType ||--o{ MemberAttributeValue : classifies
 
     PermissionTier ||--o{ Admin : classifies
+    PermissionTier ||--o{ EntityDeletionPolicy : "required by"
+    PermissionTier ||--o{ NotificationSubscription : "recipient tier"
 
     AssignmentStatus ||--o{ RosterAssignment : "status of"
 
     Event ||--o| Program : "has one"
+    Event ||--o{ EventBranch : "attended at"
     Program ||--o{ ProgramItem : contains
     ProgramItem ||--o{ EventDuty : "carries"
     ProgramItem }o--o| ServiceDefinition : "may link to"
     Member ||--o{ EventDuty : "directly assigned"
+    EventDuty }o--|| Duty : references
 
     Event ||--o{ ServiceOccurrence : "event-sourced"
 
@@ -90,6 +103,10 @@ erDiagram
     Admin ||--o{ Eligibility : grants
     Admin ||--o{ MaterializerRun : "may trigger"
     Admin ||--o{ ServiceOccurrence : "may create"
+    Admin ||--o{ MemberAttributeValue : records
+    Admin ||--o{ ConfigurationAuditLog : initiates
+    Admin ||--o{ ConfigurationAuditLog : approves
+    Admin ||--o{ NotificationSubscription : "recipient admin"
 ~~~
 
 ---
@@ -119,13 +136,17 @@ Entities the administrator creates to express how duties are ranked and who is e
 
 Entities representing members and their identifiers.
 
-- **Member** — a person in the organization's register.
+- **Member** — a person in the organization's register. Carries a `MemberStatusID`, a `ReceiptNumber`, a `CardNumber`, and a `JoinReason`.
+- **Member Status** — the administrator-defined vocabulary of member states, with an `IsRosterable` flag.
 - **Identifier History** — the log of identifier assignments (cards, receipts, and any other admin-defined types).
+- **Attribute Type** — the administrator-defined vocabulary of member attribute names.
+- **Member Attribute Value** — one value per member per attribute set.
 
 ### Administrative entities
 
-- **Admin** — links a member to a permission tier.
-- **Permission Tier** — an administrator-defined name for a capability level.
+- **Admin** — links a member to a permission tier. An Admin row records that a member has been granted admin status by another admin.
+- **Permission Tier** — an administrator-defined name for a capability level. The system names no tier.
+- **Capability** — the vocabulary of named actions the system can perform. No assignment of capabilities to roles or admins is modelled.
 
 ### Operational entities
 
@@ -139,10 +160,11 @@ Entities produced by the system's operational processes.
 
 ### Event entities
 
-- **Event** — a bounded, dated occurrence with a name and location.
+- **Event** — a bounded, dated occurrence with a name and a host branch. The `Location` field is not carried on the Event.
+- **Event Branch** — the set of branches attending an event. Determines roster scope across branches.
 - **Program** — an ordered schedule belonging to an event.
-- **Program Item** — a single entry in a program, optionally linked to a service definition.
-- **Event Duty** — an ad-hoc role on a program item, with a direct member assignment.
+- **Program Item** — a single entry in a program, optionally linked to a service definition. May carry a finer `Location` than the branch.
+- **Event Duty** — an event's requirement for a real Duty, with a required slot count and an optional Service Definition scope.
 
 ### Lookup entities
 
@@ -153,6 +175,14 @@ Open, administrator-defined vocabularies referenced by other entities.
 - **Permission Tier** — the possible permission tiers.
 - **TimeOfDay** — the coarse time-of-day classification on a branch time slot.
 - **ServiceType** — the classification of a service definition.
+
+### Configuration-lifecycle entities
+
+Entities that record the two-flag lifecycle and its notification fan-out.
+
+- **Configuration Audit Log** — the permanent record of every deactivation and every soft delete.
+- **Entity Deletion Policy** — the per-entity-type configuration of the deletion model: approval requirement, required permission tier, and reason requirement.
+- **Notification Subscription** — the recipient configuration for authority notifications. Either a permission tier or a specific admin, never both.
 
 ### Settings
 
