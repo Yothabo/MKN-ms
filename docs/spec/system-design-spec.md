@@ -1860,7 +1860,9 @@ The current scope assumes a single global channel. Per-member channel preference
 | 7.0 Manage Confirmation | On each replacement assignment created after decline or timeout |
 | 12.0 Create Manual Assignment | Only when the created manual assignment has AssignmentStatusID = NULL at creation |
 
-**Path 2 — authority-facing, scheduled.** A scheduled authority-notification sweep runs 9.0 on a cadence. On each run, 9.0 reads new Configuration Audit Log entries and dispatches notifications for them. Recipients are configured in Notification Subscription, either by permission tier or by specific admin. The sweep sets `NotifiedAt` on each audit row it processes.
+**Path 2 — authority-facing, scheduled.** A scheduled authority-notification sweep runs 9.0 on a cadence. On each run, 9.0 reads new Configuration Audit Log entries and dispatches notifications for them.
+
+**Authority-notification reliability.** The authority-notification sweep is at-least-once, driven by `NotifiedAt IS NULL`. A dispatch failure leaves the row eligible for a later sweep. If a dispatch succeeds but the process fails before `NotifiedAt` is persisted, the same audit row may be dispatched again on a later sweep, and duplicate dispatch is possible. The sweep does not maintain a bounded retry counter, does not guarantee exactly-once delivery, and does not track delivery. A persistently failing dispatch can leave a row indefinitely unnotified. Recipients are configured in Notification Subscription, either by permission tier or by specific admin. The sweep sets `NotifiedAt` on each audit row it processes.
 
 9.0 is **not** invoked on:
 
