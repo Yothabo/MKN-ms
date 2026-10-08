@@ -676,17 +676,17 @@ A required setting with no value causes the consuming process to refuse to run a
 
 | # | Process | Reads |
 | --- | --- | --- |
-| R1 | 1.1 | D1 (existing Roles); D10 if it manages lookups |
+| R1 | 1.1 | D1 (existing Roles). Reads no D10 lookup. |
 | R2 | 1.2 | D1 (existing Duties) |
 | R3 | 1.3 | D3 (Branch) |
-| R4 | 1.4 | D3 (Branch for FK selection); D10 (TimeOfDay) |
-| R5 | 1.5 | D10 (ServiceType); D3 (Branch for OwningBranchID selection) |
-| R6 | 1.6 | D1 (Role/Duty); D3 (ServiceDefinition, BranchTimeSlot); D10 as needed |
+| R4 | 1.4 | D3 (Branch for FK selection); D10 (TimeOfDay — validates TimeOfDayId) |
+| R5 | 1.5 | D10 (ServiceType — validates ServiceTypeId); D3 (Branch for OwningBranchID selection) |
+| R6 | 1.6 | D1 (Role/Duty); D3 (ServiceDefinition, BranchTimeSlot). Reads no D10 lookup directly. |
 | R7 | 2.0 | D1 (Duty); D2 (existing DutyRules) |
 | R8 | 3.1 | D4 (edit/display); D1 (Role); D3 (Branch) |
 | R9 | 3.2 | D5 (IdentifierHistory); D4 (Member) |
 | R10 | 4.0 | D1 (Duty); D4 (Member); D6 (existing Eligibility) |
-| R11 | 8.0 | D9; D3 (ServiceDefinition); D4 (Member); D10 (AssignmentStatus) |
+| R11 | 8.0 | D9; D3 (ServiceDefinition); D4 (Member); D10 (AssignmentStatus — validates AssignmentStatusId on EventDuty) |
 
 **Writes:**
 
@@ -832,9 +832,13 @@ For each (OccurrenceID, DutyID) pair, the effective slot count is:
 
 For each (Member, Duty) pair, 5.0 determines eligibility by resolving the applicable Eligibility row. The rule 5.0 uses:
 
-> The applicable row is the one with the latest GrantedDate whose RevokedDate is null. If multiple such rows exist for the same (MemberID, DutyID), the one with the greatest EligibilityID is used as the deterministic tiebreaker. If the resolved row has a RevokedDate set (non-null), the member is not eligible. If no row exists at all, the member is not eligible.
+> The applicable row is the one with the latest GrantedDate that is not in the future and whose RevokedDate is either null or in the future. If multiple such rows exist for the same (MemberID, DutyID), the one with the greatest EligibilityID is used as the deterministic tiebreaker. If the resolved row has a RevokedDate set to a past date, the member is not eligible. If no row exists at all, the member is not eligible.
 
-The tiebreaker (greatest EligibilityID) is the rule 5.0 applies, not a rule the schema enforces.
+Three properties follow from the rule:
+
+- A grant with a future GrantedDate does not make the member eligible yet.
+- A grant with a future RevokedDate is still in effect.
+- The tiebreaker (greatest EligibilityID) is the rule 5.0 applies, not a rule the schema enforces.
 
 #### 10.1.5 Duty Rule evaluation
 
@@ -1141,7 +1145,7 @@ It does not create assignments, does not modify assignments, does not modify any
 
 **At a glance:**
 
-- **Trigger:** after assignment changes (5.0 writes, 7.0 status transitions, 7.0 replacements); on a scheduled sweep.
+- **Trigger:** periodic sweep. 10.0 observes assignment changes on its own scheduled run. No process invokes 10.0; the phrase "after assignment changes" describes the condition under which 10.0's work becomes necessary, not a process-to-process call.
 - **Reads:** D7 RosterAssignment, D3 ServiceDefinitionDuty, D3 ServiceOccurrenceDuty, D10 OutcomeState, D11 SystemSetting.
 - **Writes:** D3 ServiceOccurrence.FillStatusID.
 - **Does not:** invoke any process; modify any field other than FillStatusID; assign cancellation.
@@ -1775,46 +1779,44 @@ The durable invariant is stated as: **9.0 Dispatch Notification is the sole proc
 
 ### 16.1 The Full Topology
 
-```
-1.0 Configure vocabulary
-2.0 Configure duty rules
-3.0 Manage membership
-4.0 Manage eligibility
-8.0 Manage events/programs
-│ writes
-▼
-Configuration stores: D1 D2 D3 D4 D5 D6 D9 D10 D11
-(8.0 additionally creates event-sourced ServiceOccurrence rows
-when a ProgramItem is linked to a ServiceDefinition)
-│ read by
-▼
-11.0 Materialize Occurrences
-│ writes
-▼
-ServiceOccurrence (D3)
-│ read by
-▼
-5.0 Generate Assignment
-│ writes                │ invokes
-▼                       ▼
-RosterAssignment (D7)      9.0 Dispatch Notification
-│ read/written by       ▲
-▼                       │
-7.0 Manage Confirmation ────────┘
-│                       (invokes on replacement)
-│ feeds
-▼
-10.0 Evaluate Fill Status
-│ writes
-▼
-ServiceOccurrence.FillStatusID
+    1.0 Configure vocabulary
+    2.0 Configure duty rules
+    3.0 Manage membership
+    4.0 Manage eligibility
+    8.0 Manage events/programs
+            | writes
+            v
+    Configuration stores: D1 D2 D3 D4 D5 D6 D9 D10 D11
+    (8.0 additionally creates event-sourced ServiceOccurrence rows
+    when a ProgramItem is linked to a ServiceDefinition)
+            | read by
+            v
+    11.0 Materialize Occurrences
+            | writes
+            v
+    ServiceOccurrence (D3)
+            | read by
+            v
+    5.0 Generate Assignment
+            | writes                | invokes
+            v                       v
+    RosterAssignment (D7)      9.0 Dispatch Notification
+            | read/written by       ^
+            v                       |
+    7.0 Manage Confirmation --------+
+            |                       (invokes on replacement)
+            | feeds
+            v
+    10.0 Evaluate Fill Status
+            | writes
+            v
+    ServiceOccurrence.FillStatusID
 
-6.0 Record Attendance
-│ writes
-▼
-AttendanceRecord (D8)
-(Read by 5.0 only when a Branch-Attendance Recency criterion exists.)
-```
+    6.0 Record Attendance
+            | writes
+            v
+    AttendanceRecord (D8)
+    (Read by 5.0 only when a Branch-Attendance Recency criterion exists.)
 
 ### 16.2 The Direct Invocation Edges
 
@@ -1860,11 +1862,13 @@ Conditionality is not a property of any specific edge. 7.0's edge (I2) and 12.0'
 | 7.0 Manage confirmation | Member response; scheduled timeout check |
 | 8.0 Manage events and programs | Administrator action |
 | 9.0 Dispatch notification | Invocation by 5.0, 7.0, or 12.0 |
-| 10.0 Evaluate fill status | After assignment changes; scheduled sweep |
+| 10.0 Evaluate fill status | Periodic sweep; internally observes assignment changes since the last run |
 | 11.0 Materialize occurrences | Scheduled run; manual admin trigger |
 | 12.0 Create manual assignment | Administrator action |
 
 Every process has an independent trigger mechanism except 9.0. Operational data dependencies remain: a process may require records produced by another process to exist before meaningful work can be performed. These are data dependencies, not process dependencies.
+
+**On 10.0's trigger.** The phrase "after assignment changes" describes when 10.0's work becomes necessary, not how 10.0 learns that it has become necessary. No process invokes 10.0. It observes the current state of RosterAssignment on its own periodic sweep. The sweep is what turns assignment changes into evaluated fill status. This is the same data-mediated relationship the rest of §16 describes: the writer (5.0 or 7.0) writes to D7, the reader (10.0) reads D7 on its own trigger. No fourth invocation edge exists.
 
 ### 16.5 Data Store Mediation
 
@@ -1964,7 +1968,6 @@ Every process has an independent trigger mechanism except 9.0. Operational data 
 
 Editing or removing an existing assignment (manual or automatic) is a different operation from creating one, and is out of scope here. If and when that capability is needed, it gets its own contract rather than being folded into this one.
 
----
 ### 17.2 Process Boundary
 
 12.0 Create Manual Assignment is the process by which an administrator directly creates a Roster Assignment, bypassing 5.0's tiered candidate selection while still respecting Eligibility Flag criteria and the uniqueness constraint. It is the only process other than 5.0 that writes a new Roster Assignment row from scratch.
@@ -2017,6 +2020,7 @@ When 12.0 creates a row with AssignmentStatusID = NULL, it invokes 9.0 with that
 | R2 | D4 Member | The selected member |
 | R3 | D2 Duty Rule | Identify any Eligibility Flag criteria for the duty |
 | R4 | D6 Eligibility | Resolve the applicable grant, only when R3 finds an Eligibility Flag criterion |
+| R4a | D10 Assignment Status | Validate the admin-selected TargetStatusId, when one is supplied |
 | R5 | D7 Roster Assignment | Uniqueness check on (MemberID, DutyID, OccurrenceID) |
 
 **Writes:**
@@ -2031,7 +2035,7 @@ When 12.0 creates a row with AssignmentStatusID = NULL, it invokes 9.0 with that
 | --- | --- | --- |
 | I1 | 9.0 Dispatch Notification | Only when the created row's AssignmentStatusID is NULL |
 
-**Stores never touched:** D1, D5, D9, D10 (except the Eligibility Flag lookup path through D2/D6), D11, D12. Never modifies Service Occurrence, Service Occurrence Duty, or any existing Roster Assignment row.
+**Stores never touched:** D1, D5, D9, D11, D12. D10 is read only for Assignment Status validation when a TargetStatusId is supplied. Never modifies Service Occurrence, Service Occurrence Duty, or any existing Roster Assignment row.
 
 ### 17.5 Invariants
 
@@ -2067,3 +2071,4 @@ No new index is required. The uniqueness check (R5) is served by the existing Ro
 - §16 — the invocation model; this process adds no new invocation edge.
 
 *End of §17. This section originates a new locked contract; it does not derive from a prior one, since none existed.*
+
