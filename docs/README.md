@@ -104,7 +104,7 @@ Eight documents describing the system as a whole:
 The thirteen processes, split into two layers:
 
 - **`configuration/`** — the five processes that create and maintain administrator-entered values.
-- **`operations/`** — the seven processes that produce operational records.
+- **`operations/`** — the eight processes that produce operational records.
 
 Each subdirectory has a README describing the layer, plus one document per process.
 
@@ -130,14 +130,16 @@ A placeholder. Will be populated once the technology stack is chosen. Contains:
 
 ## The amendments at a glance
 
-The locked operational contracts imply fifteen amendments to the base schema:
+The base schema has been extended by three amendment sets.
+
+The original set added fifteen amendments to the base schema:
 
 - **Two new columns:** RosterAssignment.CreatedAt, AssignmentStatus.IsTerminal.
 - **Four new constraints:** RosterAssignment (MemberID, DutyID, OccurrenceID) unique; AttendanceRecord (MemberID, OccurrenceID) unique; ServiceSchedule (ServiceDefID, TimeSlotID) active-row unique; ServiceOccurrence (ScheduleID, Date) schedule-sourced unique.
 - **Eight new settings:** OccurrenceHorizonDays, InitialAssignmentStatusID, ConfirmationTimeoutHours, OutcomeStateUnfilledID, OutcomeStatePartiallyFilledID, OutcomeStateFilledID, OutcomeStateCancelledID, NotificationChannel.
 - **One nullability clarification:** RosterAssignment.AssignmentStatusID is nullable.
 
-Full details in **`database/amendments.md`** and **`spec/system-design-spec.md` §15**.
+Two later sets have been applied since: the A–G amendment set and the attendance amendment set. The consolidated amendment count is forty-one. Full details in **`database/amendments.md`** and **`spec/system-design-spec.md` §15**.
 
 ---
 

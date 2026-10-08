@@ -207,7 +207,7 @@ The following are **not** enforced as constraints, by design:
 - **MembershipStage** is free text, not a foreign key to a lookup table.
 - **IdentifierHistory.Type** is free text, not a lookup.
 - **Event.Type** is free text.
-- **EventDuty.Label** is free text; not a reference to Duty.
+- **EventDuty.Label** no longer exists. The A–G amendment replaced it with `EventDuty.DutyID`, a real foreign key to `Duty`.
 - **CriteriaValue** is free text, not validated at write time.
 - **Multiple active identifiers of the same Type** for one member — the system does not prevent it.
 - **Status transition ordering** — no state machine is enforced.

@@ -1,7 +1,7 @@
 
 # Operations Layer
 
-*The seven processes that produce operational records from configuration and stored facts. Derived from the System Design Specification §9–§14. Where this document conflicts with the specification, the specification wins.*
+*The eight processes that produce operational records from configuration and stored facts. Derived from the System Design Specification §9–§17. Where this document conflicts with the specification, the specification wins.*
 
 ---
 
