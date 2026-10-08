@@ -1192,7 +1192,7 @@ Before evaluation, the value is trimmed of leading and trailing whitespace. Whit
 | Role | A role name, case-sensitive | Resolved against the Role table by exact name; matched by RoleID |
 | Gender | A gender value, case-sensitive | Exact match against Member.Gender |
 | Membership Stage | A membership stage value, case-sensitive | Exact match against Member.MembershipStage |
-| Age Range | `min-max`, both non-negative integers, inclusive, no whitespace | Computed from Member.DateOfBirth against today's date |
+| Age Range | `min-max`, both non-negative integers, inclusive, no whitespace | Computed from Member.DateOfBirth against today's date. See the Age calculation subsection. |
 | Tenure | A non-negative integer, days, no whitespace | Days since Member.JoinDate, >= the value |
 | Branch-Attendance Recency | A non-negative integer, days, no whitespace | The member has an AttendanceRecord at the occurrence's branch within the last N days |
 | Eligibility Flag | A positive integer, the DutyID, no whitespace | The member has a current Eligibility grant for the referenced Duty |
@@ -1202,6 +1202,10 @@ Before evaluation, the value is trimmed of leading and trailing whitespace. Whit
 **Malformed values.** A rule whose `CriteriaValue` does not match its grammar produces no candidates. It is not an error and does not fail the run. Evaluation continues. If a tier contains no candidate because of a malformed rule, the engine falls through to the next tier as it would for any tier producing no candidate.
 
 **Deprecated.** The settings `AgeRangeMin`, `AgeRangeMax`, and `TenureThresholdDays` are removed. The specification no longer falls back to any default for the Age Range or Tenure criteria. The criterion value is the sole source.
+
+##### Age calculation
+
+The Age Range and Youth criteria share one age calculation. Age is the number of completed birthdays as of the current calendar date in the configured ApplicationTimeZone. A member satisfies the Youth criterion when `YouthAgeMin <= age <= YouthAgeMax`, inclusive at both boundaries. A member satisfies an Age Range criterion when the range's `min` is less than or equal to the age and the range's `max` is greater than or equal to the age, both inclusive. There is one age function; the two criteria do not compute age differently.
 
 Reserved criteria types (Acceptance Rate, Duties Carried, Days Since Last Assignment) are not evaluated until a future specification revision activates them. If a tier consists entirely of rules whose criteria types are reserved, the tier is treated as producing no candidates.
 
