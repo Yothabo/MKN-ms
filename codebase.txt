@@ -27288,7 +27288,7 @@ Authentication, session management, authorization/RBAC, privilege escalation pro
 
 ==============================================================================
 FILE: docs/spec/system-design-spec.md
-LINES: 2284
+LINES: 2337
 ==============================================================================
 
 # System Design Specification
@@ -27792,6 +27792,8 @@ No `IsActive` and no `IsDeleted` — audit records are permanent facts.
 
 Exactly one of RecipientTierID or RecipientAdminID is set per row. When the tier is set, all admins of that tier receive the notification. When the specific admin is set, only that admin receives it.
 
+---
+
 ## 5. The Configuration Language
 
 **Supported criteria types** (the fixed, preset vocabulary a Duty Rule's CriteriaType may reference):
@@ -27803,6 +27805,8 @@ Exactly one of RecipientTierID or RecipientAdminID is set per row. When the tier
 - Membership Stage
 - Branch-Attendance Recency
 - Eligibility Flag (references the Eligibility table)
+- Member Attribute (references an admin-defined Attribute Type and a required value)
+- Youth (computed from DateOfBirth against the configured YouthAgeMin and YouthAgeMax settings; carries no value)
 - (Reserved for future use once historical data exists) Acceptance Rate, Duties Carried, Days Since Last Assignment
 
 These are supported criterion *types*, not rules. Their presence in this vocabulary does not activate them anywhere.
@@ -28254,7 +28258,56 @@ The only write to an operational store is 8.0's insertion of event-sourced Servi
 - Physical column types.
 - Unique-constraint expression across database engines.
 
-### 9.6 Cross-References
+### 9.6 Configuration Lifecycle
+
+Every configuration entity carries both `IsActive` and `IsDeleted`. Together they express four reachable states.
+
+| State | IsActive | IsDeleted | Meaning |
+| --- | --- | --- | --- |
+| Active | true | false | Offered for new use. |
+| Deactivated | false | false | Paused. Visible in an inactive view. Reversible. |
+| Soft-deleted | false | true | Hidden from every normal view. Not reversible through normal operations. |
+| Forbidden | true | true | Not permitted. A check constraint forbids it. |
+
+Deactivation sets `IsActive = false`. The entity is not offered for new use, existing references are unaffected, and reactivation is a single admin action.
+
+Soft delete sets `IsDeleted = true` and implicitly `IsActive = false`. The entity is hidden from all normal views. The reference fallback and cascade rules stated below are applied. Reactivation is not available through normal operations.
+
+Every deactivation and every soft delete presents a consequences preview, requires acknowledgement, requires approval from an admin of a configured permission tier, and writes a `Configuration Audit Log` row. The reason is required for soft delete and optional for deactivate by default. The requirement and the approval tier are configured per entity type in `Entity Deletion Policy`.
+
+On soft delete, the following reference handling applies:
+
+| Entity | On soft delete |
+| --- | --- |
+| Role | Blocked if this is the default Role. Otherwise, members holding the Role fall back to the default Role. Duty Rules whose CriteriaType = Role and whose CriteriaValue names this Role are deleted. |
+| Duty | Blocked if any Service Definition Duty or Event Duty row references the Duty. Otherwise the referencing rows are removed. Existing Roster Assignment rows referencing the Duty are preserved as historical records. |
+| Member Status | Blocked if this is the default Member Status. Otherwise, members with this status fall back to the default. |
+| Branch | Blocked if any Member is assigned to the Branch. Otherwise the referencing Branch Time Slot rows are removed. Existing Event HostBranchID and Event Branch rows referencing the Branch are preserved. |
+| Branch Time Slot | Blocked if any Service Schedule references the Time Slot. Otherwise the referencing Service Schedule rows are removed if they were already inactive. |
+| Service Definition | Blocked if any Service Schedule, Program Item, Event Duty, or Duty Rule references the Service Definition. |
+| Service Definition Duty | Removed if the Service Definition is removed; not soft-deleted independently. |
+| Service Schedule | Existing Service Occurrence rows are preserved. The schedule stops being eligible for future materialization. |
+| Attribute Type | Member Attribute Value rows for this attribute are removed. Duty Rules whose CriteriaType = Member Attribute and whose CriteriaValue names this attribute are deleted. |
+| Event | Referencing Program and Event Duty rows are removed. Existing event-sourced Service Occurrence rows are preserved. |
+| Program | Referencing Program Item rows are removed. |
+| Program Item | Referencing Event Duty rows are removed. |
+| Event Duty | Removed; not soft-deleted independently. |
+| Outcome State | Blocked if any Service Occurrence or System Setting references the state. |
+| Assignment Status | Blocked if any Roster Assignment or System Setting references the status. |
+| Time Of Day | Blocked if any Branch Time Slot references the Time Of Day. |
+| Service Type | Blocked if any Service Definition or Service Occurrence references the Service Type. |
+| Permission Tier | Blocked if any Admin or Entity Deletion Policy references the tier. |
+| Capability | Removed; not soft-deleted independently, because nothing references it. |
+| Entity Deletion Policy | Removed; not soft-deleted independently. |
+| Notification Subscription | Removed; not soft-deleted independently. |
+
+Configuration changes — including deactivation and soft delete — take effect on the next process run. They do not rewrite history. A Roster Assignment, once created, is not re-evaluated because a configuration row it was generated under was later changed or deleted. An Attendance Record names a member, not a role; deleting a role does not touch it.
+
+The reason for the change is that the congregation manages configuration by a board of admins. Configuration actions are consequential, and the system must record who did them, why, and with what approval, while permitting the admin to remove what is no longer wanted without destroying history.
+
+**Source:** System Design Specification §4, §9.3.
+
+### 9.7 Cross-References
 
 - §7 — Materialization contract.
 - §8 — Occurrence Materialization derivation.
