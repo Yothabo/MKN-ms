@@ -535,12 +535,10 @@ Composite primary key on (AttendanceRuleID, CriteriaType, CriteriaValue). Multip
 | ReadmissionID | Primary key |
 | MemberID | Foreign key → Member |
 | ReadmissionDate | The date the member was readmitted. |
-| PerformedByAdminID | Foreign key → Admin |
+| PerformedByAdminID | Foreign key → Admin. Records who performed the readmission. |
 | Reason | Optional. |
-| IsActive | Boolean. True at creation. |
-| IsDeleted | Boolean. False at creation. |
 
-One row per readmission event. A member's readmission count is the number of non-deleted rows for that member.
+One row per readmission event. A Readmission is a historical fact. It carries no lifecycle flags and is never removed through normal operations. A member's readmission count is the number of Readmission rows for that member.
 
 ---
 
@@ -874,6 +872,8 @@ Member carries its register fields plus a single BranchID and a single RoleID. R
 MembershipStage is a free-text value, not a lookup.
 
 IdentifierHistory is a per-member log of identifier assignments. Type is free-text. Number is admin-supplied. AssignedDate and Number are required; UnassignedDate and Reason are optional; AuthorizedBy is a required FK to Admin. No active flag. To retire an identifier, UnassignedDate and optionally Reason are set. Entries are never deleted.
+
+Readmission is a per-member historical fact recorded when a member is readmitted. Process 3.0 owns its creation. The administrator performing the readmission is recorded in `PerformedByAdminID`; the date is recorded in `ReadmissionDate`; an optional `Reason` may be supplied. A Readmission carries no lifecycle flags and is never removed through normal operations. Creating a Readmission does not modify `Member.MemberStatusID`; the status change, if any, is a separate administrative action or a separate Attendance Rule outcome. The system does not require the member to have held any particular status or to have been absent before a readmission can be recorded. No correction or deletion mechanism for Readmission is currently defined; if one becomes necessary, it is a specification amendment.
 
 Deactivating a Member excludes them from new roster generation. It does not touch operational records. Changing a Member's BranchID or RoleID affects only future use.
 
@@ -1773,7 +1773,7 @@ For each enabled Attendance Rule, the process:
 2. Resolves the effective attendance register scope for each member under consideration.
 3. If the register is off at the effective scope, skips the member for absence-based triggers.
 4. Evaluates the trigger. `AbsenceDays` measures calendar days in the configured ApplicationTimeZone. The window is `[today - N, today]`, inclusive at both boundaries. The trigger fires when the member has no AttendanceRecord whose related ServiceOccurrence.Date falls within the window. The window is not measured in elapsed hours. The attendance timestamp is not used for the absence-window calculation; the occurrence's Date is. `ReadmissionCount` compares the member's readmission count against the configured value. `Manual` fires only when the admin invokes the rule explicitly.
-5. Applies the outcome. The outcome vocabulary is `Notify`, `SetStatus`, and `NoOp`. `Notify` composes and sends a notification through the configured channel. `SetStatus` sets `Member.MemberStatusID` to the status named by the rule. `NoOp` does nothing. The engine does not create, modify, or delete `Readmission` rows. A member's readmission count is derived: it is the number of `Readmission` rows recorded for that member. The count is not stored, and the rule engine does not increment it. Readmission rows are written by administrative action through the member-management process, not by this engine.
+5. Applies the outcome. The outcome vocabulary is `Notify`, `SetStatus`, and `NoOp`. `Notify` composes and sends a notification through the configured channel. `SetStatus` sets `Member.MemberStatusID` to the status named by the rule. `NoOp` does nothing. The engine does not create, modify, or delete `Readmission` rows. A member's readmission count is derived: it is the number of `Readmission` rows recorded for that member. The count is not stored, and the rule engine does not increment it. The engine reads `Readmission` and never writes it. Process 3.0 owns Readmission creation.
 
 **Rule evaluation order.** The engine evaluates applicable Attendance Rules sequentially, in ascending `AttendanceRuleID` order. Each rule's outcomes take effect before the next rule is evaluated. A rule is not re-evaluated after a later rule changes member state. This is sequential stateful evaluation, not merely a deterministic ordering: earlier rule outcomes are visible to later rules.
 
