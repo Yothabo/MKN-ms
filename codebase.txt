@@ -29512,11 +29512,11 @@ When 5.0 creates a new automatic assignment, it invokes 9.0 with that assignment
 
 ### 10.5 Explicitly Open Implementation Choices
 
-- The deterministic candidate ordering within a tier.
 - Eligibility resolution query shape.
 - Whether 5.0's scheduled and manual runs share a code path.
 - Batching strategy for filling slots across duties within an occurrence.
 - Failure handling when 9.0 invocation fails.
+- The concurrency control mechanism for preserving slot capacity. The required property is stated in §10.3; the mechanism is not prescribed.
 
 ### 10.6 Cross-References
 
@@ -29696,7 +29696,7 @@ The declining or timed-out row is never modified beyond the status transition. I
 - No fill-status evaluation.
 - No occurrence modification.
 - No attendance record.
-- **Slot capacity is preserved under concurrency.** The specification defines the required property: a duty's non-terminal assignment count must never exceed its effective required slot count under any interleaving of concurrent writers. The mechanism that guarantees this property — row-level locking, serializable isolation, or an application-level mutex — is an implementation choice, as listed in §11.5. The process must select and apply a mechanism that satisfies the property.
+- **Slot capacity is preserved under concurrency.** The concurrent writers of `RosterAssignment` rows are 5.0 Generate Assignment, 7.0 Manage Confirmation, and 12.0 Create Manual Assignment. Multiple concurrent executions of any of these processes may contend. The required property is: for every (OccurrenceID, DutyID) pair, the committed number of non-terminal `RosterAssignment` rows never exceeds the effective required slot count for that pair, under any interleaving of concurrent writers. The property is evaluated against the committed resulting state, not against every transient intermediate state during transaction execution. The mechanism — row-level locking, serializable isolation, an advisory lock, or an application-level mutex — is an implementation choice, as listed in §10.5. The specification requires that the property hold; it does not prescribe the mechanism.
 
 ### 11.4 Indexes
 
