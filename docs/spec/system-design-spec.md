@@ -1750,10 +1750,10 @@ For each enabled Attendance Rule, the process:
 1. Resolves the rule's scope. The scope rows are ANDed, using the same criterion evaluation as Duty Rule.
 2. Resolves the effective attendance register scope for each member under consideration.
 3. If the register is off at the effective scope, skips the member for absence-based triggers.
-4. Evaluates the trigger. `AbsenceDays` compares the member's last attendance against the current date. `ReadmissionCount` compares the member's readmission count against the configured value. `Manual` fires only when the admin invokes the rule explicitly.
+4. Evaluates the trigger. `AbsenceDays` measures calendar days in the configured ApplicationTimeZone. The window is `[today - N, today]`, inclusive at both boundaries. The trigger fires when the member has no AttendanceRecord whose related ServiceOccurrence.Date falls within the window. The window is not measured in elapsed hours. The attendance timestamp is not used for the absence-window calculation; the occurrence's Date is. `ReadmissionCount` compares the member's readmission count against the configured value. `Manual` fires only when the admin invokes the rule explicitly.
 5. Applies the outcome. `Notify` composes and sends a notification through the configured channel. `SetStatus` sets `Member.MemberStatusID` to the status named by the rule. `IncrementReadmissionCount` is currently a no-op until readmission events are recorded by admin action; the count is derived from the Readmission rows.
 
-The engine is idempotent. Running it twice with unchanged data produces the same result.
+Absence evaluation is deterministic for a given calendar date. Two runs on the same date in the same timezone evaluate the same absence window and produce the same absence set. This does not assert that the entire engine is idempotent: other outcomes, particularly `SetStatus`, have their own state-transition semantics, and running the engine twice may apply a status transition twice if the rule's trigger still holds.
 
 **Source:** System Design Specification §9.6, §13.
 
