@@ -47,7 +47,7 @@ LINES: 66
 
 # Specification Freeze
 
-**Frozen at commit:** `6abb13e`
+**Frozen at commit:** `a69226c`
 **Frozen on:** 2026-10-08
 
 ---
