@@ -1763,7 +1763,7 @@ The Attendance Rule engine is the process that reads Attendance Rules, evaluates
 
 **Reads:** `AttendanceRule`, `AttendanceRuleScope`, `Member`, `AttendanceRecord`, `Readmission`, `MemberStatus`, `SystemSetting` (the global register scope), `Branch.UsesAttendanceRegister`, `Event.UsesAttendanceRegister`.
 
-**Writes:** `Member.MemberStatusID` when a `SetStatus` outcome fires. `Readmission` when a `Manual` readmission is recorded by an admin. Notification dispatches when a `Notify` outcome fires. `ConfigurationAuditLog` is not written by this process; it is a configuration-lifecycle record.
+**Writes:** `Member.MemberStatusID` when a `SetStatus` outcome fires. `Readmission` when a `Manual` readmission is recorded by an admin. Notification dispatches when a `Notify` outcome fires. `ConfigurationAuditLog` is not written by this process; it is a configuration-lifecycle record. A `Manual` rule is applied through a distinct administrative invocation that names exactly one rule and applies its outcome to every member matching its scope.
 
 **Does not:** modify `AttendanceRecord`, invoke any other process, or modify any operational record other than the member status and the readmission count.
 
@@ -1789,6 +1789,8 @@ The engine does not arbitrate between rules. The administrator is responsible fo
 **Determinism.** Rule evaluation is deterministic for a given set of persisted inputs: the same Attendance Rules, the same rule order by AttendanceRuleID, the same scope criteria, the same configuration, the same member population state, the same attendance facts, and the same calendar date in the same timezone produce the same outcome sequence. This is a statement about determinism, not idempotency. Running the engine twice with the same inputs may apply the same `SetStatus` outcome twice if the trigger still holds. Absence evaluation specifically is idempotent for a given calendar date: two runs on the same date in the same timezone evaluate the same absence window and produce the same absence set.
 
 **Idempotency.** The engine is not idempotent with respect to its external outcomes. Repeating a run while a trigger remains true may produce another notification or another outcome application, even when the member's resulting state is unchanged. The engine does not maintain per-rule execution history. Whether the persistence layer optimises an identical status write away is an implementation detail and is not part of the behavioural contract. The administrator controls repetition by ensuring the trigger condition ceases to hold once the outcome has been applied — for example, by placing a `SetStatus` rule earlier in the ordering so that a later notifying rule's scope no longer matches.
+
+**Manual invocation.** An administrator may invoke an Attendance Rule whose `TriggerType` is `Manual`. The invocation names exactly one rule. The engine resolves that rule's scope against the member population and applies the rule's outcome to every matching member. The `Manual` trigger fires unconditionally: there is no threshold and `TriggerValue` is unused. The invocation evaluates exactly the named rule and no other rule; the B8 evaluation ordering does not apply to it, because it evaluates one rule in isolation. Repeat invocation applies the outcome again, consistent with the idempotency contract above. An administrator who needs to act on one specific member edits `Member.MemberStatusID` directly through the member-management process; the `Manual` trigger is not that operation.
 
 **Source:** System Design Specification §9.6, §13.
 
