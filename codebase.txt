@@ -28733,7 +28733,7 @@ Exactly one of RecipientTierID or RecipientAdminID is set per row. When the tier
 | Name | Administrator-defined label |
 | TriggerType | One of: AbsenceDays, ReadmissionCount, Manual |
 | TriggerValue | The trigger's value. For AbsenceDays, the number of days. For ReadmissionCount, the count. For Manual, unused. |
-| OutcomeType | One of: Notify, SetStatus, IncrementReadmissionCount, NoOp |
+| OutcomeType | One of: Notify, SetStatus, NoOp |
 | OutcomeStatusID | Foreign key → Member Status. Set only when OutcomeType = SetStatus. |
 | Enabled | Boolean. When false, the rule is not evaluated. |
 | IsActive | Boolean. True at creation. |
@@ -29986,7 +29986,7 @@ The Attendance Rule engine is the process that reads Attendance Rules, evaluates
 
 **Reads:** `AttendanceRule`, `AttendanceRuleScope`, `Member`, `AttendanceRecord`, `Readmission`, `MemberStatus`, `SystemSetting` (the global register scope), `Branch.UsesAttendanceRegister`, `Event.UsesAttendanceRegister`.
 
-**Writes:** `Member.MemberStatusID` when a `SetStatus` outcome fires. `Readmission` when a `Manual` readmission is recorded by an admin. Notification dispatches when a `Notify` outcome fires. `ConfigurationAuditLog` is not written by this process; it is a configuration-lifecycle record. A `Manual` rule is applied through a distinct administrative invocation that names exactly one rule and applies its outcome to every member matching its scope.
+**Writes:** `Member.MemberStatusID` when a `SetStatus` outcome fires. Notification dispatches when a `Notify` outcome fires. `ConfigurationAuditLog` is not written by this process; it is a configuration-lifecycle record. The engine does not write `Readmission`; readmissions are recorded by administrative action through the member-management process. A `Manual` rule is applied through a distinct administrative invocation that names exactly one rule and applies its outcome to every member matching its scope.
 
 **Does not:** modify `AttendanceRecord`, invoke any other process, or modify any operational record other than the member status and the readmission count.
 
@@ -29996,7 +29996,7 @@ For each enabled Attendance Rule, the process:
 2. Resolves the effective attendance register scope for each member under consideration.
 3. If the register is off at the effective scope, skips the member for absence-based triggers.
 4. Evaluates the trigger. `AbsenceDays` measures calendar days in the configured ApplicationTimeZone. The window is `[today - N, today]`, inclusive at both boundaries. The trigger fires when the member has no AttendanceRecord whose related ServiceOccurrence.Date falls within the window. The window is not measured in elapsed hours. The attendance timestamp is not used for the absence-window calculation; the occurrence's Date is. `ReadmissionCount` compares the member's readmission count against the configured value. `Manual` fires only when the admin invokes the rule explicitly.
-5. Applies the outcome. `Notify` composes and sends a notification through the configured channel. `SetStatus` sets `Member.MemberStatusID` to the status named by the rule. `IncrementReadmissionCount` is currently a no-op until readmission events are recorded by admin action; the count is derived from the Readmission rows.
+5. Applies the outcome. The outcome vocabulary is `Notify`, `SetStatus`, and `NoOp`. `Notify` composes and sends a notification through the configured channel. `SetStatus` sets `Member.MemberStatusID` to the status named by the rule. `NoOp` does nothing. The engine does not create, modify, or delete `Readmission` rows. A member's readmission count is derived: it is the number of `Readmission` rows recorded for that member. The count is not stored, and the rule engine does not increment it. Readmission rows are written by administrative action through the member-management process, not by this engine.
 
 **Rule evaluation order.** The engine evaluates applicable Attendance Rules sequentially, in ascending `AttendanceRuleID` order. Each rule's outcomes take effect before the next rule is evaluated. A rule is not re-evaluated after a later rule changes member state. This is sequential stateful evaluation, not merely a deterministic ordering: earlier rule outcomes are visible to later rules.
 
@@ -30527,13 +30527,13 @@ Four direct invocation edges currently exist. All four terminate at 9.0 Dispatch
 | I1 | 5.0 Generate Assignment | 9.0 Dispatch Notification | On each new automatic assignment created | Unconditional — fires on every new automatic assignment |
 | I2 | 7.0 Manage Confirmation | 9.0 Dispatch Notification | On each replacement assignment created after decline or timeout | Conditional — does not fire on status changes of existing assignments |
 | I3 | 12.0 Create Manual Assignment | 9.0 Dispatch Notification | Only when the created manual assignment has AssignmentStatusID = NULL at creation | Conditional — does not fire when the admin sets a non-null status directly |
-| I4 | 13.0 Attendance Rule Engine | 9.0 Dispatch Notification | On each Attendance Rule whose OutcomeType = Notify and whose trigger fires | Conditional — does not fire for SetStatus, IncrementReadmissionCount, or NoOp outcomes |
+| I4 | 13.0 Attendance Rule Engine | 9.0 Dispatch Notification | On each Attendance Rule whose OutcomeType = Notify and whose trigger fires | Conditional — does not fire for SetStatus or NoOp outcomes |
 
 The **durable invariant** is not the count. It is: **9.0 Dispatch Notification is the sole process any other process is permitted to invoke.** The count may grow as the system grows; the invariant does not.
 
 Conditionality is not a property of any specific edge. 7.0's edge (I2), 12.0's edge (I3), and 13.0's edge (I4) are all conditional by design. 5.0's edge (I1) is unconditional only because every automatic assignment it creates requires a response by definition.
 
-Edge I4 was added by the attendance amendment set. The Attendance Rule engine invokes 9.0 only when a rule's outcome is to notify. The other three outcomes — SetStatus, IncrementReadmissionCount, NoOp — do not invoke 9.0.
+Edge I4 was added by the attendance amendment set. The Attendance Rule engine invokes 9.0 only when a rule's outcome is to notify. The other two outcomes — SetStatus and NoOp — do not invoke 9.0.
 
 ### 16.3 Complete Invocation Matrix
 
