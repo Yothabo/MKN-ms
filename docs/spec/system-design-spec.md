@@ -540,6 +540,21 @@ Composite primary key on (AttendanceRuleID, CriteriaType, CriteriaValue). Multip
 
 One row per readmission event. A Readmission is a historical fact. It carries no lifecycle flags and is never removed through normal operations. A member's readmission count is the number of Readmission rows for that member.
 
+
+### Temporal types
+
+The schema uses three temporal types. Each has one meaning.
+
+**`timestamp`** represents an instant. It is persisted in UTC. Every schema property classified as `timestamp` carries this meaning, regardless of the column's name or purpose. Current members of the classification include `RosterAssignment.CreatedAt`, `AttendanceRecord.Timestamp`, `MaterializerRun.StartedAt` and `CompletedAt`, `ConfigurationAuditLog.InitiatedAt`, `ApprovedAt`, and `NotifiedAt`, `ProgramItem.ScheduledStart` and `ScheduledEnd`, and any future column added to the schema as an instant.
+
+**`date`** represents a calendar date with no time and no timezone. It is not converted through UTC, and it is not interpreted as a midnight instant. Current members include `ServiceOccurrence.Date`, `Member.JoinDate`, `DateOfBirth`, `IdentifierHistory.AssignedDate` and `UnassignedDate`, `Eligibility.GrantedDate` and `RevokedDate`, `Readmission.ReadmissionDate`, `MemberAttributeValue.RecordedDate`, and `Event.StartDate` and `EndDate`.
+
+**`time`** represents a wall-clock time with no date and no timezone. Current members include `ServiceOccurrence.StartTime` and `ServiceSchedule.StartTime`.
+
+**`ApplicationTimeZone`** is used for exactly one purpose: converting an instant to the calendar date it falls on in that zone. The canonical conversion is `TimeZoneResolver.ToDateInTimeZone(instant, zone)`, which yields a `DateOnly`. Every process that derives "today" from the current instant uses this conversion. The materializer, 5.0, 7.0, 12.0, and 13.0 all derive their operational date through it.
+
+`date` and `time` values are never converted through UTC. A date is the date the administrator entered; a time is the wall-clock time the administrator entered. The only place a timezone participates is in the conversion of an instant to a date.
+
 ---
 
 ## 5. The Configuration Language
