@@ -127,7 +127,7 @@ Every component in the system:
 - Reads its configuration at run time; none has it embedded.
 - Respects the required-setting rule — if it depends on a setting that is absent, it fails loudly rather than proceeding.
 - Writes only to the stores it is contractually allowed to write to; it never modifies a store outside its footprint.
-- Does not orchestrate another component, except for the three locked invocation edges (5.0 → 9.0, 7.0 → 9.0, and 12.0 → 9.0).
+- Does not orchestrate another component, except for the four locked invocation edges (5.0 → 9.0, 7.0 → 9.0, 12.0 → 9.0, and 13.0 → 9.0).
 
 ---
 

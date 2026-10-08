@@ -25,11 +25,11 @@ Four process-to-process invocation edges currently exist. All four terminate at 
 | 12.0 Create Manual Assignment | 9.0 Dispatch Notification | Only when the created manual assignment has AssignmentStatusID = NULL at creation |
 | 13.0 Attendance Rule Engine | 9.0 Dispatch Notification | Only when an Attendance Rule's OutcomeType = Notify and its trigger fires |
 
-All three invoke 9.0. 5.0's and 7.0's edges fire on any new RosterAssignment row they create. 12.0's edge fires only when the manually-created row has no status — meaning a response is genuinely being requested. No invoker calls 9.0 for any other reason.
+All four invoke 9.0. 5.0's and 7.0's edges fire on any new RosterAssignment row they create. 12.0's edge fires only when the manually-created row has no status — meaning a response is genuinely being requested. 13.0's edge fires only when an Attendance Rule's outcome is Notify. No invoker calls 9.0 for any other reason.
 
 ### Why these exist
 
-An assignment notice must be sent at the moment the assignment is created. A polling model would require either a Notified flag or a notification queue — state the schema deliberately does not have. Direct invocation is simpler and bounded: 9.0 is the outbound channel, invoked by the processes that produce response-requiring assignments (5.0, 7.0, and 12.0).
+An assignment notice must be sent at the moment the assignment is created. A polling model would require either a Notified flag or a notification queue — state the schema deliberately does not have. Direct invocation is simpler and bounded: 9.0 is the outbound channel, invoked by the processes that produce response-requiring assignments (5.0, 7.0, and 12.0) and by the Attendance Rule engine when a rule's outcome is Notify (13.0).
 
 ### Why there are no others
 
@@ -129,7 +129,7 @@ flowchart TB
     D11 -.->|reads| P9
 ~~~
 
-**Legend:** solid arrows (`-->`) are process invocations. Dotted arrows (`-.->`) are data reads or writes. Only three solid arrows exist.
+**Legend:** solid arrows (`-->`) are process invocations. Dotted arrows (`-.->`) are data reads or writes. Only four solid arrows exist.
 
 ### Exact form
 
@@ -234,7 +234,7 @@ This is the entire invocation topology of the system. The invocation matrix is s
 
 These are two different kinds of coupling, and the distinction matters.
 
-**Process dependency** — one process invoking another. The system has three process-dependency edges, all terminating at 9.0: 5.0 → 9.0, 7.0 → 9.0, and 12.0 → 9.0.
+**Process dependency** — one process invoking another. The system has four process-dependency edges, all terminating at 9.0: 5.0 → 9.0, 7.0 → 9.0, 12.0 → 9.0, and 13.0 → 9.0.
 
 **Data dependency** — one process requiring records another process has produced. The system has many of these:
 

@@ -71,7 +71,7 @@ Each trigger maps to a natural exposure style:
 | Invocation by another process | Not exposed; internal |
 | After-assignment-change trigger | Not exposed; runs internally |
 
-The three internal invocation edges (5.0 → 9.0, 7.0 → 9.0, and 12.0 → 9.0) do not appear at the API boundary. They happen inside the system.
+The four internal invocation edges (5.0 → 9.0, 7.0 → 9.0, 12.0 → 9.0, and 13.0 → 9.0) do not appear at the API boundary. They happen inside the system.
 
 ---
 

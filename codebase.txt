@@ -20803,7 +20803,7 @@ The API is a presentation of the processes defined in `../processes/`, not an in
 
 - **The process boundaries.** Each endpoint invokes exactly one process or subprocess. No composite endpoints that stitch together behavior from multiple processes.
 - **The store footprints.** An endpoint must not write to a store outside the footprint of the process it invokes.
-- **The invocation model.** Endpoints trigger processes; they do not introduce new invocation edges. The three direct edges (5.0 → 9.0, 7.0 → 9.0, and 12.0 → 9.0) are internal and do not appear at the API boundary.
+- **The invocation model.** Endpoints trigger processes; they do not introduce new invocation edges. The four direct edges (5.0 → 9.0, 7.0 → 9.0, 12.0 → 9.0, and 13.0 → 9.0) are internal and do not appear at the API boundary.
 - **The required-setting rule.** Endpoints that trigger processes depending on a required setting must surface the configuration error if the setting is absent.
 - **The 8.0 exception.** An endpoint that links a Program Item to a Service Definition triggers the creation of an event-sourced occurrence. This is the only case where a configuration-layer action produces an operational record.
 
@@ -21187,7 +21187,7 @@ Each trigger maps to a natural exposure style:
 | Invocation by another process | Not exposed; internal |
 | After-assignment-change trigger | Not exposed; runs internally |
 
-The three internal invocation edges (5.0 → 9.0, 7.0 → 9.0, and 12.0 → 9.0) do not appear at the API boundary. They happen inside the system.
+The four internal invocation edges (5.0 → 9.0, 7.0 → 9.0, 12.0 → 9.0, and 13.0 → 9.0) do not appear at the API boundary. They happen inside the system.
 
 ---
 
@@ -21419,7 +21419,7 @@ Every component in the system:
 - Reads its configuration at run time; none has it embedded.
 - Respects the required-setting rule — if it depends on a setting that is absent, it fails loudly rather than proceeding.
 - Writes only to the stores it is contractually allowed to write to; it never modifies a store outside its footprint.
-- Does not orchestrate another component, except for the three locked invocation edges (5.0 → 9.0, 7.0 → 9.0, and 12.0 → 9.0).
+- Does not orchestrate another component, except for the four locked invocation edges (5.0 → 9.0, 7.0 → 9.0, 12.0 → 9.0, and 13.0 → 9.0).
 
 ---
 
@@ -22652,11 +22652,11 @@ Four process-to-process invocation edges currently exist. All four terminate at 
 | 12.0 Create Manual Assignment | 9.0 Dispatch Notification | Only when the created manual assignment has AssignmentStatusID = NULL at creation |
 | 13.0 Attendance Rule Engine | 9.0 Dispatch Notification | Only when an Attendance Rule's OutcomeType = Notify and its trigger fires |
 
-All three invoke 9.0. 5.0's and 7.0's edges fire on any new RosterAssignment row they create. 12.0's edge fires only when the manually-created row has no status — meaning a response is genuinely being requested. No invoker calls 9.0 for any other reason.
+All four invoke 9.0. 5.0's and 7.0's edges fire on any new RosterAssignment row they create. 12.0's edge fires only when the manually-created row has no status — meaning a response is genuinely being requested. 13.0's edge fires only when an Attendance Rule's outcome is Notify. No invoker calls 9.0 for any other reason.
 
 ### Why these exist
 
-An assignment notice must be sent at the moment the assignment is created. A polling model would require either a Notified flag or a notification queue — state the schema deliberately does not have. Direct invocation is simpler and bounded: 9.0 is the outbound channel, invoked by the processes that produce response-requiring assignments (5.0, 7.0, and 12.0).
+An assignment notice must be sent at the moment the assignment is created. A polling model would require either a Notified flag or a notification queue — state the schema deliberately does not have. Direct invocation is simpler and bounded: 9.0 is the outbound channel, invoked by the processes that produce response-requiring assignments (5.0, 7.0, and 12.0) and by the Attendance Rule engine when a rule's outcome is Notify (13.0).
 
 ### Why there are no others
 
@@ -22756,7 +22756,7 @@ flowchart TB
     D11 -.->|reads| P9
 ~~~
 
-**Legend:** solid arrows (`-->`) are process invocations. Dotted arrows (`-.->`) are data reads or writes. Only three solid arrows exist.
+**Legend:** solid arrows (`-->`) are process invocations. Dotted arrows (`-.->`) are data reads or writes. Only four solid arrows exist.
 
 ### Exact form
 
@@ -22861,7 +22861,7 @@ This is the entire invocation topology of the system. The invocation matrix is s
 
 These are two different kinds of coupling, and the distinction matters.
 
-**Process dependency** — one process invoking another. The system has three process-dependency edges, all terminating at 9.0: 5.0 → 9.0, 7.0 → 9.0, and 12.0 → 9.0.
+**Process dependency** — one process invoking another. The system has four process-dependency edges, all terminating at 9.0: 5.0 → 9.0, 7.0 → 9.0, 12.0 → 9.0, and 13.0 → 9.0.
 
 **Data dependency** — one process requiring records another process has produced. The system has many of these:
 
@@ -29169,7 +29169,7 @@ Physical forms are implementation-dependent.
 
 ==============================================================================
 FILE: docs/processes/operations/9.0-dispatch-notification.md
-LINES: 199
+LINES: 201
 ==============================================================================
 
 # 9.0 Dispatch Notification
@@ -29182,7 +29182,7 @@ LINES: 199
 
 9.0 Dispatch Notification is the outbound process that sends assignment notices to members. It is invoked by 5.0, 7.0, 12.0, and 13.0 when they create assignments that require a response — meaning an assignment created with no status. It is the only process in the system whose primary effect is an external side effect rather than a write to an internal data store.
 
-It reads the assignment, the member, the occurrence, and the configured channel, composes a message, sends it, and stops. It does not write to any store, does not track delivery, does not retry, and does not invoke any other process.
+It reads the assignment, the member, the occurrence, and the configured channel, composes a message, sends it, and stops. It does not write to any store, does not track delivery, and does not invoke any other process. Retry semantics differ by path: the member-facing path does not retry; the authority-notification sweep retries through subsequent sweeps while `NotifiedAt` remains null. See §14.1.4 and §14.1.5 of the specification.
 
 **Source:** System Design Specification §14.
 
@@ -29234,7 +29234,7 @@ Recipients are configured in NotificationSubscription. A subscription row names 
 
 ### What is and is not recorded
 
-The audit row records that a notification was dispatched, by setting `NotifiedAt`. Delivery itself is not tracked. There is no delivery log, no retry, no receipt confirmation. This is consistent with the member-facing path.
+The audit row records that a notification was dispatched, by setting `NotifiedAt`. Delivery itself is not tracked. There is no delivery log and no receipt confirmation. The sweep retries through subsequent sweeps while `NotifiedAt` remains null: a dispatch failure leaves `NotifiedAt` unchanged and the row eligible for a later sweep. If a dispatch succeeds but the process fails before `NotifiedAt` is persisted, the row may be dispatched again on a later sweep. This is the at-least-once reliability stated at §14.1.4 of the specification.
 
 ### Fire-and-forget
 
@@ -29263,7 +29263,7 @@ The channel is the same for both paths. The `NotificationChannel` setting names 
 
 ## The trigger boundary
 
-9.0's trigger is bounded to exactly one condition: a new RosterAssignment row has been created that requires a response. It is invoked by the three processes that create such assignments (5.0 for automatic, 7.0 for replacements, 12.0 for manual assignments created with no status).
+9.0's trigger is bounded to the conditions stated at §14.1.3 of the specification. On Path 1 it is invoked by the four processes that create assignments requiring a response (5.0 for automatic, 7.0 for replacements, 12.0 for manual assignments created with no status) or that produce a Notify outcome (13.0). On Path 2 it is triggered by the scheduler for the authority-notification sweep.
 
 Status changes on an existing assignment do not trigger 9.0. Fill status changes do not trigger 9.0. Attendance records do not trigger 9.0.
 
@@ -29305,9 +29305,11 @@ If audit or delivery tracking becomes a requirement, it is an additive structure
 
 ---
 
-## No retry
+## No retry on the member-facing path
 
-If the underlying channel fails, the notification is lost from the system's perspective. 9.0 does not retry.
+On the member-facing path (Path 1), if the underlying channel fails, the notification is lost from the system's perspective. 9.0 does not retry the member-facing dispatch.
+
+The authority-notification path (Path 2) is retried implicitly: a `ConfigurationAuditLog` row whose `NotifiedAt` remains null is eligible for a subsequent sweep. See §14.1.4.
 
 **Source:** System Design Specification §14.1.5.
 
@@ -29342,7 +29344,7 @@ Whether the invocation is synchronous or asynchronous from the invoking process'
 - No invocation on any other event.
 - Channel selected by setting. Follows the setting's configured validity behavior; no channel-specific fallback.
 - Fire-and-forget.
-- No retry.
+- No retry on the member-facing path. The authority-notification path retries through subsequent sweeps while `NotifiedAt` remains null.
 - No delivery log.
 - No token. The notification does not contain a confirmation token or other schema-defined response identifier.
 - Channel-agnostic contract. SMS, email, push, and others are acceptable implementations behind the same contract.
