@@ -56,7 +56,7 @@ One further rule: **required configuration that a process depends on must fail l
 
 ## 4. Core Entities
 
-Every entity is stated with its columns, its nullability, its keys, and its relationships. Configuration entities carry both `IsActive` and `IsDeleted`. Operational entities carry neither: they are facts and are never removed through normal admin operations. `IsDeleted` implies `IsActive = false`; the two-flag lifecycle is stated in §9.
+Every entity is stated with its columns, its nullability, its keys, and its relationships. Configuration entities carry both `IsActive` and `IsDeleted`. Operational entities carry neither: they are facts and are never removed through normal admin operations. `IsDeleted` implies `IsActive = false`; the two-flag lifecycle is stated in §9. A small number of entities carry neither flag and are also not configuration — for example, `AttendanceRuleScope` and `EventBranch`, whose lifecycle is derived from their parent.
 
 ### Role
 
@@ -101,6 +101,7 @@ Per-service rules override duty-global rules entirely for that (Service, Duty) p
 | BranchID | Primary key |
 | Name | Administrator-defined label |
 | Location | Single entry, structured internally |
+| UsesAttendanceRegister | Boolean, nullable. Null means no override at this scope; the effective register state follows the global setting. Set means the branch overrides the global setting. |
 | IsActive | Boolean. True at creation. |
 | IsDeleted | Boolean. False at creation. |
 
@@ -358,8 +359,9 @@ An Admin row records that a member has been granted admin status by another admi
 | MemberID | Foreign key → Member |
 | OccurrenceID | Foreign key → Service Occurrence |
 | Timestamp |  |
+| Source | Administrator-defined. Seeded values: Manual, Tap. Manual is produced by the manual register marking path, which is implemented. Tap is defined in the vocabulary but is not produced by any implemented path in the current phase. |
 
-Unique on (MemberID, OccurrenceID). No `IsActive` and no `IsDeleted`.
+Unique on (MemberID, OccurrenceID). Operational fact. No `IsActive` and no `IsDeleted`.
 
 ### Event
 
@@ -371,6 +373,7 @@ Unique on (MemberID, OccurrenceID). No `IsActive` and no `IsDeleted`.
 | EndDate |  |
 | Type | Free text |
 | HostBranchID | Foreign key → Branch. The branch at which the event is held. |
+| UsesAttendanceRegister | Boolean, nullable. Null means no override at this scope; the effective register state follows the next scope in the resolution order. Set means the event overrides the other scopes for its own occurrences. |
 | IsActive | Boolean. True at creation. |
 | IsDeleted | Boolean. False at creation. |
 
@@ -498,6 +501,46 @@ No `IsActive` and no `IsDeleted` — audit records are permanent facts.
 | IsDeleted | Boolean. False at creation. |
 
 Exactly one of RecipientTierID or RecipientAdminID is set per row. When the tier is set, all admins of that tier receive the notification. When the specific admin is set, only that admin receives it.
+
+### Attendance Rule
+
+| Column | Notes |
+| --- | --- |
+| AttendanceRuleID | Primary key |
+| Name | Administrator-defined label |
+| TriggerType | One of: AbsenceDays, ReadmissionCount, Manual |
+| TriggerValue | The trigger's value. For AbsenceDays, the number of days. For ReadmissionCount, the count. For Manual, unused. |
+| OutcomeType | One of: Notify, SetStatus, IncrementReadmissionCount, NoOp |
+| OutcomeStatusID | Foreign key → Member Status. Set only when OutcomeType = SetStatus. |
+| Enabled | Boolean. When false, the rule is not evaluated. |
+| IsActive | Boolean. True at creation. |
+| IsDeleted | Boolean. False at creation. |
+
+An Attendance Rule is a rule the admin creates to apply attendance-driven outcomes. The system evaluates the rule against the member population on a schedule. The rule's scope is expressed through the Attendance Rule Scope join table. A rule with no scope rows applies to every member.
+
+### Attendance Rule Scope
+
+| Column | Notes |
+| --- | --- |
+| AttendanceRuleID | Foreign key → Attendance Rule. Part of composite primary key. |
+| CriteriaType | One of the supported criteria types. Same vocabulary as Duty Rule. |
+| CriteriaValue | The value for that criteria. |
+
+Composite primary key on (AttendanceRuleID, CriteriaType, CriteriaValue). Multiple scope rows for one rule are ANDed. A rule with no scope rows applies to every member.
+
+### Readmission
+
+| Column | Notes |
+| --- | --- |
+| ReadmissionID | Primary key |
+| MemberID | Foreign key → Member |
+| ReadmissionDate | The date the member was readmitted. |
+| PerformedByAdminID | Foreign key → Admin |
+| Reason | Optional. |
+| IsActive | Boolean. True at creation. |
+| IsDeleted | Boolean. False at creation. |
+
+One row per readmission event. A member's readmission count is the number of non-deleted rows for that member.
 
 ---
 
@@ -965,7 +1008,25 @@ The only write to an operational store is 8.0's insertion of event-sourced Servi
 - Physical column types.
 - Unique-constraint expression across database engines.
 
-### 9.6 Configuration Lifecycle
+### 9.6 Attendance Register Scope
+
+The attendance register has two independent purposes. It is a record of presence, and it is a signal that attendance-driven rules may read. The two purposes are decoupled: the register may be on for record-keeping while being off for rostering, or the reverse.
+
+The register's on/off state is configured at three scopes:
+
+- **Global.** A System Setting names the default state.
+- **Per-event.** `Event.UsesAttendanceRegister`. Null means no override.
+- **Per-branch.** `Branch.UsesAttendanceRegister`. Null means no override.
+
+The resolution order is: event override, then branch override, then global. The most specific scope in effect wins. An occurrence belongs to either an event or a branch and time slot. If the occurrence is event-sourced, the event's override applies first. If the occurrence is schedule-sourced, the branch's override applies first. In each case the global setting is the fallback when no override exists.
+
+When the effective scope is off, the attendance register is not consulted. The `Attendance Rule` engine does not apply absence-based rules to members whose effective scope is off. Manual register marking is disabled for that scope. The `Branch-Attendance Recency` Duty Rule criterion is skipped for occurrences at that scope, as stated in §10.1.5. Readmission-based rules may still apply, because readmissions are recorded independently of the register.
+
+The register state may be changed at any time. A change takes effect on the next process run. It does not rewrite history.
+
+**Source:** System Design Specification §9.6, §10.1.5, §13.
+
+### 9.7 Configuration Lifecycle
 
 Every configuration entity carries both `IsActive` and `IsDeleted`. Together they express four reachable states.
 
@@ -1014,7 +1075,7 @@ The reason for the change is that the congregation manages configuration by a bo
 
 **Source:** System Design Specification §4, §9.3.
 
-### 9.7 Cross-References
+### 9.8 Cross-References
 
 - §7 — Materialization contract.
 - §8 — Occurrence Materialization derivation.
@@ -1109,7 +1170,7 @@ Criteria are evaluated per CriteriaType:
 | Age Range | Computed from DateOfBirth and today's date, within the range |
 | Tenure | Computed from JoinDate and today's date, meets the threshold |
 | Membership Stage | Member's MembershipStage matches |
-| Branch-Attendance Recency | Member has an AttendanceRecord at the specified branch within the configured window |
+| Branch-Attendance Recency | Member has an AttendanceRecord at the specified branch within the configured window. The rule is skipped for occurrences whose effective attendance register scope is off. See §9.6. |
 | Eligibility Flag | Member has a current Eligibility grant for the referenced duty |
 | Member Attribute | Member holds the named Attribute Type with the required value in their Member Attribute Value rows |
 | Youth | Member's age, computed from DateOfBirth against the configured YouthAgeMin and YouthAgeMax settings, falls within the configured range |
@@ -1642,7 +1703,31 @@ A subsequent tap for an existing pair is a no-op. The uniqueness constraint is t
 - Whether attendance records are retained indefinitely.
 - Physical shape of the (MemberID, Timestamp) index.
 
-### 13.6 Cross-References
+### 13.6 Attendance Rule Engine
+
+The Attendance Rule engine is the process that reads Attendance Rules, evaluates each against the member population, and applies the configured outcomes. It is the thirteenth process in the system.
+
+**Trigger.** Scheduled run. It also runs on demand when an admin invokes it.
+
+**Reads:** `AttendanceRule`, `AttendanceRuleScope`, `Member`, `AttendanceRecord`, `Readmission`, `MemberStatus`, `SystemSetting` (the global register scope), `Branch.UsesAttendanceRegister`, `Event.UsesAttendanceRegister`.
+
+**Writes:** `Member.MemberStatusID` when a `SetStatus` outcome fires. `Readmission` when a `Manual` readmission is recorded by an admin. Notification dispatches when a `Notify` outcome fires. `ConfigurationAuditLog` is not written by this process; it is a configuration-lifecycle record.
+
+**Does not:** modify `AttendanceRecord`, invoke any other process, or modify any operational record other than the member status and the readmission count.
+
+For each enabled Attendance Rule, the process:
+
+1. Resolves the rule's scope. The scope rows are ANDed, using the same criterion evaluation as Duty Rule.
+2. Resolves the effective attendance register scope for each member under consideration.
+3. If the register is off at the effective scope, skips the member for absence-based triggers.
+4. Evaluates the trigger. `AbsenceDays` compares the member's last attendance against the current date. `ReadmissionCount` compares the member's readmission count against the configured value. `Manual` fires only when the admin invokes the rule explicitly.
+5. Applies the outcome. `Notify` composes and sends a notification through the configured channel. `SetStatus` sets `Member.MemberStatusID` to the status named by the rule. `IncrementReadmissionCount` is currently a no-op until readmission events are recorded by admin action; the count is derived from the Readmission rows.
+
+The engine is idempotent. Running it twice with unchanged data produces the same result.
+
+**Source:** System Design Specification §9.6, §13.
+
+### 13.7 Cross-References
 
 - §7 — Materialization contract.
 - §8 — Occurrence Materialization derivation.
@@ -1803,14 +1888,19 @@ No index is prescribed at specification level for 9.0.
 
 Across §7 through §14, the locked contracts implied a set of additions to the schema described in §4: columns, constraints, and configuration settings. This section gathers them in one place.
 
-The additions fall into four categories:
+The original additions fall into four categories:
 
 1. New columns
 2. New constraints
 3. New settings
 4. Nullability clarifications
 
-No new entities are introduced. No new tables. Fifteen amendments total.
+The original set was fifteen amendments. Two later sets have been applied since:
+
+- The A–G amendment set (§15.8.1 through §15.8.18). Eight new entities, nine new columns, two extended criteria types, three new settings, and three removed columns.
+- The attendance amendment set (§15.8.19 through §15.8.26). Three new entities, three new columns, one new process, and two behaviour rules.
+
+Both later sets are listed in §15.8 Later Amendments.
 
 ### 15.1 New Columns
 
@@ -2052,6 +2142,14 @@ The following amendments were added after the original fifteen.
 | 15.8.16 | NotificationSubscription entity | New entity | §4, §14.1.3 |
 | 15.8.17 | Capability entity | New entity | §4 |
 | 15.8.18 | ReceiptToCardDurationDays, YouthAgeMin, YouthAgeMax settings | New settings | §4 |
+| 15.8.19 | AttendanceRecord.Source | New column | §4 |
+| 15.8.20 | Branch.UsesAttendanceRegister, Event.UsesAttendanceRegister | New columns | §4, §9.6 |
+| 15.8.21 | AttendanceRule entity | New entity | §4, §13.6 |
+| 15.8.22 | AttendanceRuleScope entity | New entity | §4, §13.6 |
+| 15.8.23 | Readmission entity | New entity | §4, §13.6 |
+| 15.8.24 | 13.0 Attendance Rule Engine | New process | §13.6, §16 |
+| 15.8.25 | Attendance register scope resolution | Rule | §9.6 |
+| 15.8.26 | Branch-Attendance Recency skips when register off | Rule | §10.1.5 |
 
 ---
 
@@ -2140,6 +2238,7 @@ Conditionality is not a property of any specific edge. 7.0's edge (I2) and 12.0'
 | 10.0 Evaluate fill status | — | — |
 | 11.0 Materialize occurrences | — | — |
 | 12.0 Create manual assignment | 9.0 | — |
+| 13.0 Attendance Rule Engine | — | — |
 
 ### 16.4 Trigger Summary
 
@@ -2157,6 +2256,7 @@ Conditionality is not a property of any specific edge. 7.0's edge (I2) and 12.0'
 | 10.0 Evaluate fill status | Periodic sweep; internally observes assignment changes since the last run |
 | 11.0 Materialize occurrences | Scheduled run; manual admin trigger |
 | 12.0 Create manual assignment | Administrator action |
+| 13.0 Attendance Rule Engine | Scheduled run; manual admin trigger |
 
 Every process has an independent trigger mechanism except 9.0. Operational data dependencies remain: a process may require records produced by another process to exist before meaningful work can be performed. These are data dependencies, not process dependencies.
 
@@ -2175,11 +2275,13 @@ Every process has an independent trigger mechanism except 9.0. Operational data 
 | 10.0 Evaluate fill status | D3, D7, D10, D11 | D3 |
 | 11.0 Materialize occurrences | D3, D11 | D3, D12 |
 | 12.0 Create manual assignment | D2, D3, D4, D6, D7 | D7 |
+| 13.0 Attendance Rule Engine | D2 (Attendance Rule), D3, D4, D5 (Readmission), D7 (Attendance Record), D10 | D4 (Member Status) |
 
 ### 16.6 Invariants of the Invocation Model
 
 - **9.0 Dispatch Notification is the sole process any other process is permitted to invoke.** This is the durable form of the invariant; the current count of invoking processes is three (5.0, 7.0, 12.0), but the invariant is stated without a count so it survives future growth. This invariant concerns invocation, not triggering.
 - **Three direct invocation edges currently exist.** 5.0 → 9.0 (unconditional), 7.0 → 9.0 (conditional, on replacement only), 12.0 → 9.0 (conditional, only when AssignmentStatusID is NULL at creation). All three terminate at 9.0.
+- **13.0 Attendance Rule Engine invokes nothing and is invoked by nothing.** It is triggered by the scheduler or by an administrator. It writes only Member Status and Readmission. It is not on any invocation edge.
 - **9.0 additionally has an independent scheduled trigger.** The authority-notification sweep is a scheduled trigger of 9.0, not an invocation. It reads new ConfigurationAuditLog entries and dispatches notifications for them. No process invokes 9.0 for this path; the scheduler starts 9.0 directly.
 - **Shared data is the default integration mechanism.**
 - **No orchestration.** No process orchestrates another.
