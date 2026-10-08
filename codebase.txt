@@ -22372,7 +22372,7 @@ These are deliberately excluded. They are not the absence of a decision; they ar
 
 ==============================================================================
 FILE: docs/architecture/invocation-model.md
-LINES: 318
+LINES: 319
 ==============================================================================
 
 # Invocation Model
@@ -22393,13 +22393,14 @@ Everywhere else, processes are independently executable. No process orchestrates
 
 ## The direct invocation edges
 
-Three process-to-process invocation edges currently exist. All three terminate at 9.0:
+Four process-to-process invocation edges currently exist. All four terminate at 9.0:
 
 | From | To | Trigger |
 | --- | --- | --- |
 | 5.0 Generate Assignment | 9.0 Dispatch Notification | On each new automatic assignment created |
 | 7.0 Manage Confirmation | 9.0 Dispatch Notification | On each replacement assignment created after decline or timeout |
 | 12.0 Create Manual Assignment | 9.0 Dispatch Notification | Only when the created manual assignment has AssignmentStatusID = NULL at creation |
+| 13.0 Attendance Rule Engine | 9.0 Dispatch Notification | Only when an Attendance Rule's OutcomeType = Notify and its trigger fires |
 
 All three invoke 9.0. 5.0's and 7.0's edges fire on any new RosterAssignment row they create. 12.0's edge fires only when the manually-created row has no status — meaning a response is genuinely being requested. No invoker calls 9.0 for any other reason.
 
@@ -22591,7 +22592,7 @@ The following topology matches §16 of the System Design Specification. Only con
 | 10.0 Evaluate Fill Status | — | — |
 | 11.0 Materialize Occurrences | — | — |
 | 12.0 Create Manual Assignment | 9.0 | — |
-| 13.0 Attendance Rule Engine | — | — |
+| 13.0 Attendance Rule Engine | 9.0 | — |
 
 **Confirmation of the invocation topology:**
 
@@ -22599,7 +22600,7 @@ The following topology matches §16 of the System Design Specification. Only con
 - 7.0 invokes 9.0, on replacement only. Nothing invokes 7.0.
 - 12.0 invokes 9.0, only when the created assignment's AssignmentStatusID is NULL. Nothing invokes 12.0.
 - 9.0 invokes nothing. It is invoked by 5.0, 7.0, and 12.0. It also carries its own independent scheduled trigger, which is a trigger and not an invocation. The trigger reads new Configuration Audit Log entries and dispatches authority notifications.
-- 13.0 Attendance Rule Engine invokes nothing and is invoked by nothing. It is triggered by the scheduler or by an administrator.
+- 13.0 Attendance Rule Engine is invoked by nothing. It is triggered by the scheduler or by an administrator. It invokes 9.0 only when a rule's outcome is Notify.
 - No other process invokes another, and 9.0 is the only process any process invokes.
 
 This is the entire invocation topology of the system. The invocation matrix is separate from the trigger matrix because a process may have triggers that are not invocations.
@@ -22672,7 +22673,7 @@ In every case, the reader finds what it needs by querying the store, not by bein
 
 ## Invariants of the invocation model
 
-- **9.0 Dispatch Notification is the sole process any other process is permitted to invoke.** The current count of invoking processes is three (5.0, 7.0, 12.0). This invariant is stated without a count so it survives future growth.
+- **9.0 Dispatch Notification is the sole process any other process is permitted to invoke.** The current count of invoking processes is four (5.0, 7.0, 12.0, 13.0). This invariant is stated without a count so it survives future growth.
 - **Shared data is the default integration mechanism.** Every other relationship is expressed by one process writing to a store and another reading from it.
 - **No orchestration.** No process orchestrates another.
 - **No process depends on another process's successful completion for its own persisted business result.** 5.0 and 7.0 invoke 9.0 as fire-and-forget; whether the invocation is synchronous or asynchronous is an implementation choice and does not create a semantic dependency.
@@ -22824,7 +22825,7 @@ Tracks each Roster Assignment's response lifecycle. On decline or timeout, re-re
 
 Sends assignment notices to members through the configured channel.
 
-**Trigger:** Invocation by 5.0, 7.0, or 12.0, on new assignment creation. 5.0 and 7.0 invoke it unconditionally for every assignment they create; 12.0 invokes it only when the manual assignment is created with AssignmentStatusID = NULL.
+**Trigger:** Invocation by 5.0, 7.0, 12.0, or 13.0. 5.0 and 7.0 invoke it on new-assignment creation. 12.0 invokes it when the manual assignment is created with AssignmentStatusID = NULL. 13.0 invokes it when an Attendance Rule's outcome is Notify.
 
 **Reads:** D7, D4, D3, D11.
 
@@ -22936,7 +22937,7 @@ Every process obeys a set of invariants that are locked in the specification and
 **Boundary respect:**
 - No process writes to a store outside its footprint.
 - No configuration process reads an operational store, except 8.0's event-sourced occurrence write.
-- No process invokes another process except 5.0 → 9.0, 7.0 → 9.0, and 12.0 → 9.0.
+- No process invokes another process except 5.0 → 9.0, 7.0 → 9.0, 12.0 → 9.0, and 13.0 → 9.0.
 
 **Required-setting discipline:**
 - 11.0 refuses to run if `OccurrenceHorizonDays` is unset.
@@ -26428,6 +26429,178 @@ No new index is required. The uniqueness check is served by the existing `Roster
 *Source: System Design Specification §17.*
 
 ==============================================================================
+FILE: docs/processes/operations/13.0-attendance-rule-engine.md
+LINES: 166
+==============================================================================
+
+# 13.0 Attendance Rule Engine
+
+*Reads Attendance Rules, evaluates each against the member population, and applies the configured outcomes. Derived from the System Design Specification §13.6. Where this document conflicts with the specification, the specification wins.*
+
+---
+
+## Responsibility
+
+13.0 Attendance Rule Engine evaluates the administrator-configured Attendance Rules and applies their outcomes. It is the process that turns attendance facts into member status changes.
+
+Attendance is a fact. The rule engine is the mechanism that interprets the fact over time and produces configured outcomes. The mechanism is fixed; the rules and their values are configured by the administrator.
+
+**Source:** System Design Specification §13.6.
+
+---
+
+## Trigger
+
+Two triggers:
+
+- **Scheduled run.** The engine runs on a configured schedule.
+- **Manual admin trigger.** An administrator may invoke the engine on demand.
+
+The engine does not depend on any other process running first. It reads current attendance, current rules, and current member state, and applies what its rules say.
+
+**Source:** System Design Specification §13.6.
+
+---
+
+## The footprint
+
+| Direction | Store |
+| --- | --- |
+| Reads | D2 (AttendanceRule, AttendanceRuleScope), D3 (Branch.UsesAttendanceRegister, Event.UsesAttendanceRegister — effective scope), D4 (Member, MemberStatus), D5 (Readmission), D7 (AttendanceRecord), D10 (MemberStatus lookup), D11 (SystemSetting — the global register scope) |
+| Writes | D4 (MemberStatusID when a SetStatus outcome fires), D5 (Readmission rows when readmission is recorded) |
+
+**Never reads or writes:** D1, D6, D8, D9, D12. Never modifies AttendanceRecord. Never modifies any assignment. Never modifies fill status. Never invokes any process.
+
+**Source:** System Design Specification §13.6.
+
+---
+
+## The Attendance Rule entity
+
+An Attendance Rule is one row created by the administrator. It carries:
+
+| Column | Meaning |
+| --- | --- |
+| AttendanceRuleID | Primary key |
+| Name | Administrator-defined label |
+| TriggerType | AbsenceDays, ReadmissionCount, or Manual |
+| TriggerValue | The trigger's value. Days for AbsenceDays, count for ReadmissionCount. Unused for Manual. |
+| OutcomeType | Notify, SetStatus, IncrementReadmissionCount, or NoOp |
+| OutcomeStatusID | Foreign key to Member Status. Set only when OutcomeType = SetStatus. |
+| Enabled | When false, the rule is not evaluated. |
+
+The rule's scope is expressed through the Attendance Rule Scope join table. Multiple scope rows for one rule are ANDed, using the same criterion vocabulary as Duty Rules. A rule with no scope rows applies to every member.
+
+**Source:** System Design Specification §4 (Attendance Rule, Attendance Rule Scope), §13.6.
+
+---
+
+## Trigger vocabulary
+
+- **AbsenceDays.** The member has not attended any occurrence within the last N days. N is TriggerValue.
+- **ReadmissionCount.** The member has accumulated N readmission events. N is TriggerValue.
+- **Manual.** The rule fires only when an administrator invokes it. TriggerValue is unused.
+
+**Source:** System Design Specification §13.6.
+
+---
+
+## Outcome vocabulary
+
+- **Notify.** A notification is composed and sent through the configured channel. No status change.
+- **SetStatus.** The member's MemberStatusID is set to the status named by OutcomeStatusID.
+- **IncrementReadmissionCount.** The member's readmission count is incremented. In the current phase, readmission counts are derived from Readmission rows, which are recorded by an administrator. The outcome is a no-op until readmission recording is more fully specified.
+- **NoOp.** The rule does nothing. Used to define a rule that is disabled without deleting it.
+
+**Source:** System Design Specification §13.6.
+
+---
+
+## Evaluation order
+
+For each enabled rule:
+
+1. Resolve the rule's scope criteria. A member matches the rule only if every scope criterion matches.
+2. Resolve the effective attendance register scope for the member's occurrences.
+3. If the effective scope is off, skip the member for AbsenceDays triggers.
+4. Evaluate the trigger. AbsenceDays compares the member's last attendance against the current date, against TriggerValue. ReadmissionCount compares the member's readmission count against TriggerValue. Manual fires only when the admin invokes the rule explicitly.
+5. Apply the outcome.
+
+The engine is idempotent. Running twice with unchanged data produces the same result.
+
+**Source:** System Design Specification §13.6.
+
+---
+
+## The scope resolution
+
+A member's effective attendance register scope is the most specific of the three scopes that applies:
+
+- Event override, when the member's occurrence is event-sourced and the event carries an override.
+- Branch override, when the member's occurrence is schedule-sourced at a branch that carries an override.
+- Global default, when no override exists.
+
+When the effective scope is off, the engine does not apply AbsenceDays rules to that member. This is what allows a branch that does not use the attendance register to be exempt from absence-driven status changes. A branch that does use the register is subject to them.
+
+The two cases are expressed as separate rules. A rule scoped to one branch group may be absent-based; a rule scoped to a different group may not. The system does not decide which members are subject to absence rules. The administrator does, through the scopes of the rules.
+
+**Source:** System Design Specification §9.6, §13.6.
+
+---
+
+## Interaction with other processes
+
+- **6.0 Record Attendance** writes AttendanceRecord rows. 13.0 reads them.
+- **5.0 Generate Assignment** reads AttendanceRecord only when a Branch-Attendance Recency criterion is present and the effective register scope is on. 13.0 does not feed 5.0 directly; both read the same store.
+- **9.0 Dispatch Notification** is invoked by 13.0 when a Notify outcome fires. This is a new invocation edge. It is a fourth edge terminating at 9.0.
+- **3.0 Manage Membership** may set member status directly. 13.0 also sets member status. Both write the same field.
+
+**Source:** System Design Specification §16.
+
+---
+
+## Invariants
+
+- Idempotent per run.
+- Reads attendance facts, does not modify them.
+- Writes only MemberStatusID and Readmission rows.
+- Invokes only 9.0, and only when a Notify outcome fires.
+- On no other invocation edge.
+- Does not resolve the scope of any rule on its own initiative. It applies the scopes the administrator configured.
+- Does not interpret any Member Status name or Attendance Rule name.
+- Uses the same criterion vocabulary and evaluation as Duty Rules.
+
+**Source:** System Design Specification §13.6, §16.
+
+---
+
+## Candidate access patterns
+
+- **`AttendanceRule (Enabled)`** — natural access pattern for the enabled rule set.
+- **`AttendanceRuleScope (AttendanceRuleID)`** — natural access pattern for resolving a rule's scope.
+- **`AttendanceRecord (MemberID, Timestamp)`** — natural access pattern for the absence check.
+- **`Readmission (MemberID, IsDeleted)`** — natural access pattern for the readmission count.
+
+Physical forms are implementation-dependent.
+
+**Source:** System Design Specification §13.6.
+
+---
+
+## Cross-references
+
+- **Specification §13** — the full derivation.
+- **Specification §9.6** — the attendance register scope.
+- **`6.0-record-attendance.md`** — writes the facts this process evaluates.
+- **`../configuration/3.0-manage-membership.md`** — produces the Member records and statuses this process reads and writes.
+- **`9.0-dispatch-notification.md`** — invoked when a Notify outcome fires.
+- **`../database/constraints.md`** — the uniqueness constraints.
+
+---
+
+*Source: System Design Specification §13.6.*
+
+==============================================================================
 FILE: docs/processes/operations/5.0-generate-assignment.md
 LINES: 281
 ==============================================================================
@@ -26716,7 +26889,7 @@ Physical forms are implementation-dependent.
 
 ==============================================================================
 FILE: docs/processes/operations/6.0-record-attendance.md
-LINES: 160
+LINES: 195
 ==============================================================================
 
 # 6.0 Record Attendance
@@ -26739,10 +26912,10 @@ Attendance is a raw fact. 6.0 does not interpret it, does not condition it on as
 
 Two triggers:
 
-- **Member action at an occurrence.** An NFC tap or other configured channel, registered at the time of the occurrence.
-- **Manual administrator entry.** An administrator can add an attendance record directly.
+- **Manual register marking.** An administrator marks a member present at an occurrence, in the app or on the register table.
+- **NFC tap.** A member taps a card or phone at the occurrence. The tap is ingested by the tap mechanism and produces an AttendanceRecord. The Tap path is defined in the vocabulary but is not produced by any implemented path in the current phase.
 
-**Source:** System Design Specification §13.0.
+**Source:** System Design Specification §13.0, §13.1.1.
 
 ---
 
@@ -26750,12 +26923,12 @@ Two triggers:
 
 | Direction | Store |
 | --- | --- |
-| Reads | D4 (Member — to validate the member identity), D3 (ServiceOccurrence — to identify which occurrence the record applies to) |
+| Reads | D4 (Member — to validate the member identity and to check attendance register eligibility), D3 (ServiceOccurrence — to identify which occurrence the record applies to), D11 (SystemSetting — the global attendance register scope), D3 (Branch.UsesAttendanceRegister, Event.UsesAttendanceRegister — the effective scope) |
 | Writes | D8 (AttendanceRecord — one row per (MemberID, OccurrenceID) pair) |
 
-**Never reads or writes:** D1, D2, D5, D6, D7, D9, D10, D11, D12. Never modifies ServiceOccurrence in any field. Never writes FillStatusID. Never touches any assignment.
+**Never reads or writes:** D1, D2, D5, D6, D7, D9, D10, D12. Never modifies ServiceOccurrence in any field. Never writes FillStatusID. Never touches any assignment.
 
-**Source:** System Design Specification §13.2.
+**Source:** System Design Specification §13.2, §9.6.
 
 ---
 
@@ -26767,10 +26940,45 @@ Two triggers:
 | MemberID | The member whose presence is recorded |
 | OccurrenceID | The occurrence at which presence is recorded |
 | Timestamp | The moment the record is written |
+| Source | Manual or Tap. Manual is produced by the manual register marking path. Tap is defined but not produced by any implemented path. |
 
-No other columns. The row is the raw fact.
+The row is the raw fact.
 
-**Source:** System Design Specification §13.1.1.
+**Source:** System Design Specification §13.1.1, §13.1.4.
+
+---
+
+## Attendance register scope
+
+The attendance register's on/off state is configured at three scopes. The most specific scope in effect wins.
+
+- **Global.** A System Setting names the default state.
+- **Per-event.** `Event.UsesAttendanceRegister`. Null means no override.
+- **Per-branch.** `Branch.UsesAttendanceRegister`. Null means no override.
+
+The resolution order is event override, then branch override, then global. For a schedule-sourced occurrence, the branch's override applies first. For an event-sourced occurrence, the event's override applies first.
+
+When the register is off at the effective scope:
+
+- 6.0 does not write AttendanceRecord rows for occurrences at that scope. Manual marking is disabled. The tap path is disabled.
+- The `Branch-Attendance Recency` Duty Rule criterion is skipped for those occurrences, as stated in the 5.0 document.
+- The Attendance Rule engine does not apply absence-based rules to members whose effective scope is off.
+
+When the register is on at the effective scope, 6.0 records normally.
+
+The register may also be used for counting attendance at events, and for youth fundraising taps. These uses are records, not rostering signals, and they operate independently of the criterion-skip behaviour.
+
+**Source:** System Design Specification §9.6, §10.1.5.
+
+---
+
+## Attendance register eligibility
+
+A member is eligible for the attendance register only if they hold a ReceiptNumber or a CardNumber. Both are issued from the configured minimum age upward. Below that age, no identifier is issued, and the member is not eligible for attendance tracking.
+
+The configured minimum age is a System Setting, corresponding to the same threshold that governs identifier issuance.
+
+**Source:** System Design Specification §4 (Member), §9.1.7.
 
 ---
 
@@ -26778,7 +26986,7 @@ No other columns. The row is the raw fact.
 
 `AttendanceRecord` permits at most one recorded attendance fact for a given (MemberID, OccurrenceID) pair. The uniqueness constraint is the integrity guard.
 
-A subsequent tap for an existing pair is a no-op. It does not create a second row, and the application-level check treats it as a no-op rather than an error.
+A subsequent tap or manual mark for an existing pair is a no-op. It does not create a second row, and the application-level check treats it as a no-op rather than an error.
 
 This makes 6.0 idempotent per (MemberID, OccurrenceID). Re-running the same tap produces no new row.
 
@@ -26821,9 +27029,7 @@ No attendance-window enforcement is performed by 6.0 or the schema. The system d
 
 ## Manual administrator entry
 
-An administrator may add an attendance record directly — for a member whose tap failed, for a retrospective correction, or for another operational reason. The row is identical to a tap-initiated one: same columns, same uniqueness rule.
-
-The schema has no field distinguishing manual entry from tap entry. If audit is later required, adding such a field is an additive change; it is not in the current contract.
+An administrator may add an attendance record directly — for a member whose tap failed, for a retrospective correction, or for another operational reason. The row is identical to a tap-initiated one except for the Source value, which is Manual.
 
 **Source:** System Design Specification §13.1.4.
 
@@ -26831,11 +27037,9 @@ The schema has no field distinguishing manual entry from tap entry. If audit is 
 
 ## No interpretation layer
 
-6.0 does not compute attendance recency. It does not update any cache or derived field. The Branch-Attendance Recency criterion used by Duty Rule evaluation (5.0) reads AttendanceRecord at evaluation time, not from any precomputed state.
+6.0 does not compute attendance recency, does not update any cache or derived field, and does not apply any status change. The `Branch-Attendance Recency` criterion reads AttendanceRecord at evaluation time. The Attendance Rule engine — process 13.0 — is the process that reads attendance over time and applies status changes. 6.0 and 13.0 are separate: 6.0 writes the fact; 13.0 evaluates the fact.
 
-This keeps 6.0 write-only to D8 and leaves all interpretation to consumers.
-
-**Source:** System Design Specification §13.1.5.
+**Source:** System Design Specification §13.1.5, §13.6.
 
 ---
 
@@ -26846,9 +27050,11 @@ This keeps 6.0 write-only to D8 and leaves all interpretation to consumers.
 - Idempotent per member per occurrence. Re-running the same tap produces no new row.
 - Independence from assignment. Attendance is not conditioned on RosterAssignment.
 - Branch-agnostic. Attendance is recorded against the occurrence, not the member's home branch.
+- Scope-aware. When the register is off at the effective scope, no row is written.
+- Eligibility-aware. Only members with a ReceiptNumber or CardNumber are tracked.
 - No attendance-window enforcement.
 - No interpretation. 6.0 does not compute recency, streaks, or any derived value.
-- No downstream trigger.
+- No downstream trigger beyond the fact that the Attendance Rule engine reads what 6.0 writes.
 - No notification.
 - No assignment or fill-status side effect.
 
@@ -26860,7 +27066,7 @@ This keeps 6.0 write-only to D8 and leaves all interpretation to consumers.
 
 - **`AttendanceRecord (MemberID, OccurrenceID)` — UNIQUE.** The integrity guard. Also serves the existence check.
 - **`AttendanceRecord (OccurrenceID)`.** Natural access pattern for "who attended this occurrence" queries.
-- **`AttendanceRecord (MemberID, Timestamp)`.** Natural access pattern for Branch-Attendance Recency evaluation by 5.0 and for member-facing attendance history.
+- **`AttendanceRecord (MemberID, Timestamp)`.** Natural access pattern for Branch-Attendance Recency evaluation by 5.0, for the Attendance Rule engine's absence check, and for member-facing attendance history.
 
 Physical forms are implementation-dependent.
 
@@ -26871,9 +27077,11 @@ Physical forms are implementation-dependent.
 ## Cross-references
 
 - **Specification §13** — the full derivation.
+- **Specification §9.6** — the attendance register scope.
 - **`../configuration/3.0-manage-membership.md`** — produces the Member records 6.0 references.
 - **`11.0-materialize-occurrences.md`** — produces the occurrences 6.0 records attendance for.
-- **`5.0-generate-assignment.md`** — reads AttendanceRecord only when a Branch-Attendance Recency criterion is present.
+- **`5.0-generate-assignment.md`** — reads AttendanceRecord only when a Branch-Attendance Recency criterion is present and the effective register scope is on.
+- **`13.0-attendance-rule-engine.md`** — the process that evaluates attendance and applies status changes.
 - **`../database/constraints.md`** — the (MemberID, OccurrenceID) uniqueness constraint.
 
 ---
@@ -27093,7 +27301,7 @@ Physical forms are implementation-dependent.
 
 ==============================================================================
 FILE: docs/processes/operations/9.0-dispatch-notification.md
-LINES: 198
+LINES: 199
 ==============================================================================
 
 # 9.0 Dispatch Notification
@@ -27116,13 +27324,14 @@ It reads the assignment, the member, the occurrence, and the configured channel,
 
 9.0 has two triggers, on two distinct paths.
 
-**Path 1 — member-facing, invoked.** Invoked by three processes, under the conditions below:
+**Path 1 — member-facing, invoked.** Invoked by four processes, under the conditions below:
 
 | Invoked by | When |
 | --- | --- |
 | 5.0 Generate Assignment | On each new automatic assignment created |
 | 7.0 Manage Confirmation | On each replacement assignment created after decline or timeout |
 | 12.0 Create Manual Assignment | Only when the created manual assignment has AssignmentStatusID = NULL at creation |
+| 13.0 Attendance Rule Engine | Only when an Attendance Rule's OutcomeType = Notify and its trigger fires |
 
 **Path 2 — authority-facing, scheduled.** A scheduled authority-notification sweep runs 9.0 on a cadence. On each run, 9.0 reads new ConfigurationAuditLog entries and dispatches notifications for them. See the Authority Notifications section below.
 
@@ -27133,7 +27342,7 @@ It reads the assignment, the member, the occurrence, and the configured channel,
 - Attendance records by 6.0.
 - Any occurrence materialization.
 
-**Invocation versus triggering.** The three rows in Path 1 are invocations: 5.0, 7.0, and 12.0 call 9.0 directly. Path 2 is a trigger, not an invocation. No process calls 9.0 for the authority-notification sweep; the scheduler starts 9.0 directly. The durable invariant — that 9.0 is the sole process any other process is permitted to invoke — concerns invocation, not triggering, and is unaffected by Path 2.
+**Invocation versus triggering.** The four rows in Path 1 are invocations: 5.0, 7.0, 12.0, and 13.0 call 9.0 directly. Path 2 is a trigger, not an invocation. No process calls 9.0 for the authority-notification sweep; the scheduler starts 9.0 directly. The durable invariant — that 9.0 is the sole process any other process is permitted to invoke — concerns invocation, not triggering, and is unaffected by Path 2.
 
 **Source:** System Design Specification §14.1.3, §16.0, §16.4, §16.6.
 
@@ -27900,7 +28109,7 @@ Authentication, session management, authorization/RBAC, privilege escalation pro
 
 ==============================================================================
 FILE: docs/spec/system-design-spec.md
-LINES: 2471
+LINES: 2474
 ==============================================================================
 
 # System Design Specification
@@ -30115,17 +30324,20 @@ The durable invariant is stated as: **9.0 Dispatch Notification is the sole proc
 
 ### 16.2 The Direct Invocation Edges
 
-Three direct invocation edges currently exist. All three terminate at 9.0 Dispatch Notification.
+Four direct invocation edges currently exist. All four terminate at 9.0 Dispatch Notification.
 
 | # | From | To | Trigger | Conditionality |
 | --- | --- | --- | --- | --- |
 | I1 | 5.0 Generate Assignment | 9.0 Dispatch Notification | On each new automatic assignment created | Unconditional — fires on every new automatic assignment |
 | I2 | 7.0 Manage Confirmation | 9.0 Dispatch Notification | On each replacement assignment created after decline or timeout | Conditional — does not fire on status changes of existing assignments |
 | I3 | 12.0 Create Manual Assignment | 9.0 Dispatch Notification | Only when the created manual assignment has AssignmentStatusID = NULL at creation | Conditional — does not fire when the admin sets a non-null status directly |
+| I4 | 13.0 Attendance Rule Engine | 9.0 Dispatch Notification | On each Attendance Rule whose OutcomeType = Notify and whose trigger fires | Conditional — does not fire for SetStatus, IncrementReadmissionCount, or NoOp outcomes |
 
 The **durable invariant** is not the count. It is: **9.0 Dispatch Notification is the sole process any other process is permitted to invoke.** The count may grow as the system grows; the invariant does not.
 
-Conditionality is not a property of any specific edge. 7.0's edge (I2) and 12.0's edge (I3) are both conditional by design — each fires only when a response is genuinely being requested from a member. 5.0's edge (I1) is unconditional only because every automatic assignment it creates requires a response by definition.
+Conditionality is not a property of any specific edge. 7.0's edge (I2), 12.0's edge (I3), and 13.0's edge (I4) are all conditional by design. 5.0's edge (I1) is unconditional only because every automatic assignment it creates requires a response by definition.
+
+Edge I4 was added by the attendance amendment set. The Attendance Rule engine invokes 9.0 only when a rule's outcome is to notify. The other three outcomes — SetStatus, IncrementReadmissionCount, NoOp — do not invoke 9.0.
 
 ### 16.3 Complete Invocation Matrix
 
@@ -30185,8 +30397,8 @@ Every process has an independent trigger mechanism except 9.0. Operational data 
 ### 16.6 Invariants of the Invocation Model
 
 - **9.0 Dispatch Notification is the sole process any other process is permitted to invoke.** This is the durable form of the invariant; the current count of invoking processes is three (5.0, 7.0, 12.0), but the invariant is stated without a count so it survives future growth. This invariant concerns invocation, not triggering.
-- **Three direct invocation edges currently exist.** 5.0 → 9.0 (unconditional), 7.0 → 9.0 (conditional, on replacement only), 12.0 → 9.0 (conditional, only when AssignmentStatusID is NULL at creation). All three terminate at 9.0.
-- **13.0 Attendance Rule Engine invokes nothing and is invoked by nothing.** It is triggered by the scheduler or by an administrator. It writes only Member Status and Readmission. It is not on any invocation edge.
+- **Four direct invocation edges currently exist.** 5.0 → 9.0 (unconditional), 7.0 → 9.0 (conditional, on replacement only), 12.0 → 9.0 (conditional, only when AssignmentStatusID is NULL at creation), 13.0 → 9.0 (conditional, only when an Attendance Rule's outcome is Notify). All four terminate at 9.0.
+- **13.0 Attendance Rule Engine is invoked by nothing.** It is triggered by the scheduler or by an administrator. It writes Member Status and Readmission rows. Its only invocation is to 9.0, and only on Notify outcomes.
 - **9.0 additionally has an independent scheduled trigger.** The authority-notification sweep is a scheduled trigger of 9.0, not an invocation. It reads new ConfigurationAuditLog entries and dispatches notifications for them. No process invokes 9.0 for this path; the scheduler starts 9.0 directly.
 - **Shared data is the default integration mechanism.**
 - **No orchestration.** No process orchestrates another.

@@ -16,13 +16,14 @@ Everywhere else, processes are independently executable. No process orchestrates
 
 ## The direct invocation edges
 
-Three process-to-process invocation edges currently exist. All three terminate at 9.0:
+Four process-to-process invocation edges currently exist. All four terminate at 9.0:
 
 | From | To | Trigger |
 | --- | --- | --- |
 | 5.0 Generate Assignment | 9.0 Dispatch Notification | On each new automatic assignment created |
 | 7.0 Manage Confirmation | 9.0 Dispatch Notification | On each replacement assignment created after decline or timeout |
 | 12.0 Create Manual Assignment | 9.0 Dispatch Notification | Only when the created manual assignment has AssignmentStatusID = NULL at creation |
+| 13.0 Attendance Rule Engine | 9.0 Dispatch Notification | Only when an Attendance Rule's OutcomeType = Notify and its trigger fires |
 
 All three invoke 9.0. 5.0's and 7.0's edges fire on any new RosterAssignment row they create. 12.0's edge fires only when the manually-created row has no status — meaning a response is genuinely being requested. No invoker calls 9.0 for any other reason.
 
@@ -214,7 +215,7 @@ The following topology matches §16 of the System Design Specification. Only con
 | 10.0 Evaluate Fill Status | — | — |
 | 11.0 Materialize Occurrences | — | — |
 | 12.0 Create Manual Assignment | 9.0 | — |
-| 13.0 Attendance Rule Engine | — | — |
+| 13.0 Attendance Rule Engine | 9.0 | — |
 
 **Confirmation of the invocation topology:**
 
@@ -222,7 +223,7 @@ The following topology matches §16 of the System Design Specification. Only con
 - 7.0 invokes 9.0, on replacement only. Nothing invokes 7.0.
 - 12.0 invokes 9.0, only when the created assignment's AssignmentStatusID is NULL. Nothing invokes 12.0.
 - 9.0 invokes nothing. It is invoked by 5.0, 7.0, and 12.0. It also carries its own independent scheduled trigger, which is a trigger and not an invocation. The trigger reads new Configuration Audit Log entries and dispatches authority notifications.
-- 13.0 Attendance Rule Engine invokes nothing and is invoked by nothing. It is triggered by the scheduler or by an administrator.
+- 13.0 Attendance Rule Engine is invoked by nothing. It is triggered by the scheduler or by an administrator. It invokes 9.0 only when a rule's outcome is Notify.
 - No other process invokes another, and 9.0 is the only process any process invokes.
 
 This is the entire invocation topology of the system. The invocation matrix is separate from the trigger matrix because a process may have triggers that are not invocations.
@@ -295,7 +296,7 @@ In every case, the reader finds what it needs by querying the store, not by bein
 
 ## Invariants of the invocation model
 
-- **9.0 Dispatch Notification is the sole process any other process is permitted to invoke.** The current count of invoking processes is three (5.0, 7.0, 12.0). This invariant is stated without a count so it survives future growth.
+- **9.0 Dispatch Notification is the sole process any other process is permitted to invoke.** The current count of invoking processes is four (5.0, 7.0, 12.0, 13.0). This invariant is stated without a count so it survives future growth.
 - **Shared data is the default integration mechanism.** Every other relationship is expressed by one process writing to a store and another reading from it.
 - **No orchestration.** No process orchestrates another.
 - **No process depends on another process's successful completion for its own persisted business result.** 5.0 and 7.0 invoke 9.0 as fire-and-forget; whether the invocation is synchronous or asynchronous is an implementation choice and does not create a semantic dependency.

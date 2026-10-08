@@ -2210,17 +2210,20 @@ The durable invariant is stated as: **9.0 Dispatch Notification is the sole proc
 
 ### 16.2 The Direct Invocation Edges
 
-Three direct invocation edges currently exist. All three terminate at 9.0 Dispatch Notification.
+Four direct invocation edges currently exist. All four terminate at 9.0 Dispatch Notification.
 
 | # | From | To | Trigger | Conditionality |
 | --- | --- | --- | --- | --- |
 | I1 | 5.0 Generate Assignment | 9.0 Dispatch Notification | On each new automatic assignment created | Unconditional — fires on every new automatic assignment |
 | I2 | 7.0 Manage Confirmation | 9.0 Dispatch Notification | On each replacement assignment created after decline or timeout | Conditional — does not fire on status changes of existing assignments |
 | I3 | 12.0 Create Manual Assignment | 9.0 Dispatch Notification | Only when the created manual assignment has AssignmentStatusID = NULL at creation | Conditional — does not fire when the admin sets a non-null status directly |
+| I4 | 13.0 Attendance Rule Engine | 9.0 Dispatch Notification | On each Attendance Rule whose OutcomeType = Notify and whose trigger fires | Conditional — does not fire for SetStatus, IncrementReadmissionCount, or NoOp outcomes |
 
 The **durable invariant** is not the count. It is: **9.0 Dispatch Notification is the sole process any other process is permitted to invoke.** The count may grow as the system grows; the invariant does not.
 
-Conditionality is not a property of any specific edge. 7.0's edge (I2) and 12.0's edge (I3) are both conditional by design — each fires only when a response is genuinely being requested from a member. 5.0's edge (I1) is unconditional only because every automatic assignment it creates requires a response by definition.
+Conditionality is not a property of any specific edge. 7.0's edge (I2), 12.0's edge (I3), and 13.0's edge (I4) are all conditional by design. 5.0's edge (I1) is unconditional only because every automatic assignment it creates requires a response by definition.
+
+Edge I4 was added by the attendance amendment set. The Attendance Rule engine invokes 9.0 only when a rule's outcome is to notify. The other three outcomes — SetStatus, IncrementReadmissionCount, NoOp — do not invoke 9.0.
 
 ### 16.3 Complete Invocation Matrix
 
@@ -2280,8 +2283,8 @@ Every process has an independent trigger mechanism except 9.0. Operational data 
 ### 16.6 Invariants of the Invocation Model
 
 - **9.0 Dispatch Notification is the sole process any other process is permitted to invoke.** This is the durable form of the invariant; the current count of invoking processes is three (5.0, 7.0, 12.0), but the invariant is stated without a count so it survives future growth. This invariant concerns invocation, not triggering.
-- **Three direct invocation edges currently exist.** 5.0 → 9.0 (unconditional), 7.0 → 9.0 (conditional, on replacement only), 12.0 → 9.0 (conditional, only when AssignmentStatusID is NULL at creation). All three terminate at 9.0.
-- **13.0 Attendance Rule Engine invokes nothing and is invoked by nothing.** It is triggered by the scheduler or by an administrator. It writes only Member Status and Readmission. It is not on any invocation edge.
+- **Four direct invocation edges currently exist.** 5.0 → 9.0 (unconditional), 7.0 → 9.0 (conditional, on replacement only), 12.0 → 9.0 (conditional, only when AssignmentStatusID is NULL at creation), 13.0 → 9.0 (conditional, only when an Attendance Rule's outcome is Notify). All four terminate at 9.0.
+- **13.0 Attendance Rule Engine is invoked by nothing.** It is triggered by the scheduler or by an administrator. It writes Member Status and Readmission rows. Its only invocation is to 9.0, and only on Notify outcomes.
 - **9.0 additionally has an independent scheduled trigger.** The authority-notification sweep is a scheduled trigger of 9.0, not an invocation. It reads new ConfigurationAuditLog entries and dispatches notifications for them. No process invokes 9.0 for this path; the scheduler starts 9.0 directly.
 - **Shared data is the default integration mechanism.**
 - **No orchestration.** No process orchestrates another.

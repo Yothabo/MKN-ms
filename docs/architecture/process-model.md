@@ -123,7 +123,7 @@ Tracks each Roster Assignment's response lifecycle. On decline or timeout, re-re
 
 Sends assignment notices to members through the configured channel.
 
-**Trigger:** Invocation by 5.0, 7.0, or 12.0, on new assignment creation. 5.0 and 7.0 invoke it unconditionally for every assignment they create; 12.0 invokes it only when the manual assignment is created with AssignmentStatusID = NULL.
+**Trigger:** Invocation by 5.0, 7.0, 12.0, or 13.0. 5.0 and 7.0 invoke it on new-assignment creation. 12.0 invokes it when the manual assignment is created with AssignmentStatusID = NULL. 13.0 invokes it when an Attendance Rule's outcome is Notify.
 
 **Reads:** D7, D4, D3, D11.
 
@@ -235,7 +235,7 @@ Every process obeys a set of invariants that are locked in the specification and
 **Boundary respect:**
 - No process writes to a store outside its footprint.
 - No configuration process reads an operational store, except 8.0's event-sourced occurrence write.
-- No process invokes another process except 5.0 → 9.0, 7.0 → 9.0, and 12.0 → 9.0.
+- No process invokes another process except 5.0 → 9.0, 7.0 → 9.0, 12.0 → 9.0, and 13.0 → 9.0.
 
 **Required-setting discipline:**
 - 11.0 refuses to run if `OccurrenceHorizonDays` is unset.
