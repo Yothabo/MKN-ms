@@ -23,7 +23,7 @@ Five processes create and maintain every administrator-entered value in the syst
 
 ### 1.0 Configure Vocabulary
 
-Creates and maintains Role, Duty, Branch, Branch Time Slot, TimeOfDay, ServiceType, Service Definition, Service Definition Duty, Service Schedule, and the D10 lookup values (Outcome State, Assignment Status, Permission Tier).
+Creates and maintains Role, Duty, Branch, Branch Time Slot, TimeOfDay, ServiceType, Service Definition, Service Definition Duty, Service Schedule, and the D10 lookup values (Outcome State, Assignment Status, Permission Tier, Capability).
 
 **Trigger:** Administrator action.
 
@@ -35,7 +35,7 @@ Creates and maintains Role, Duty, Branch, Branch Time Slot, TimeOfDay, ServiceTy
 
 ### 2.0 Configure Duty Rules
 
-Creates and maintains the Duty Rule rows that express how duties rank candidates.
+Creates and maintains the Duty Rule rows that express how duties rank candidates, with optional per-service scope.
 
 **Trigger:** Administrator action.
 
@@ -45,13 +45,13 @@ Creates and maintains the Duty Rule rows that express how duties rank candidates
 
 ### 3.0 Manage Membership
 
-Creates and maintains Member records and Identifier History.
+Creates and maintains Member records, Identifier History, Member Status, Attribute Type, Member Attribute Value, Readmission, and Attendance Rule.
 
 **Trigger:** Administrator action.
 
 **Reads:** D4, D5, D1 (Role), D3 (Branch).
 
-**Writes:** D4, D5.
+**Writes:** D4, D5, D13 (Attendance Rule, Attendance Rule Scope, Readmission), and Member Status and Attribute Type lookups.
 
 **Subprocesses:** 3.1 Manage member record, 3.2 Manage identifier history.
 
@@ -67,11 +67,11 @@ Creates and maintains the Eligibility grant/revoke records that determine duty c
 
 ### 8.0 Manage Events and Programs
 
-Creates and maintains Event, Program, Program Item, and Event Duty records. When a Program Item is linked to a Service Definition, the system creates an event-sourced Service Occurrence directly.
+Creates and maintains Event, Event Branch, Program, Program Item, and Event Duty records. When a Program Item is linked to a Service Definition, the system creates an event-sourced Service Occurrence directly.
 
 **Trigger:** Administrator action.
 
-**Reads:** D9, D3 (Service Definition), D4 (Member), D10 (Assignment Status).
+**Reads:** D9, D3 (Service Definition), D4 (Member), D1 (Duty for EventDuty), D10 (Assignment Status).
 
 **Writes:** D9, D3 (event-sourced occurrences only).
 
@@ -81,7 +81,7 @@ Creates and maintains Event, Program, Program Item, and Event Duty records. When
 
 ## Operations layer
 
-Seven processes produce operational records from configuration and stored facts.
+Eight processes produce operational records from configuration and stored facts.
 
 ### 5.0 Generate Assignment
 
@@ -89,7 +89,7 @@ Fills the required duty slots of a Service Occurrence by creating Roster Assignm
 
 **Trigger:** Scheduled run; manual administrator action.
 
-**Reads:** D2, D3, D4, D6, D7, and D8 (only when a Branch-Attendance Recency criterion is present).
+**Reads:** D2, D3, D4, D6, D7, and D8 (only when a Branch-Attendance Recency criterion is present and the effective register scope is on).
 
 **Writes:** D7.
 
@@ -101,9 +101,9 @@ Fills the required duty slots of a Service Occurrence by creating Roster Assignm
 
 Records the raw fact of a member's presence at an occurrence.
 
-**Trigger:** Member action (NFC tap or configured channel); manual administrator entry.
+**Trigger:** Manual register marking; NFC tap (defined but not yet produced by any implemented path).
 
-**Reads:** D4, D3.
+**Reads:** D4, D3, D11 (the effective register scope).
 
 **Writes:** D8.
 
@@ -121,13 +121,13 @@ Tracks each Roster Assignment's response lifecycle. On decline or timeout, re-re
 
 ### 9.0 Dispatch Notification
 
-Sends assignment notices to members through the configured channel.
+Sends assignment notices to members on Path 1 and authority notifications to admins on Path 2.
 
-**Trigger:** Invocation by 5.0, 7.0, 12.0, or 13.0. 5.0 and 7.0 invoke it on new-assignment creation. 12.0 invokes it when the manual assignment is created with AssignmentStatusID = NULL. 13.0 invokes it when an Attendance Rule's outcome is Notify.
+**Trigger:** Path 1 — invocation by 5.0, 7.0, 12.0, or 13.0. Path 2 — scheduled authority-notification sweep.
 
-**Reads:** D7, D4, D3, D11.
+**Reads:** Path 1 — D7, D4, D3, D11. Path 2 — ConfigurationAuditLog, NotificationSubscription, Admin, PermissionTier, D11.
 
-**Writes:** Nothing.
+**Writes:** ConfigurationAuditLog (NotifiedAt, Path 2 only). Path 1 writes nothing.
 
 **Does not invoke:** Any process.
 
@@ -165,6 +165,18 @@ Directly creates a Roster Assignment from an administrator's selection, bypassin
 
 **Invokes:** 9.0 Dispatch Notification, only when the created row's AssignmentStatusID is NULL.
 
+### 13.0 Attendance Rule Engine
+
+Reads Attendance Rules, evaluates each against the member population, and applies the configured outcomes. Reads Readmission and never writes it.
+
+**Trigger:** Scheduled run; manual administrator invocation of a single rule.
+
+**Reads:** D2 (AttendanceRule, AttendanceRuleScope), D3 (register scope), D4 (Member, MemberStatus), D5 (Readmission), D7 (AttendanceRecord), D10 (MemberStatus lookup), D11 (global register scope).
+
+**Writes:** D4 (MemberStatusID when a SetStatus outcome fires).
+
+**Invokes:** 9.0 Dispatch Notification, only when a rule's outcome is Notify.
+
 ---
 
 ## The full process list
@@ -173,17 +185,17 @@ Directly creates a Roster Assignment from an administrator's selection, bypassin
 | --- | --- | --- | --- | --- |
 | 1.0 | Configure Vocabulary | Configuration | Admin | Roles, Duties, Branches, Time Slots, Services, Schedules, Lookups |
 | 2.0 | Configure Duty Rules | Configuration | Admin | Duty Rules |
-| 3.0 | Manage Membership | Configuration | Admin | Members, Identifier History |
+| 3.0 | Manage Membership | Configuration | Admin | Members, Identifier History, Member Status, Attribute Types, Attendance Rules, Readmissions |
 | 4.0 | Manage Eligibility | Configuration | Admin | Eligibility grants |
 | 5.0 | Generate Assignment | Operations | Scheduled / Manual | Roster Assignments |
 | 6.0 | Record Attendance | Operations | Member / Admin | Attendance Records |
 | 7.0 | Manage Confirmation | Operations | Member / Scheduled | Assignment status changes, replacements |
-| 8.0 | Manage Events and Programs | Configuration | Admin | Events, Programs, Program Items, Event Duties, event-sourced Occurrences |
-| 9.0 | Dispatch Notification | Operations | Invoked by 5.0 / 7.0 | Outbound message to member |
+| 8.0 | Manage Events and Programs | Configuration | Admin | Events, Event Branches, Programs, Program Items, Event Duties, event-sourced Occurrences |
+| 9.0 | Dispatch Notification | Operations | Invoked by 5.0 / 7.0 / 12.0 / 13.0; scheduled authority sweep | Outbound message to member (Path 1) or to admins (Path 2) |
 | 10.0 | Evaluate Fill Status | Operations | After assignment changes / Scheduled | Occurrence FillStatusID |
 | 11.0 | Materialize Occurrences | Operations | Scheduled / Manual | Service Occurrences, Materializer Run records |
 | 12.0 | Create Manual Assignment | Operations | Admin | Manually-created Roster Assignment |
-| 13.0 | Attendance Rule Engine | Operations | Scheduled / Manual | Member status changes, readmission events |
+| 13.0 | Attendance Rule Engine | Operations | Scheduled / Manual | Member status changes |
 
 ---
 
@@ -208,17 +220,17 @@ Each process reads from and writes to a defined set of stores. No process writes
 | --- | --- | --- |
 | 1.0 | — | D1, D3, D10 |
 | 2.0 | D1 | D2 |
-| 3.0 | — | D4, D5 |
+| 3.0 | — | D4, D5, D13 |
 | 4.0 | — | D6 |
 | 5.0 | D2, D3, D4, D6, D7, D8 (conditional) | D7 |
-| 6.0 | D4, D3 | D8 |
+| 6.0 | D4, D3, D11 (scope) | D8 |
 | 7.0 | D2 (re-resolution), D3 (re-resolution), D4, D6 (re-resolution), D7, D8 (re-resolution), D10, D11 | D7 |
 | 8.0 | D3, D4, D9, D10 | D9, D3 (event-sourced occurrences) |
-| 9.0 | D3, D4, D7, D11 | — |
+| 9.0 | Path 1: D3, D4, D7, D11. Path 2: ConfigurationAuditLog, NotificationSubscription, Admin, PermissionTier, D11. | ConfigurationAuditLog (NotifiedAt, Path 2) |
 | 10.0 | D3, D7, D10, D11 | D3 |
 | 11.0 | D3, D11 | D3, D12 |
 | 12.0 | D2, D3, D4, D6, D7 | D7 |
-| 13.0 | D2, D3, D4, D5, D7, D10 | D4 |
+| 13.0 | D2, D3, D4, D5, D7, D10, D11 | D4 |
 
 A configuration-audit store and an attendance store are also present. The configuration-audit store holds Configuration Audit Log, Entity Deletion Policy, and Notification Subscription. The attendance store is D13, holding Attendance Rule, Attendance Rule Scope, and Readmission.
 
@@ -233,24 +245,26 @@ Every process obeys a set of invariants that are locked in the specification and
 - 5.0 is additive — it never removes or modifies an existing assignment.
 - 10.0 is idempotent — re-running produces the same FillStatusID.
 - 6.0 is idempotent per (MemberID, OccurrenceID).
+- 13.0 is not idempotent with respect to external outcomes; repeated runs may repeat outcomes while the trigger holds.
 
 **Boundary respect:**
 - No process writes to a store outside its footprint.
 - No configuration process reads an operational store, except 8.0's event-sourced occurrence write.
-- No process invokes another process except 5.0 → 9.0, 7.0 → 9.0, 12.0 → 9.0, and 13.0 → 9.0.
+- No process invokes another process except 5.0 -> 9.0, 7.0 -> 9.0, 12.0 -> 9.0, and 13.0 -> 9.0.
 
 **Required-setting discipline:**
-- 11.0 refuses to run if `OccurrenceHorizonDays` is unset.
-- 7.0 refuses to run if `InitialAssignmentStatusID` is unset, or if `ConfirmationTimeoutHours` is required and unset.
+- 11.0 refuses to run if OccurrenceHorizonDays is unset.
+- 7.0 refuses to run if InitialAssignmentStatusID is unset, or if ConfirmationTimeoutHours is required and unset, or if DeclinedStatusID or TimedOutStatusID is unset for the operation being requested.
 - 10.0 refuses to run if any of the three mechanical mapping settings is unset.
-- 9.0 follows the `NotificationChannel` setting's configured validity behavior.
+- 9.0 follows the NotificationChannel setting's configured validity behavior.
 
 **Lifecycle ownership:**
-- 5.0 creates assignments with `AssignmentStatusID = NULL`.
+- 5.0 creates assignments with AssignmentStatusID = NULL.
 - 7.0 owns the assignment status lifecycle from that point.
-- 11.0 creates occurrences with `FillStatusID = NULL`.
+- 11.0 creates occurrences with FillStatusID = NULL.
 - 10.0 owns the fill status lifecycle from that point.
+- 13.0 sets MemberStatusID; it does not write Readmission.
 
 ---
 
-*Source: System Design Specification §3, Data Flow Diagrams.*
+*Source: System Design Specification §3, §13; Data Flow Diagrams.*

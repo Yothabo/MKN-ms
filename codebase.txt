@@ -23031,7 +23031,7 @@ In every case, the reader finds what it needs by querying the store, not by bein
 
 ==============================================================================
 FILE: docs/architecture/process-model.md
-LINES: 256
+LINES: 270
 ==============================================================================
 
 # Process Model
@@ -23059,7 +23059,7 @@ Five processes create and maintain every administrator-entered value in the syst
 
 ### 1.0 Configure Vocabulary
 
-Creates and maintains Role, Duty, Branch, Branch Time Slot, TimeOfDay, ServiceType, Service Definition, Service Definition Duty, Service Schedule, and the D10 lookup values (Outcome State, Assignment Status, Permission Tier).
+Creates and maintains Role, Duty, Branch, Branch Time Slot, TimeOfDay, ServiceType, Service Definition, Service Definition Duty, Service Schedule, and the D10 lookup values (Outcome State, Assignment Status, Permission Tier, Capability).
 
 **Trigger:** Administrator action.
 
@@ -23071,7 +23071,7 @@ Creates and maintains Role, Duty, Branch, Branch Time Slot, TimeOfDay, ServiceTy
 
 ### 2.0 Configure Duty Rules
 
-Creates and maintains the Duty Rule rows that express how duties rank candidates.
+Creates and maintains the Duty Rule rows that express how duties rank candidates, with optional per-service scope.
 
 **Trigger:** Administrator action.
 
@@ -23081,13 +23081,13 @@ Creates and maintains the Duty Rule rows that express how duties rank candidates
 
 ### 3.0 Manage Membership
 
-Creates and maintains Member records and Identifier History.
+Creates and maintains Member records, Identifier History, Member Status, Attribute Type, Member Attribute Value, Readmission, and Attendance Rule.
 
 **Trigger:** Administrator action.
 
 **Reads:** D4, D5, D1 (Role), D3 (Branch).
 
-**Writes:** D4, D5.
+**Writes:** D4, D5, D13 (Attendance Rule, Attendance Rule Scope, Readmission), and Member Status and Attribute Type lookups.
 
 **Subprocesses:** 3.1 Manage member record, 3.2 Manage identifier history.
 
@@ -23103,11 +23103,11 @@ Creates and maintains the Eligibility grant/revoke records that determine duty c
 
 ### 8.0 Manage Events and Programs
 
-Creates and maintains Event, Program, Program Item, and Event Duty records. When a Program Item is linked to a Service Definition, the system creates an event-sourced Service Occurrence directly.
+Creates and maintains Event, Event Branch, Program, Program Item, and Event Duty records. When a Program Item is linked to a Service Definition, the system creates an event-sourced Service Occurrence directly.
 
 **Trigger:** Administrator action.
 
-**Reads:** D9, D3 (Service Definition), D4 (Member), D10 (Assignment Status).
+**Reads:** D9, D3 (Service Definition), D4 (Member), D1 (Duty for EventDuty), D10 (Assignment Status).
 
 **Writes:** D9, D3 (event-sourced occurrences only).
 
@@ -23117,7 +23117,7 @@ Creates and maintains Event, Program, Program Item, and Event Duty records. When
 
 ## Operations layer
 
-Seven processes produce operational records from configuration and stored facts.
+Eight processes produce operational records from configuration and stored facts.
 
 ### 5.0 Generate Assignment
 
@@ -23125,7 +23125,7 @@ Fills the required duty slots of a Service Occurrence by creating Roster Assignm
 
 **Trigger:** Scheduled run; manual administrator action.
 
-**Reads:** D2, D3, D4, D6, D7, and D8 (only when a Branch-Attendance Recency criterion is present).
+**Reads:** D2, D3, D4, D6, D7, and D8 (only when a Branch-Attendance Recency criterion is present and the effective register scope is on).
 
 **Writes:** D7.
 
@@ -23137,9 +23137,9 @@ Fills the required duty slots of a Service Occurrence by creating Roster Assignm
 
 Records the raw fact of a member's presence at an occurrence.
 
-**Trigger:** Member action (NFC tap or configured channel); manual administrator entry.
+**Trigger:** Manual register marking; NFC tap (defined but not yet produced by any implemented path).
 
-**Reads:** D4, D3.
+**Reads:** D4, D3, D11 (the effective register scope).
 
 **Writes:** D8.
 
@@ -23157,13 +23157,13 @@ Tracks each Roster Assignment's response lifecycle. On decline or timeout, re-re
 
 ### 9.0 Dispatch Notification
 
-Sends assignment notices to members through the configured channel.
+Sends assignment notices to members on Path 1 and authority notifications to admins on Path 2.
 
-**Trigger:** Invocation by 5.0, 7.0, 12.0, or 13.0. 5.0 and 7.0 invoke it on new-assignment creation. 12.0 invokes it when the manual assignment is created with AssignmentStatusID = NULL. 13.0 invokes it when an Attendance Rule's outcome is Notify.
+**Trigger:** Path 1 — invocation by 5.0, 7.0, 12.0, or 13.0. Path 2 — scheduled authority-notification sweep.
 
-**Reads:** D7, D4, D3, D11.
+**Reads:** Path 1 — D7, D4, D3, D11. Path 2 — ConfigurationAuditLog, NotificationSubscription, Admin, PermissionTier, D11.
 
-**Writes:** Nothing.
+**Writes:** ConfigurationAuditLog (NotifiedAt, Path 2 only). Path 1 writes nothing.
 
 **Does not invoke:** Any process.
 
@@ -23201,6 +23201,18 @@ Directly creates a Roster Assignment from an administrator's selection, bypassin
 
 **Invokes:** 9.0 Dispatch Notification, only when the created row's AssignmentStatusID is NULL.
 
+### 13.0 Attendance Rule Engine
+
+Reads Attendance Rules, evaluates each against the member population, and applies the configured outcomes. Reads Readmission and never writes it.
+
+**Trigger:** Scheduled run; manual administrator invocation of a single rule.
+
+**Reads:** D2 (AttendanceRule, AttendanceRuleScope), D3 (register scope), D4 (Member, MemberStatus), D5 (Readmission), D7 (AttendanceRecord), D10 (MemberStatus lookup), D11 (global register scope).
+
+**Writes:** D4 (MemberStatusID when a SetStatus outcome fires).
+
+**Invokes:** 9.0 Dispatch Notification, only when a rule's outcome is Notify.
+
 ---
 
 ## The full process list
@@ -23209,17 +23221,17 @@ Directly creates a Roster Assignment from an administrator's selection, bypassin
 | --- | --- | --- | --- | --- |
 | 1.0 | Configure Vocabulary | Configuration | Admin | Roles, Duties, Branches, Time Slots, Services, Schedules, Lookups |
 | 2.0 | Configure Duty Rules | Configuration | Admin | Duty Rules |
-| 3.0 | Manage Membership | Configuration | Admin | Members, Identifier History |
+| 3.0 | Manage Membership | Configuration | Admin | Members, Identifier History, Member Status, Attribute Types, Attendance Rules, Readmissions |
 | 4.0 | Manage Eligibility | Configuration | Admin | Eligibility grants |
 | 5.0 | Generate Assignment | Operations | Scheduled / Manual | Roster Assignments |
 | 6.0 | Record Attendance | Operations | Member / Admin | Attendance Records |
 | 7.0 | Manage Confirmation | Operations | Member / Scheduled | Assignment status changes, replacements |
-| 8.0 | Manage Events and Programs | Configuration | Admin | Events, Programs, Program Items, Event Duties, event-sourced Occurrences |
-| 9.0 | Dispatch Notification | Operations | Invoked by 5.0 / 7.0 | Outbound message to member |
+| 8.0 | Manage Events and Programs | Configuration | Admin | Events, Event Branches, Programs, Program Items, Event Duties, event-sourced Occurrences |
+| 9.0 | Dispatch Notification | Operations | Invoked by 5.0 / 7.0 / 12.0 / 13.0; scheduled authority sweep | Outbound message to member (Path 1) or to admins (Path 2) |
 | 10.0 | Evaluate Fill Status | Operations | After assignment changes / Scheduled | Occurrence FillStatusID |
 | 11.0 | Materialize Occurrences | Operations | Scheduled / Manual | Service Occurrences, Materializer Run records |
 | 12.0 | Create Manual Assignment | Operations | Admin | Manually-created Roster Assignment |
-| 13.0 | Attendance Rule Engine | Operations | Scheduled / Manual | Member status changes, readmission events |
+| 13.0 | Attendance Rule Engine | Operations | Scheduled / Manual | Member status changes |
 
 ---
 
@@ -23244,17 +23256,17 @@ Each process reads from and writes to a defined set of stores. No process writes
 | --- | --- | --- |
 | 1.0 | — | D1, D3, D10 |
 | 2.0 | D1 | D2 |
-| 3.0 | — | D4, D5 |
+| 3.0 | — | D4, D5, D13 |
 | 4.0 | — | D6 |
 | 5.0 | D2, D3, D4, D6, D7, D8 (conditional) | D7 |
-| 6.0 | D4, D3 | D8 |
+| 6.0 | D4, D3, D11 (scope) | D8 |
 | 7.0 | D2 (re-resolution), D3 (re-resolution), D4, D6 (re-resolution), D7, D8 (re-resolution), D10, D11 | D7 |
 | 8.0 | D3, D4, D9, D10 | D9, D3 (event-sourced occurrences) |
-| 9.0 | D3, D4, D7, D11 | — |
+| 9.0 | Path 1: D3, D4, D7, D11. Path 2: ConfigurationAuditLog, NotificationSubscription, Admin, PermissionTier, D11. | ConfigurationAuditLog (NotifiedAt, Path 2) |
 | 10.0 | D3, D7, D10, D11 | D3 |
 | 11.0 | D3, D11 | D3, D12 |
 | 12.0 | D2, D3, D4, D6, D7 | D7 |
-| 13.0 | D2, D3, D4, D5, D7, D10 | D4 |
+| 13.0 | D2, D3, D4, D5, D7, D10, D11 | D4 |
 
 A configuration-audit store and an attendance store are also present. The configuration-audit store holds Configuration Audit Log, Entity Deletion Policy, and Notification Subscription. The attendance store is D13, holding Attendance Rule, Attendance Rule Scope, and Readmission.
 
@@ -23269,27 +23281,29 @@ Every process obeys a set of invariants that are locked in the specification and
 - 5.0 is additive — it never removes or modifies an existing assignment.
 - 10.0 is idempotent — re-running produces the same FillStatusID.
 - 6.0 is idempotent per (MemberID, OccurrenceID).
+- 13.0 is not idempotent with respect to external outcomes; repeated runs may repeat outcomes while the trigger holds.
 
 **Boundary respect:**
 - No process writes to a store outside its footprint.
 - No configuration process reads an operational store, except 8.0's event-sourced occurrence write.
-- No process invokes another process except 5.0 → 9.0, 7.0 → 9.0, 12.0 → 9.0, and 13.0 → 9.0.
+- No process invokes another process except 5.0 -> 9.0, 7.0 -> 9.0, 12.0 -> 9.0, and 13.0 -> 9.0.
 
 **Required-setting discipline:**
-- 11.0 refuses to run if `OccurrenceHorizonDays` is unset.
-- 7.0 refuses to run if `InitialAssignmentStatusID` is unset, or if `ConfirmationTimeoutHours` is required and unset.
+- 11.0 refuses to run if OccurrenceHorizonDays is unset.
+- 7.0 refuses to run if InitialAssignmentStatusID is unset, or if ConfirmationTimeoutHours is required and unset, or if DeclinedStatusID or TimedOutStatusID is unset for the operation being requested.
 - 10.0 refuses to run if any of the three mechanical mapping settings is unset.
-- 9.0 follows the `NotificationChannel` setting's configured validity behavior.
+- 9.0 follows the NotificationChannel setting's configured validity behavior.
 
 **Lifecycle ownership:**
-- 5.0 creates assignments with `AssignmentStatusID = NULL`.
+- 5.0 creates assignments with AssignmentStatusID = NULL.
 - 7.0 owns the assignment status lifecycle from that point.
-- 11.0 creates occurrences with `FillStatusID = NULL`.
+- 11.0 creates occurrences with FillStatusID = NULL.
 - 10.0 owns the fill status lifecycle from that point.
+- 13.0 sets MemberStatusID; it does not write Readmission.
 
 ---
 
-*Source: System Design Specification §3, Data Flow Diagrams.*
+*Source: System Design Specification §3, §13; Data Flow Diagrams.*
 
 ==============================================================================
 FILE: docs/architecture/system-overview.md
@@ -24443,7 +24457,7 @@ The specification does not prescribe physical indexes. It names the access patte
 
 ==============================================================================
 FILE: docs/database/migration-ordering.md
-LINES: 149
+LINES: 153
 ==============================================================================
 
 # Migration Ordering
@@ -24462,9 +24476,11 @@ The document describes *what* is applied, in *what order*. The mechanism — one
 
 ## The initial state
 
-At the freeze commit `5ddaf2b`, the database schema is the one produced by the single migration `20261005211358_InitialCreate`. That migration reflects the pre-amendment entities: twelve processes, `Member.IsActive`, `Event.Location`, `EventDuty.Label`, and no entities from the A–G or attendance amendment sets.
+The database schema is currently the one produced by the single existing migration `20261005211358_InitialCreate`. That migration reflects the pre-amendment entities: `Member.IsActive`, `Event.Location`, `EventDuty.Label`, and no entities from the A–G or attendance amendment sets.
 
 Nothing about the initial schema is wrong. It is simply behind the frozen specification.
+
+The initial schema is identified by the migration that produced it, not by a git commit. Git history and schema state are separate concerns; a migration name is the accurate identifier of a schema state.
 
 ---
 
@@ -24472,7 +24488,7 @@ Nothing about the initial schema is wrong. It is simply behind the frozen specif
 
 The frozen specification defines a schema larger than the initial one. The additions fall into four categories:
 
-- **New entities.** Nine from the A–G set, three from the attendance set, plus the operational store additions.
+- **New entities.** Nine from the A–G set, three from the attendance set.
 - **New columns on existing tables.**
 - **Removed columns.**
 - **New constraints and checks.**
@@ -24524,12 +24540,11 @@ The additions that do not affect existing constraints:
 - `AttendanceRecord.Source`
 - `Branch.UsesAttendanceRegister`
 - `Event.UsesAttendanceRegister`
-- `MemberStatusId` on `Member` (as a nullable column at this stage; Step 7 makes it non-null)
+- `Member.MemberStatusID` (as a nullable column at this stage; Step 7 makes it non-null)
 - `Member.ReceiptNumber`, `Member.CardNumber`, `Member.JoinReason`
 - `Event.HostBranchID` (as nullable at this stage; Step 7 makes it non-null)
 - `EventDuty.DutyID` (as nullable at this stage; Step 7 makes it non-null)
 - `EventDuty.ServiceDefID`
-- `ConfigurationAuditLog.NotifiedAt` (already created in Step 3, if the entity is created with the field)
 - `IsDeleted` on every configuration entity that gained the two-flag lifecycle
 
 **Step 6 — data migration for the columns that replace others.**
@@ -24545,13 +24560,16 @@ These steps alter existing data, not just schema:
 - Make `Member.MemberStatusID` non-null.
 - Make `Event.HostBranchID` non-null.
 - Make `EventDuty.DutyID` non-null.
-- Add the `RosterAssignment (MemberID, DutyID, OccurrenceID)` uniqueness constraint (already present in the initial schema).
-- Add the `AttendanceRecord (MemberID, OccurrenceID)` uniqueness constraint (already present).
-- Add the `ServiceSchedule (ServiceDefID, TimeSlotID)` active-row uniqueness constraint (already present).
-- Add the `ServiceOccurrence (ScheduleID, Date)` schedule-sourced uniqueness constraint (already present).
 - Add the `AttendanceRuleScope (AttendanceRuleID, CriteriaType, CriteriaValue)` composite primary key.
 - Add the check constraint forbidding `IsActive = true AND IsDeleted = true` on every configuration entity that carries both.
-- Add the B18 check on `ServiceOccurrence` — exactly one of `ScheduleID`, `EventID` is non-null.
+- Add the check on `ServiceOccurrence`: exactly one of `ScheduleID` or `EventID` is non-null.
+
+The four uniqueness constraints from the original migration are already present:
+
+- `RosterAssignment (MemberID, DutyID, OccurrenceID)` unique.
+- `AttendanceRecord (MemberID, OccurrenceID)` unique.
+- `ServiceSchedule (ServiceDefID, TimeSlotID)` active-row unique.
+- `ServiceOccurrence (ScheduleID, Date)` schedule-sourced unique.
 
 **Step 8 — removed columns.**
 
@@ -24594,7 +24612,7 @@ The order eliminates each.
 
 ---
 
-*Source: System Design Specification §4, §15; the frozen commit's schema state.*
+*Source: System Design Specification §4, §15; the current migration state.*
 
 ==============================================================================
 FILE: docs/database/schema.md
@@ -29253,20 +29271,20 @@ Physical forms are implementation-dependent.
 
 ==============================================================================
 FILE: docs/processes/operations/9.0-dispatch-notification.md
-LINES: 201
+LINES: 212
 ==============================================================================
 
 # 9.0 Dispatch Notification
 
-*Sends assignment notices to members through the configured channel. Fire-and-forget. Derived from the System Design Specification §14. Where this document conflicts with the specification, the specification wins.*
+*Sends assignment notices to members and authority notifications to admins through the configured channel. Two paths, two audiences, two retry semantics. Derived from the System Design Specification §14. Where this document conflicts with the specification, the specification wins.*
 
 ---
 
 ## Responsibility
 
-9.0 Dispatch Notification is the outbound process that sends assignment notices to members. It is invoked by 5.0, 7.0, 12.0, and 13.0 when they create assignments that require a response — meaning an assignment created with no status. It is the only process in the system whose primary effect is an external side effect rather than a write to an internal data store.
+9.0 Dispatch Notification is the outbound process with two paths. Path 1 sends assignment notices to members. Path 2 sends authority notifications to admins, informing them of configuration events recorded in the ConfigurationAuditLog.
 
-It reads the assignment, the member, the occurrence, and the configured channel, composes a message, sends it, and stops. It does not write to any store, does not track delivery, and does not invoke any other process. Retry semantics differ by path: the member-facing path does not retry; the authority-notification sweep retries through subsequent sweeps while `NotifiedAt` remains null. See §14.1.4 and §14.1.5 of the specification.
+9.0 is the only process in the system whose primary effect is an external side effect rather than a write to an internal data store. On Path 2 it also writes `ConfigurationAuditLog.NotifiedAt`, which is the sole exception to its read-only footprint.
 
 **Source:** System Design Specification §14.
 
@@ -29320,15 +29338,15 @@ Recipients are configured in NotificationSubscription. A subscription row names 
 
 The audit row records that a notification was dispatched, by setting `NotifiedAt`. Delivery itself is not tracked. There is no delivery log and no receipt confirmation. The sweep retries through subsequent sweeps while `NotifiedAt` remains null: a dispatch failure leaves `NotifiedAt` unchanged and the row eligible for a later sweep. If a dispatch succeeds but the process fails before `NotifiedAt` is persisted, the row may be dispatched again on a later sweep. This is the at-least-once reliability stated at §14.1.4 of the specification.
 
-### Fire-and-forget
+### Retry semantics
 
-The sweep does not wait for a delivery result. If the underlying channel fails, the notification is lost from the system's perspective, and the audit row is still marked as notified. This is the same behaviour the member-facing path has always had.
+On Path 2, the sweep retries through subsequent runs while `NotifiedAt` remains null. There is no bounded retry counter and no attempt limit. A persistently failing dispatch can leave a row indefinitely unnotified. Duplicate dispatch is permitted: if a dispatch succeeds but the process fails before persisting `NotifiedAt`, the row is dispatched again on a later sweep.
 
 ### The channel
 
 The channel is the same for both paths. The `NotificationChannel` setting names the transport. The message content is composed differently — a member notice requests a response, an authority notice states what happened.
 
-**Source:** System Design Specification §14.1.3, §16.0, §16.4, §16.6.
+**Source:** System Design Specification §14.1.3, §14.1.4, §16.0, §16.4, §16.6.
 
 ---
 
@@ -29336,10 +29354,12 @@ The channel is the same for both paths. The `NotificationChannel` setting names 
 
 | Direction | Store |
 | --- | --- |
-| Reads | D7 (RosterAssignment), D4 (Member — contact details), D3 (ServiceOccurrence — date and time), D11 (SystemSetting — NotificationChannel) |
-| Writes | None |
+| Reads (Path 1) | D7 (RosterAssignment), D4 (Member — contact details), D3 (ServiceOccurrence — date and time), D11 (SystemSetting — NotificationChannel) |
+| Reads (Path 2) | ConfigurationAuditLog (new rows), NotificationSubscription (recipients), Admin and PermissionTier (recipient resolution), D11 (SystemSetting — NotificationChannel) |
+| Writes (Path 1) | None |
+| Writes (Path 2) | `ConfigurationAuditLog.NotifiedAt` |
 
-**Never reads or writes:** D1, D2, D5, D6, D8, D9, D10, D12. Never writes to any store. Never invokes any process.
+**Never reads or writes:** D1, D2, D5, D6, D8, D9, D10, D12. Never invokes any process. Never writes any column other than `ConfigurationAuditLog.NotifiedAt`.
 
 **Source:** System Design Specification §14.2.
 
@@ -29369,11 +29389,13 @@ The current scope assumes a single global channel. Per-member channel preference
 
 ---
 
-## No writes
+## Writes
 
-9.0 does not write to any store. It has no persistence side effect. The notification is composed, sent, and forgotten — from the system's perspective.
+9.0 has two paths, and their write footprints differ.
 
-This is a deliberate design choice: introducing a notification log, retry table, or delivery-status field would be new infrastructure. No delivery outcome is observable by the system. If a member does not respond to an assignment, 7.0 may eventually time it out according to its normal timeout rules, regardless of whether the absence of response resulted from notification failure.
+**Path 1 — member-facing.** 9.0 does not write to any store on this path. The notification is composed, sent, and forgotten. No delivery outcome is observable by the system. If a member does not respond to an assignment, 7.0 may eventually time it out according to its normal timeout rules, regardless of whether the absence of response resulted from notification failure.
+
+**Path 2 — authority-facing.** 9.0 writes `ConfigurationAuditLog.NotifiedAt` on each audit row it processes. This is the only write 9.0 performs. There is no notification log, no retry table, and no delivery-status field. `NotifiedAt` records that the sweep has processed the row, not that the underlying transport delivered the message.
 
 **Source:** System Design Specification §14.1.1.
 
@@ -29389,21 +29411,25 @@ If audit or delivery tracking becomes a requirement, it is an additive structure
 
 ---
 
-## No retry on the member-facing path
+## Retry semantics
 
-On the member-facing path (Path 1), if the underlying channel fails, the notification is lost from the system's perspective. 9.0 does not retry the member-facing dispatch.
+Retry semantics differ by path.
 
-The authority-notification path (Path 2) is retried implicitly: a `ConfigurationAuditLog` row whose `NotifiedAt` remains null is eligible for a subsequent sweep. See §14.1.4.
+**Path 1 — member-facing.** If the underlying channel fails, the notification is lost from the system's perspective. 9.0 does not retry the member-facing dispatch.
 
-**Source:** System Design Specification §14.1.5.
+**Path 2 — authority-facing.** The sweep retries through subsequent sweeps while `NotifiedAt` remains null. A dispatch failure leaves `NotifiedAt` unchanged and the row eligible for a later sweep. If a dispatch succeeds but the process fails before `NotifiedAt` is persisted, the row may be dispatched again. There is no bounded retry and no attempt counter.
+
+**Source:** System Design Specification §14.1.4, §14.1.5.
 
 ---
 
 ## Message content
 
-The notification carries enough information for the member to understand what they are being asked to respond to: the occurrence date and time, the duty, and (implicitly) the expectation of a response. The exact format is channel-dependent and outside the schema.
+The member notification carries enough information for the member to understand what they are being asked to respond to: the occurrence date and time, the duty, and (implicitly) the expectation of a response. The exact format is channel-dependent and outside the schema.
 
-The notification does not contain a confirmation token or other schema-defined response identifier. Assignment-response correlation is handled by the 7.0 response mechanism and is outside 9.0's schema contract.
+The authority notification carries enough information for the admin to understand what configuration event occurred: the entity, the action, who performed it, when, and the reason recorded in the audit row. The exact format is channel-dependent and outside the schema.
+
+Neither notification contains a confirmation token or other schema-defined response identifier. Assignment-response correlation is handled by the 7.0 response mechanism and is outside 9.0's schema contract.
 
 **Source:** System Design Specification §14.1.6.
 
@@ -29411,9 +29437,11 @@ The notification does not contain a confirmation token or other schema-defined r
 
 ## Fire-and-forget
 
-9.0's invocation is fire-and-forget. Its success or failure does not affect the invoking process's state. The invoking process does not wait for the notification result.
+9.0's Path 1 invocation is fire-and-forget. Its success or failure does not affect the invoking process's state. The invoking process does not wait for the notification result.
 
-Whether the invocation is synchronous or asynchronous from the invoking process's perspective is an implementation choice. It does not create a semantic dependency.
+Path 2 runs on the scheduler and has no invoking process to affect.
+
+Whether either path's invocation is synchronous or asynchronous from any caller's perspective is an implementation choice. It does not create a semantic dependency.
 
 **Source:** System Design Specification §14.3.
 
@@ -29421,16 +29449,16 @@ Whether the invocation is synchronous or asynchronous from the invoking process'
 
 ## Invariants
 
-- Outbound only. 9.0's only product is a message sent to a member.
-- Read-only on all stores. 9.0 reads what it needs; it writes nothing.
-- Trigger is bounded. Path 1 is invoked only by 5.0, 7.0, 12.0, and 13.0, on new assignment creation that requires a response.
+- Outbound only. 9.0's product is a message sent to a member on Path 1, and a message sent to one or more authorities on Path 2.
+- Read-only on every store except `ConfigurationAuditLog`, where `NotifiedAt` is written on Path 2.
+- Trigger is bounded. Path 1 is invoked only by 5.0, 7.0, 12.0, and 13.0. Path 2 is a scheduled sweep, not an invocation.
 - No invocation on status change.
 - No invocation on any other event.
 - Channel selected by setting. Follows the setting's configured validity behavior; no channel-specific fallback.
-- Fire-and-forget.
-- No retry on the member-facing path. The authority-notification path retries through subsequent sweeps while `NotifiedAt` remains null.
-- No delivery log.
-- No token. The notification does not contain a confirmation token or other schema-defined response identifier.
+- Fire-and-forget on Path 1. At-least-once on Path 2, through retries while `NotifiedAt` remains null.
+- No retry on Path 1.
+- No delivery log on either path.
+- No token. Neither notification contains a confirmation token or other schema-defined response identifier.
 - Channel-agnostic contract. SMS, email, push, and others are acceptable implementations behind the same contract.
 
 **Source:** System Design Specification §14.3.
@@ -29439,7 +29467,7 @@ Whether the invocation is synchronous or asynchronous from the invoking process'
 
 ## Indexes
 
-9.0 does not require any indexes. It reads by primary key from RosterAssignment, Member, and ServiceOccurrence, and by key from SystemSetting. All are served by existing primary-key or foreign-key indexes.
+9.0 does not require any indexes beyond the ones the schema already carries. On Path 1 it reads by primary key from RosterAssignment, Member, and ServiceOccurrence, and by key from SystemSetting. On Path 2 it reads ConfigurationAuditLog rows where `NotifiedAt` is null and matches NotificationSubscription rows by EventType. A partial index on `ConfigurationAuditLog (NotifiedAt) WHERE NotifiedAt IS NULL` may be warranted depending on volume.
 
 No index is prescribed at specification level for 9.0.
 
@@ -29452,6 +29480,7 @@ No index is prescribed at specification level for 9.0.
 - **Specification §14** — the full derivation.
 - **`5.0-generate-assignment.md`** — invokes 9.0 on each new automatic assignment.
 - **`7.0-manage-confirmation.md`** — invokes 9.0 on each replacement assignment.
+- **`13.0-attendance-rule-engine.md`** — invokes 9.0 on each Notify outcome.
 - **`../database/settings.md`** — the NotificationChannel setting.
 
 ---
@@ -29460,19 +29489,18 @@ No index is prescribed at specification level for 9.0.
 
 ==============================================================================
 FILE: docs/processes/operations/README.md
-LINES: 141
+LINES: 113
 ==============================================================================
-
 
 # Operations Layer
 
-*The eight processes that produce operational records from configuration and stored facts. Derived from the System Design Specification §9–§17. Where this document conflicts with the specification, the specification wins.*
+*The eight processes that produce operational records from configuration and stored facts. Derived from the System Design Specification §7–§17. Where this document conflicts with the specification, the specification wins.*
 
 ---
 
 ## Purpose
 
-The operations layer is the set of processes that turn configuration and stored facts into operational outcomes: materialized occurrences, generated assignments, tracked confirmations, recorded attendance, evaluated fill status, and dispatched notifications.
+The operations layer is the set of processes that turn configuration and stored facts into operational outcomes: materialized occurrences, generated assignments, tracked confirmations, recorded attendance, evaluated fill status, dispatched notifications, and attendance-driven status changes.
 
 These processes read configuration at run time. None of them embeds an organization's rules.
 
@@ -29485,7 +29513,7 @@ These processes read configuration at run time. None of them embeds an organizat
 | 5.0 | Generate Assignment | Fills the required duty slots of a Service Occurrence by creating Roster Assignments |
 | 6.0 | Record Attendance | Records the raw fact of a member's presence at an occurrence |
 | 7.0 | Manage Confirmation | Tracks each Roster Assignment's response lifecycle; re-resolves on decline or timeout |
-| 9.0 | Dispatch Notification | Sends assignment notices to members |
+| 9.0 | Dispatch Notification | Sends assignment notices to members and authority notifications to admins |
 | 10.0 | Evaluate Fill Status | Computes each occurrence's fill state and writes FillStatusID |
 | 11.0 | Materialize Occurrences | Generates Service Occurrences from active Service Schedules on a rolling horizon |
 | 12.0 | Create Manual Assignment | Directly creates a Roster Assignment from an administrator's selection |
@@ -29497,55 +29525,26 @@ These processes read configuration at run time. None of them embeds an organizat
 
 **Reads:** configuration stores and operational stores, per each process's footprint.
 
-**Writes:** operational stores (D3, D7, D8, D12).
+**Writes:** operational stores (D3, D7, D8, D12), plus ConfigurationAuditLog.NotifiedAt written by 9.0 on its authority-notification path.
 
-**Does not write:** configuration stores, except that 10.0 writes to `D3 ServiceOccurrence.FillStatusID` (which is an operational field on an operational record).
+**Does not write:** configuration stores, except that 10.0 writes to D3 ServiceOccurrence.FillStatusID (which is an operational field on an operational record) and 9.0 writes ConfigurationAuditLog.NotifiedAt on Path 2.
 
 ---
 
 ## The invocation graph
 
-~~~
-11.0 Materialize Occurrences
-          │
-          ▼
-   ServiceOccurrence
-          │
-          ▼
-  5.0 Generate Assignment
-          │
-          ├──────────► 9.0 Dispatch Notification ◄────────── 12.0 Create Manual Assignment
-          │                          ▲                         (only when AssignmentStatusID = NULL)
-          ▼                          │
-   RosterAssignment                  │
-                                     │
-                                     └─────────────────────── 7.0 Manage Confirmation invokes on replacement
-       │       │
-       │       └────────► 7.0 Manage Confirmation
-       │                         │
-       │                         ├── decline/timeout
-       │                         │        │
-       │                         │        ▼
-       │                         │   re-resolve slot
-       │                         │        │
-       │                         │        ▼
-       │                         └──► RosterAssignment
-       │                                  │
-       │                                  └──► 9.0
-       │
-       └──────────────────────► 10.0 Evaluate Fill Status
-                                      │
-                                      ▼
-                              ServiceOccurrence
-                               FillStatusID
+The four invocation edges terminate at 9.0:
 
+| # | From | To | Condition |
+| --- | --- | --- | --- |
+| I1 | 5.0 Generate Assignment | 9.0 Dispatch Notification | On each new automatic assignment created |
+| I2 | 7.0 Manage Confirmation | 9.0 Dispatch Notification | On each replacement assignment created |
+| I3 | 12.0 Create Manual Assignment | 9.0 Dispatch Notification | Only when AssignmentStatusID = NULL at creation |
+| I4 | 13.0 Attendance Rule Engine | 9.0 Dispatch Notification | Only when an Attendance Rule's OutcomeType = Notify and its trigger fires |
 
-6.0 Record Attendance
-          │
-          ▼
-   AttendanceRecord
-~~~
-The four invocation edges (5.0 → 9.0, 7.0 → 9.0, 12.0 → 9.0, and 13.0 → 9.0) are the only process-to-process calls in the system. Every other relationship is data-mediated.
+Every other relationship between processes is data-mediated. 9.0 is the sole process any other process is permitted to invoke.
+
+9.0 also carries a scheduled trigger that is not an invocation: the authority-notification sweep, which reads new ConfigurationAuditLog entries and dispatches notifications for them.
 
 ---
 
@@ -29560,6 +29559,7 @@ The four invocation edges (5.0 → 9.0, 7.0 → 9.0, 12.0 → 9.0, and 13.0 → 
 | 10.0 Evaluate Fill Status | After assignment changes; scheduled sweep |
 | 11.0 Materialize Occurrences | Scheduled run (daily); manual administrator action |
 | 12.0 Create Manual Assignment | Administrator action |
+| 13.0 Attendance Rule Engine | Scheduled run; manual administrator invocation |
 
 ---
 
@@ -29570,20 +29570,21 @@ The four invocation edges (5.0 → 9.0, 7.0 → 9.0, 12.0 → 9.0, and 13.0 → 
 | 5.0 | D2, D3, D4, D6, D7, D8 (conditional) | D7 |
 | 6.0 | D3, D4 | D8 |
 | 7.0 | D2 (re-res), D3 (re-res), D4, D6 (re-res), D7, D8 (re-res), D10, D11 | D7 |
-| 9.0 | D3, D4, D7, D11 | — |
+| 9.0 | Path 1: D3, D4, D7, D11. Path 2: ConfigurationAuditLog, NotificationSubscription, Admin, PermissionTier, D11. | ConfigurationAuditLog (NotifiedAt, Path 2) |
 | 10.0 | D3, D7, D10, D11 | D3 |
 | 11.0 | D3, D11 | D3, D12 |
 | 12.0 | D2, D3, D4, D6, D7 | D7 |
+| 13.0 | D2 (AttendanceRule), D3, D4, D5 (Readmission), D7 (AttendanceRecord), D10 (MemberStatus), D11 (scope) | D4 (MemberStatusID) |
 
 ---
 
 ## Universal invariants
 
-- **No process writes outside its footprint.** Each process writes only to the stores it is contractually allowed to write to.
-- **No process invokes another except the four locked edges.** 5.0 → 9.0, 7.0 → 9.0, 12.0 → 9.0, and 13.0 → 9.0.
-- **Required-setting discipline.** Each process that depends on a required `SystemSetting` refuses to run if the setting is absent, and surfaces a configuration error.
-- **Lifecycle ownership is clean.** 5.0 creates assignments with `AssignmentStatusID = NULL`; 7.0 owns the status lifecycle. 11.0 creates occurrences with `FillStatusID = NULL`; 10.0 owns the fill status lifecycle.
-- **Additivity.** 5.0 is additive (never modifies or removes an existing assignment). 11.0 is additive and idempotent (never modifies or deletes an existing occurrence).
+- No process writes outside its footprint. Each process writes only to the stores it is contractually allowed to write to.
+- No process invokes another except the four locked edges. 5.0 -> 9.0, 7.0 -> 9.0, 12.0 -> 9.0, and 13.0 -> 9.0.
+- Required-setting discipline. Each process that depends on a required SystemSetting refuses to run if the setting is absent, and surfaces a configuration error.
+- Lifecycle ownership is clean. 5.0 creates assignments with AssignmentStatusID = NULL; 7.0 owns the status lifecycle. 11.0 creates occurrences with FillStatusID = NULL; 10.0 owns the fill status lifecycle.
+- Additivity. 5.0 is additive (never modifies or removes an existing assignment). 11.0 is additive and idempotent (never modifies or deletes an existing occurrence).
 
 ---
 
@@ -29591,19 +29592,19 @@ The four invocation edges (5.0 → 9.0, 7.0 → 9.0, 12.0 → 9.0, and 13.0 → 
 
 For a reader new to the operations layer:
 
-1. **This README** — the layer overview.
-2. **`11.0-materialize-occurrences.md`** — the process that creates occurrences.
-3. **`5.0-generate-assignment.md`** — the process that fills them.
-4. **`7.0-manage-confirmation.md`** — the response lifecycle.
-5. **`10.0-evaluate-fill-status.md`** — the fill state evaluation.
-6. **`6.0-record-attendance.md`** — the raw presence fact.
-7. **`9.0-dispatch-notification.md`** — the outbound channel.
-8. **`12.0-create-manual-assignment.md`** — the direct admin override.
-9. **`13.0-attendance-rule-engine.md`** — the attendance rule engine.
+1. This README — the layer overview.
+2. 11.0-materialize-occurrences.md — the process that creates occurrences.
+3. 5.0-generate-assignment.md — the process that fills them.
+4. 7.0-manage-confirmation.md — the response lifecycle.
+5. 10.0-evaluate-fill-status.md — the fill state evaluation.
+6. 6.0-record-attendance.md — the raw presence fact.
+7. 9.0-dispatch-notification.md — the outbound channel, both paths.
+8. 12.0-create-manual-assignment.md — the direct admin override.
+9. 13.0-attendance-rule-engine.md — the attendance rule engine.
 
 ---
 
-*Source: System Design Specification §7–§14.*
+*Source: System Design Specification §7–§17.*
 
 ==============================================================================
 FILE: docs/spec/README.md
@@ -30077,7 +30078,7 @@ Authentication, session management, authorization/RBAC, privilege escalation pro
 
 ==============================================================================
 FILE: docs/spec/system-design-spec.md
-LINES: 2612
+LINES: 2618
 ==============================================================================
 
 # System Design Specification
@@ -31947,11 +31948,13 @@ It reads the assignment, the member, the occurrence, and the configured channel,
 
 ### 14.1 Derived Schema Behavior
 
-#### 14.1.1 No writes
+#### 14.1.1 Writes
 
-9.0 does not write to any store. It has no persistence side effect. The notification is composed, sent, and forgotten — from the system's perspective.
+9.0 has two paths, and their write footprints differ.
 
-This is a deliberate design choice: introducing a notification log, retry table, or delivery-status field would be new infrastructure. No delivery outcome is observable by the system. If a member does not respond to an assignment, 7.0 may eventually time it out according to its normal timeout rules, regardless of whether the absence of response resulted from notification failure.
+**Path 1 — member-facing.** 9.0 does not write to any store on this path. The notification is composed, sent, and forgotten. No delivery outcome is observable by the system. If a member does not respond to an assignment, 7.0 may eventually time it out according to its normal timeout rules, regardless of whether the absence of response resulted from notification failure.
+
+**Path 2 — authority-facing.** 9.0 writes `ConfigurationAuditLog.NotifiedAt` on each audit row it processes. This is the only write 9.0 performs. There is no notification log, no retry table, and no delivery-status field. `NotifiedAt` records that the sweep has processed the row, not that the underlying transport delivered the message.
 
 #### 14.1.2 Channel selection
 
@@ -31974,6 +31977,7 @@ The current scope assumes a single global channel. Per-member channel preference
 | 5.0 Generate Assignment | On each new automatic assignment created |
 | 7.0 Manage Confirmation | On each replacement assignment created after decline or timeout |
 | 12.0 Create Manual Assignment | Only when the created manual assignment has AssignmentStatusID = NULL at creation |
+| 13.0 Attendance Rule Engine | On each Attendance Rule whose OutcomeType = Notify and whose trigger fires |
 
 **Path 2 — authority-facing, scheduled.** A scheduled authority-notification sweep runs 9.0 on a cadence. On each run, 9.0 reads new Configuration Audit Log entries and dispatches notifications for them.
 
@@ -32022,28 +32026,31 @@ Recipient resolution produces zero or more admins from the matching `Notificatio
 
 | # | Source | Purpose |
 | --- | --- | --- |
-| R1 | D7 RosterAssignment | The assignment being notified |
-| R2 | D4 Member | Contact details |
-| R3 | D3 ServiceOccurrence | Occurrence date and time |
+| R1 | D7 RosterAssignment | The assignment being notified (Path 1) |
+| R2 | D4 Member | Contact details (Path 1) |
+| R3 | D3 ServiceOccurrence | Occurrence date and time (Path 1) |
 | R4 | D11 SystemSetting | NotificationChannel |
+| R5 | ConfigurationAuditLog | New audit rows to process (Path 2) |
+| R6 | NotificationSubscription | Recipients for each audit row (Path 2) |
+| R7 | Admin, PermissionTier | Resolve recipients by tier or by specific admin (Path 2) |
 
-**Writes:** None. 9.0 does not write to any store.
+**Writes:** `ConfigurationAuditLog.NotifiedAt`, on Path 2 only. No other write on either path.
 
 **Invocations:** None. 9.0 does not invoke any process.
 
-**Stores never touched (write):** All stores. 9.0 is read-only on every store it touches.
+**Stores never touched (write):** Every store except `ConfigurationAuditLog`. The `NotifiedAt` column is the only write 9.0 performs.
 
 ### 14.3 Invariants
 
-- Outbound only. 9.0's only product is a message sent to a member.
-- Read-only on all stores.
-- Trigger is bounded. Path 1 is invoked only by 5.0, 7.0, 12.0, and 13.0, on new assignment creation that requires a response. Path 2 is a scheduled sweep, not an invocation.
+- Outbound only. 9.0's product is a message sent to a member on Path 1, and a message sent to one or more authorities on Path 2.
+- Read-only on every store except `ConfigurationAuditLog`, where `NotifiedAt` is written on Path 2.
+- Trigger is bounded. Path 1 is invoked only by 5.0, 7.0, 12.0, and 13.0, on new assignment creation that requires a response or on a Notify outcome. Path 2 is a scheduled sweep, not an invocation.
 - No invocation on status change.
 - No invocation on any other event.
 - Channel selected by setting. Follows the setting's configured validity behavior.
-- Fire-and-forget.
-- No retry.
-- No delivery log.
+- Fire-and-forget on Path 1. At-least-once on Path 2, through retries while `NotifiedAt` remains null.
+- No retry on Path 1.
+- No delivery log on either path.
 - No token.
 - Channel-agnostic contract. SMS, email, push, and others are acceptable implementations behind the same contract.
 
@@ -32483,7 +32490,7 @@ Edge I4 was added by the attendance amendment set. The Attendance Rule engine in
 
 Every process has an independent trigger mechanism except 9.0. Operational data dependencies remain: a process may require records produced by another process to exist before meaningful work can be performed. These are data dependencies, not process dependencies.
 
-**On 10.0's trigger.** The phrase "after assignment changes" describes when 10.0's work becomes necessary, not how 10.0 learns that it has become necessary. No process invokes 10.0. It observes the current state of RosterAssignment on its own periodic sweep. The sweep is what turns assignment changes into evaluated fill status. This is the same data-mediated relationship the rest of §16 describes: the writer (5.0 or 7.0) writes to D7, the reader (10.0) reads D7 on its own trigger. No fourth invocation edge exists.
+**On 10.0's trigger.** The phrase "after assignment changes" describes when 10.0's work becomes necessary, not how 10.0 learns that it has become necessary. No process invokes 10.0. It observes the current state of RosterAssignment on its own periodic sweep. The sweep is what turns assignment changes into evaluated fill status. This is the same data-mediated relationship the rest of §16 describes: the writer (5.0 or 7.0) writes to D7, the reader (10.0) reads D7 on its own trigger. No invocation edge involving 10.0 exists. The four edges that do exist are stated in §16.2.
 
 **On the trigger matrix versus the invocation matrix.** The table above is the trigger matrix. It is distinct from the invocation matrix in §16.3, because triggering and invocation are two different things. 9.0 Dispatch Notification appears in the trigger matrix with two triggers: it is invoked by 5.0, 7.0, 12.0, and 13.0 on new-assignment creation and on Notify outcomes, and it independently runs a scheduled authority-notification sweep that reads new ConfigurationAuditLog entries. Only the first of those is an invocation. The scheduled sweep is a trigger — the scheduler starts 9.0 directly, and no other process calls it. The invocation matrix names four invoking processes: 5.0, 7.0, 12.0, and 13.0. No process invokes 9.0 for the authority-notification path.
 
@@ -32494,7 +32501,7 @@ Every process has an independent trigger mechanism except 9.0. Operational data 
 | 5.0 Generate assignment | D2, D3, D4, D6, D7, D8 (conditional) | D7 |
 | 6.0 Record attendance | D3, D4 | D8 |
 | 7.0 Manage confirmation | D2 (re-res), D3 (re-res), D4, D6 (re-res), D7, D8 (re-res), D10, D11 | D7 |
-| 9.0 Dispatch notification | D3, D4, D7, D11 | — |
+| 9.0 Dispatch notification | D3, D4, D7, D11 (Path 1); ConfigurationAuditLog, NotificationSubscription, Admin, PermissionTier (Path 2) | ConfigurationAuditLog (NotifiedAt, Path 2) |
 | 10.0 Evaluate fill status | D3, D7, D10, D11 | D3 |
 | 11.0 Materialize occurrences | D3, D11 | D3, D12 |
 | 12.0 Create manual assignment | D2, D3, D4, D6, D7 | D7 |

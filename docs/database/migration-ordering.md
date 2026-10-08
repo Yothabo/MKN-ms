@@ -14,9 +14,11 @@ The document describes *what* is applied, in *what order*. The mechanism — one
 
 ## The initial state
 
-At the freeze commit `5ddaf2b`, the database schema is the one produced by the single migration `20261005211358_InitialCreate`. That migration reflects the pre-amendment entities: twelve processes, `Member.IsActive`, `Event.Location`, `EventDuty.Label`, and no entities from the A–G or attendance amendment sets.
+The database schema is currently the one produced by the single existing migration `20261005211358_InitialCreate`. That migration reflects the pre-amendment entities: `Member.IsActive`, `Event.Location`, `EventDuty.Label`, and no entities from the A–G or attendance amendment sets.
 
 Nothing about the initial schema is wrong. It is simply behind the frozen specification.
+
+The initial schema is identified by the migration that produced it, not by a git commit. Git history and schema state are separate concerns; a migration name is the accurate identifier of a schema state.
 
 ---
 
@@ -24,7 +26,7 @@ Nothing about the initial schema is wrong. It is simply behind the frozen specif
 
 The frozen specification defines a schema larger than the initial one. The additions fall into four categories:
 
-- **New entities.** Nine from the A–G set, three from the attendance set, plus the operational store additions.
+- **New entities.** Nine from the A–G set, three from the attendance set.
 - **New columns on existing tables.**
 - **Removed columns.**
 - **New constraints and checks.**
@@ -76,12 +78,11 @@ The additions that do not affect existing constraints:
 - `AttendanceRecord.Source`
 - `Branch.UsesAttendanceRegister`
 - `Event.UsesAttendanceRegister`
-- `MemberStatusId` on `Member` (as a nullable column at this stage; Step 7 makes it non-null)
+- `Member.MemberStatusID` (as a nullable column at this stage; Step 7 makes it non-null)
 - `Member.ReceiptNumber`, `Member.CardNumber`, `Member.JoinReason`
 - `Event.HostBranchID` (as nullable at this stage; Step 7 makes it non-null)
 - `EventDuty.DutyID` (as nullable at this stage; Step 7 makes it non-null)
 - `EventDuty.ServiceDefID`
-- `ConfigurationAuditLog.NotifiedAt` (already created in Step 3, if the entity is created with the field)
 - `IsDeleted` on every configuration entity that gained the two-flag lifecycle
 
 **Step 6 — data migration for the columns that replace others.**
@@ -97,13 +98,16 @@ These steps alter existing data, not just schema:
 - Make `Member.MemberStatusID` non-null.
 - Make `Event.HostBranchID` non-null.
 - Make `EventDuty.DutyID` non-null.
-- Add the `RosterAssignment (MemberID, DutyID, OccurrenceID)` uniqueness constraint (already present in the initial schema).
-- Add the `AttendanceRecord (MemberID, OccurrenceID)` uniqueness constraint (already present).
-- Add the `ServiceSchedule (ServiceDefID, TimeSlotID)` active-row uniqueness constraint (already present).
-- Add the `ServiceOccurrence (ScheduleID, Date)` schedule-sourced uniqueness constraint (already present).
 - Add the `AttendanceRuleScope (AttendanceRuleID, CriteriaType, CriteriaValue)` composite primary key.
 - Add the check constraint forbidding `IsActive = true AND IsDeleted = true` on every configuration entity that carries both.
-- Add the B18 check on `ServiceOccurrence` — exactly one of `ScheduleID`, `EventID` is non-null.
+- Add the check on `ServiceOccurrence`: exactly one of `ScheduleID` or `EventID` is non-null.
+
+The four uniqueness constraints from the original migration are already present:
+
+- `RosterAssignment (MemberID, DutyID, OccurrenceID)` unique.
+- `AttendanceRecord (MemberID, OccurrenceID)` unique.
+- `ServiceSchedule (ServiceDefID, TimeSlotID)` active-row unique.
+- `ServiceOccurrence (ScheduleID, Date)` schedule-sourced unique.
 
 **Step 8 — removed columns.**
 
@@ -146,4 +150,4 @@ The order eliminates each.
 
 ---
 
-*Source: System Design Specification §4, §15; the frozen commit's schema state.*
+*Source: System Design Specification §4, §15; the current migration state.*

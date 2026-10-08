@@ -1865,11 +1865,13 @@ It reads the assignment, the member, the occurrence, and the configured channel,
 
 ### 14.1 Derived Schema Behavior
 
-#### 14.1.1 No writes
+#### 14.1.1 Writes
 
-9.0 does not write to any store. It has no persistence side effect. The notification is composed, sent, and forgotten — from the system's perspective.
+9.0 has two paths, and their write footprints differ.
 
-This is a deliberate design choice: introducing a notification log, retry table, or delivery-status field would be new infrastructure. No delivery outcome is observable by the system. If a member does not respond to an assignment, 7.0 may eventually time it out according to its normal timeout rules, regardless of whether the absence of response resulted from notification failure.
+**Path 1 — member-facing.** 9.0 does not write to any store on this path. The notification is composed, sent, and forgotten. No delivery outcome is observable by the system. If a member does not respond to an assignment, 7.0 may eventually time it out according to its normal timeout rules, regardless of whether the absence of response resulted from notification failure.
+
+**Path 2 — authority-facing.** 9.0 writes `ConfigurationAuditLog.NotifiedAt` on each audit row it processes. This is the only write 9.0 performs. There is no notification log, no retry table, and no delivery-status field. `NotifiedAt` records that the sweep has processed the row, not that the underlying transport delivered the message.
 
 #### 14.1.2 Channel selection
 
@@ -1892,6 +1894,7 @@ The current scope assumes a single global channel. Per-member channel preference
 | 5.0 Generate Assignment | On each new automatic assignment created |
 | 7.0 Manage Confirmation | On each replacement assignment created after decline or timeout |
 | 12.0 Create Manual Assignment | Only when the created manual assignment has AssignmentStatusID = NULL at creation |
+| 13.0 Attendance Rule Engine | On each Attendance Rule whose OutcomeType = Notify and whose trigger fires |
 
 **Path 2 — authority-facing, scheduled.** A scheduled authority-notification sweep runs 9.0 on a cadence. On each run, 9.0 reads new Configuration Audit Log entries and dispatches notifications for them.
 
@@ -1940,28 +1943,31 @@ Recipient resolution produces zero or more admins from the matching `Notificatio
 
 | # | Source | Purpose |
 | --- | --- | --- |
-| R1 | D7 RosterAssignment | The assignment being notified |
-| R2 | D4 Member | Contact details |
-| R3 | D3 ServiceOccurrence | Occurrence date and time |
+| R1 | D7 RosterAssignment | The assignment being notified (Path 1) |
+| R2 | D4 Member | Contact details (Path 1) |
+| R3 | D3 ServiceOccurrence | Occurrence date and time (Path 1) |
 | R4 | D11 SystemSetting | NotificationChannel |
+| R5 | ConfigurationAuditLog | New audit rows to process (Path 2) |
+| R6 | NotificationSubscription | Recipients for each audit row (Path 2) |
+| R7 | Admin, PermissionTier | Resolve recipients by tier or by specific admin (Path 2) |
 
-**Writes:** None. 9.0 does not write to any store.
+**Writes:** `ConfigurationAuditLog.NotifiedAt`, on Path 2 only. No other write on either path.
 
 **Invocations:** None. 9.0 does not invoke any process.
 
-**Stores never touched (write):** All stores. 9.0 is read-only on every store it touches.
+**Stores never touched (write):** Every store except `ConfigurationAuditLog`. The `NotifiedAt` column is the only write 9.0 performs.
 
 ### 14.3 Invariants
 
-- Outbound only. 9.0's only product is a message sent to a member.
-- Read-only on all stores.
-- Trigger is bounded. Path 1 is invoked only by 5.0, 7.0, 12.0, and 13.0, on new assignment creation that requires a response. Path 2 is a scheduled sweep, not an invocation.
+- Outbound only. 9.0's product is a message sent to a member on Path 1, and a message sent to one or more authorities on Path 2.
+- Read-only on every store except `ConfigurationAuditLog`, where `NotifiedAt` is written on Path 2.
+- Trigger is bounded. Path 1 is invoked only by 5.0, 7.0, 12.0, and 13.0, on new assignment creation that requires a response or on a Notify outcome. Path 2 is a scheduled sweep, not an invocation.
 - No invocation on status change.
 - No invocation on any other event.
 - Channel selected by setting. Follows the setting's configured validity behavior.
-- Fire-and-forget.
-- No retry.
-- No delivery log.
+- Fire-and-forget on Path 1. At-least-once on Path 2, through retries while `NotifiedAt` remains null.
+- No retry on Path 1.
+- No delivery log on either path.
 - No token.
 - Channel-agnostic contract. SMS, email, push, and others are acceptable implementations behind the same contract.
 
@@ -2401,7 +2407,7 @@ Edge I4 was added by the attendance amendment set. The Attendance Rule engine in
 
 Every process has an independent trigger mechanism except 9.0. Operational data dependencies remain: a process may require records produced by another process to exist before meaningful work can be performed. These are data dependencies, not process dependencies.
 
-**On 10.0's trigger.** The phrase "after assignment changes" describes when 10.0's work becomes necessary, not how 10.0 learns that it has become necessary. No process invokes 10.0. It observes the current state of RosterAssignment on its own periodic sweep. The sweep is what turns assignment changes into evaluated fill status. This is the same data-mediated relationship the rest of §16 describes: the writer (5.0 or 7.0) writes to D7, the reader (10.0) reads D7 on its own trigger. No fourth invocation edge exists.
+**On 10.0's trigger.** The phrase "after assignment changes" describes when 10.0's work becomes necessary, not how 10.0 learns that it has become necessary. No process invokes 10.0. It observes the current state of RosterAssignment on its own periodic sweep. The sweep is what turns assignment changes into evaluated fill status. This is the same data-mediated relationship the rest of §16 describes: the writer (5.0 or 7.0) writes to D7, the reader (10.0) reads D7 on its own trigger. No invocation edge involving 10.0 exists. The four edges that do exist are stated in §16.2.
 
 **On the trigger matrix versus the invocation matrix.** The table above is the trigger matrix. It is distinct from the invocation matrix in §16.3, because triggering and invocation are two different things. 9.0 Dispatch Notification appears in the trigger matrix with two triggers: it is invoked by 5.0, 7.0, 12.0, and 13.0 on new-assignment creation and on Notify outcomes, and it independently runs a scheduled authority-notification sweep that reads new ConfigurationAuditLog entries. Only the first of those is an invocation. The scheduled sweep is a trigger — the scheduler starts 9.0 directly, and no other process calls it. The invocation matrix names four invoking processes: 5.0, 7.0, 12.0, and 13.0. No process invokes 9.0 for the authority-notification path.
 
@@ -2412,7 +2418,7 @@ Every process has an independent trigger mechanism except 9.0. Operational data 
 | 5.0 Generate assignment | D2, D3, D4, D6, D7, D8 (conditional) | D7 |
 | 6.0 Record attendance | D3, D4 | D8 |
 | 7.0 Manage confirmation | D2 (re-res), D3 (re-res), D4, D6 (re-res), D7, D8 (re-res), D10, D11 | D7 |
-| 9.0 Dispatch notification | D3, D4, D7, D11 | — |
+| 9.0 Dispatch notification | D3, D4, D7, D11 (Path 1); ConfigurationAuditLog, NotificationSubscription, Admin, PermissionTier (Path 2) | ConfigurationAuditLog (NotifiedAt, Path 2) |
 | 10.0 Evaluate fill status | D3, D7, D10, D11 | D3 |
 | 11.0 Materialize occurrences | D3, D11 | D3, D12 |
 | 12.0 Create manual assignment | D2, D3, D4, D6, D7 | D7 |
