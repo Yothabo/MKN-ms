@@ -1211,7 +1211,9 @@ Reserved criteria types (Acceptance Rate, Duties Carried, Days Since Last Assign
 
 #### 10.1.6 Selection within a tier
 
-When a tier produces more candidates than slots, 5.0 fills from the candidate set in a deterministic order. No fairness guarantee is made; no rotation, load-balancing, or recency-based ordering is applied.
+When the first qualifying tier produces more candidates than remaining slots for a duty, 5.0 selects from the candidate set in ascending `MemberID` order. The lowest `MemberID` in the candidate set is assigned first, then the next, until the remaining slots are filled. The ordering is fixed; it is not configurable. No rotation, load balancing, recency ordering, or other implicit fairness is applied. Random selection is not used, because it would make the outcome non-deterministic.
+
+Administrators who want a fairness or preference property expressed configure it through Duty Rule criteria — for example, using `Tenure` to prefer longer-standing members. The tie-breaker provides deterministic mechanical selection; it does not express policy.
 
 #### 10.1.7 Re-entry and uniqueness
 
@@ -1259,6 +1261,7 @@ When 5.0 creates a new automatic assignment, it invokes 9.0 with that assignment
 - Tiers are evaluated in ascending TierOrder.
 - Same-tier rules are ANDed.
 - No tier → every eligible member is an equal candidate.
+- When a tier produces more candidates than slots, the tie-breaker is ascending MemberID. The rule is fixed and is not configurable.
 - No candidate in any tier → slot remains unfilled.
 - Fewer candidates than slots → remaining slots unfilled.
 - 5.0 never removes or modifies an existing assignment.
