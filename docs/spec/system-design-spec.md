@@ -1359,7 +1359,19 @@ A status marked IsTerminal = true does not count toward the effective required s
 
 #### 11.1.3 Status transitions
 
-The system does not enforce a state machine. Any transition between statuses is permitted at the schema level. The lifecycle semantics — which transitions are meaningful — are the admin's concern. The system records the current AssignmentStatusID and nothing else.
+The system does not enforce a state machine keyed on status identity. It does not know what any AssignmentStatus name means. The only lifecycle property it reads is `AssignmentStatus.IsTerminal`. The permitted transitions are therefore expressed in terms of terminality, not status names.
+
+| From | To | Permitted | Condition |
+| --- | --- | --- | --- |
+| NULL | any | Yes | Subject to the applicable process operation. 5.0 creates with NULL; 7.0 owns every transition after that. |
+| non-terminal | non-terminal | Yes | Unconditional. |
+| non-terminal | terminal | Yes | Unconditional. |
+| terminal | terminal | Yes | Unconditional. A terminal-to-terminal move vacates nothing, so no capacity check applies. |
+| terminal | non-terminal | Conditional | Permitted only if the resulting non-terminal assignment count for the affected (OccurrenceID, DutyID) does not exceed the effective required slot count. If it would, the transition is rejected. |
+
+The `terminal → non-terminal` guard is the capacity invariant stated in §11.3. The system does not refuse the transition because it names a status that should not follow the current one; it refuses it because the capacity invariant would be violated.
+
+An administrator may configure any status names and any `IsTerminal` values. The system's behaviour follows from the flag, not from the name. Changing a status's `IsTerminal` value takes effect on the next process run and does not rewrite existing assignments.
 
 #### 11.1.4 Status lifecycle ownership
 
@@ -1432,7 +1444,7 @@ The declining or timed-out row is never modified beyond the status transition. I
 ### 11.3 Invariants
 
 - Status lifecycle ownership: 5.0 creates with NULL; 7.0 owns transitions.
-- Status transitions are unrestricted at the schema level.
+- Status transitions are expressed in terms of terminality, not status identity. The permitted-transition matrix is stated in §11.1.3. `NULL → any`, `non-terminal → non-terminal`, `non-terminal → terminal`, and `terminal → terminal` are unconditional. `terminal → non-terminal` is permitted only when the resulting non-terminal assignment count for the affected (OccurrenceID, DutyID) does not exceed the effective required slot count. This is a lifecycle invariant expressed through `AssignmentStatus.IsTerminal`; no status name is examined.
 - Timeout rule: `now - CreatedAt >= ConfirmationTimeoutHours`.
 - Past-occurrence guard: the timeout transition is recorded, but no replacement is sought and no notification is sent when the occurrence's date is before today in the configured ApplicationTimeZone. This is a fixed rule, resolved via ApplicationTimeZone. It adds no setting.
 - Required-setting failure: missing InitialAssignmentStatusID or required ConfirmationTimeoutHours → 7.0 refuses to run.
