@@ -20829,6 +20829,186 @@ Until then, the files in this directory stay as placeholders.
 *Source: System Design Specification §2, §16. Populated after stack selection.*
 
 ==============================================================================
+FILE: docs/api/adapter-contract.md
+LINES: 174
+==============================================================================
+
+# Adapter Contract
+
+*The contract between the HTTP surface and the process contracts. Derived from the process contracts and the specification. Where this document conflicts with the specification, the specification wins.*
+
+---
+
+## Purpose
+
+This document states the shape of the HTTP adapter that sits between an external caller and the processes. It does not fix the HTTP style. It fixes what any HTTP style must carry, and how the process contracts map to HTTP.
+
+The API directory currently contains placeholders describing what will live here once the stack is chosen. This document is the first content: it fixes the application-level contract; it leaves the transport style open.
+
+---
+
+## The division of responsibility
+
+Three layers.
+
+**The HTTP adapter** parses the request, validates its shape, invokes the process, and translates the process result to an HTTP response. It performs no business logic.
+
+**The process** implements the contract in `docs/processes/contracts.md`. It receives a command, applies its rules, and returns a result or throws.
+
+**The persistence layer** executes the writes the process asks for, subject to the transaction boundaries stated in §9.8.
+
+The adapter is the outer shell. It exists to translate HTTP into the process contract and back. Every business rule lives in the process.
+
+---
+
+## The endpoint inventory
+
+Each process has an HTTP surface. The current endpoint files at the freeze commit carry one endpoint per process, with the configuration layer grouped into a single file.
+
+| Process | Endpoint file at freeze | Endpoint count |
+| --- | --- | --- |
+| 1.0, 2.0, 3.0, 4.0, 8.0 | ConfigurationEndpoints.cs | 54 route mappings |
+| 5.0 | GenerateAssignmentEndpoint.cs | 1 |
+| 6.0 | RecordAttendanceEndpoint.cs | 1 |
+| 7.0 | ManageConfirmationEndpoint.cs | 2 |
+| 10.0 | EvaluateFillStatusEndpoint.cs | 1 |
+| 11.0 | MaterializeOccurrencesEndpoint.cs | 1 |
+| 12.0 | CreateManualAssignmentEndpoint.cs | 1 |
+| 9.0, 13.0 | no HTTP surface at freeze | 0 |
+
+Two processes have no HTTP surface:
+
+- **9.0 Dispatch Notification** is invoked internally by 5.0, 7.0, 12.0, and 13.0 on Path 1, and by the scheduler on Path 2. It has no external caller.
+- **13.0 Attendance Rule Engine** runs on a schedule on its scheduled path. Its manual invocation does not have an HTTP surface at the freeze commit.
+
+Adding an HTTP surface for 13.0's manual invocation is a later addition. The endpoint file would be AttendanceRuleEngineEndpoint.cs.
+
+---
+
+## The request shape
+
+Each endpoint receives an HTTP request. The request carries:
+
+- The command fields stated in `docs/processes/contracts.md` for the process.
+- The identity of the acting admin, when the process receives one.
+
+The identity is not carried in the request body. It is carried by whatever mechanism the HTTP layer uses for caller identity — a header, a session, a token. The specification does not fix the mechanism. What the specification fixes is that the process receives an AdminID, and that the adapter resolves the caller to that AdminID.
+
+At the freeze commit, the adapter accepts the admin ID as a plain field in the request body. This is a development convenience. When an authentication mechanism is introduced, the adapter resolves the ID from the authenticated caller and ignores any body value. The process contract does not change; only the adapter's source for the ID.
+
+### Request field validation
+
+The adapter validates the request's shape before invoking the process. Required fields are checked for presence. Field types are checked. Dates and times are parsed. Enumerated values are checked against their vocabulary.
+
+A shape failure produces a ValidationFailed response and the process is not invoked.
+
+### Field naming
+
+Field names in the request body match the command field names stated in `docs/processes/contracts.md`, using camelCase. OccurrenceId becomes occurrenceId. ActingAdminId becomes actingAdminId. FromDate becomes fromDate.
+
+The adapter is responsible for the mapping. The process receives the contract field name regardless of how the adapter names it externally.
+
+---
+
+## The response shape
+
+Every response is JSON. Every response carries at least a status field whose value is one of two strings:
+
+    {
+      "status": "Success"
+    }
+
+or
+
+    {
+      "status": "Failure"
+    }
+
+### Success responses
+
+A success response carries the status field set to Success, plus the process-specific fields named in `docs/processes/contracts.md`.
+
+For a create operation, the response carries the created entity's primary key. For a batch operation, it carries the counts.
+
+### Failure responses
+
+A failure response carries the status field set to Failure, an errorCode field naming one of the error categories in `docs/database/errors.md`, and an errorDetail field describing the failure in administrator-readable text. For example:
+
+    {
+      "status": "Failure",
+      "errorCode": "validation_failed",
+      "errorDetail": "AssignmentId is required and must be positive."
+    }
+
+### Thrown exceptions
+
+A process may throw. A thrown exception means a system fault, not a caller error. The adapter's error handler catches the throw and returns an HTTP status corresponding to the exception type. The specification does not require the thrown exception's content to be exposed to the caller. A 500-class response is appropriate.
+
+---
+
+## Error category to HTTP status mapping
+
+The mapping below is a recommendation. The specification fixes the error categories; the HTTP status each maps to is an adapter choice. The mapping is stated so the adapter's behaviour is consistent across endpoints.
+
+| Error category | HTTP status | Notes |
+| --- | --- | --- |
+| ValidationFailed | 400 Bad Request | The request is malformed or the fields violate their stated rules |
+| NotFound | 404 Not Found | A referenced entity does not exist |
+| Conflict | 409 Conflict | A uniqueness or state constraint is violated |
+| LifecycleViolation | 422 Unprocessable Entity | The entity exists but the requested transition is not permitted |
+| ConfigurationMissing | 422 Unprocessable Entity | A required setting is absent |
+| ConfigurationInvalid | 422 Unprocessable Entity | A required setting is present but invalid |
+| ConcurrencyConflict | 409 Conflict | A concurrent write prevented an invariant from holding |
+| DependencyFailure | 503 Service Unavailable | An external dependency could not be reached |
+| InvariantViolation | 500 Internal Server Error | A should-be-impossible condition occurred |
+
+The distinction between 400 and 422: 400 is a request that the adapter refuses before invoking the process; 422 is a request the adapter passes to the process, and the process refuses it. The line between them is the shape validation boundary described in C4.
+
+---
+
+## What the adapter does not do
+
+- **It does not authorise.** Authentication and authorization are upstream of the adapter. The adapter passes the resolved AdminID to the process; whether the admin is permitted to perform the operation is decided before the adapter is reached.
+- **It does not validate against the database.** The adapter does not query the database. It validates the request's shape. Referenced entity existence is the process's concern.
+- **It does not perform business logic.** Every rule the system applies lives in a process. The adapter's job is translation.
+- **It does not catch every exception.** A process that throws an InvariantViolation has found a defect. The adapter's error handler surfaces it; the adapter does not attempt recovery.
+
+---
+
+## Scheduled processes
+
+Four processes have scheduled triggers: 11.0, 5.0, 7.0, and 10.0. Two more, 9.0 and 13.0, run on scheduled triggers as well. None of them require an HTTP endpoint to be triggered on schedule. The scheduler invokes them directly.
+
+Each scheduled process also has a manual administrative trigger, except 9.0's authority sweep and 10.0's sweep, which are scheduled only. The manual triggers are HTTP endpoints:
+
+- 5.0, 11.0, 7.0's respond, 10.0's range evaluation, 12.0, and 6.0 have endpoints at the freeze commit.
+- 13.0's manual rule invocation has no endpoint at the freeze commit. Adding one is a later addition.
+
+---
+
+## Swagger and OpenAPI
+
+At the freeze commit, the API exposes Swagger at /swagger in Development. The OpenAPI document is generated by Swashbuckle from the endpoint metadata.
+
+The OpenAPI document is a byproduct of the adapter's implementation. It is not authoritative. If it disagrees with `docs/processes/contracts.md`, the contracts document wins.
+
+---
+
+## What the adapter leaves open
+
+- **The HTTP style.** REST, RPC, or other. The endpoint inventory names process groupings, not URL shapes. The freeze commit uses /api/processes/{process}/... and /api/config/{process}/... as URL conventions. A future revision may change them.
+- **Authentication mechanism.** Not part of the freeze.
+- **Authorisation mechanism.** Not part of the freeze.
+- **Versioning.** Not part of the freeze.
+- **Pagination for list endpoints.** Not part of the freeze.
+- **Content negotiation.** JSON at the freeze; other formats are a later choice.
+- **Rate limiting.** Not part of the freeze.
+
+---
+
+*Source: System Design Specification §16; `docs/processes/contracts.md`; `docs/database/errors.md`; the freeze commit's endpoint inventory.*
+
+==============================================================================
 FILE: docs/api/endpoints.md
 LINES: 95
 ==============================================================================
@@ -24180,6 +24360,161 @@ The specification does not prescribe physical indexes. It names the access patte
 *Source: System Design Specification §8.4, §9.4, §10.4, §11.4, §12.4, §13.4, §14.4.*
 
 ==============================================================================
+FILE: docs/database/migration-ordering.md
+LINES: 149
+==============================================================================
+
+# Migration Ordering
+
+*The order in which the frozen specification's schema changes are applied to the database. Derived from the specification §4 and §15. Where this document conflicts with the specification, the specification wins.*
+
+---
+
+## Purpose
+
+This document states the order in which the schema changes required by the frozen specification are applied. The order is not arbitrary: the additions have dependencies, and applying them out of order leaves the schema in a state that fails a constraint or blocks a later step.
+
+The document describes *what* is applied, in *what order*. The mechanism — one migration or several, EF Core migrations, SQL scripts, or another — is implementation choice.
+
+---
+
+## The initial state
+
+At the freeze commit `5ddaf2b`, the database schema is the one produced by the single migration `20261005211358_InitialCreate`. That migration reflects the pre-amendment entities: twelve processes, `Member.IsActive`, `Event.Location`, `EventDuty.Label`, and no entities from the A–G or attendance amendment sets.
+
+Nothing about the initial schema is wrong. It is simply behind the frozen specification.
+
+---
+
+## The target state
+
+The frozen specification defines a schema larger than the initial one. The additions fall into four categories:
+
+- **New entities.** Nine from the A–G set, three from the attendance set, plus the operational store additions.
+- **New columns on existing tables.**
+- **Removed columns.**
+- **New constraints and checks.**
+
+---
+
+## The ordering
+
+The order below is stated as a sequence. Each step depends on the steps before it.
+
+**Step 1 — new lookup and vocabulary entities.**
+
+Create the entities that have no dependents:
+
+- `MemberStatus`
+- `AttributeType`
+- `Capability`
+
+These have no foreign keys to anything else and can be created in any order among themselves.
+
+**Step 2 — new entities that depend on Step 1.**
+
+- `AttendanceRule` (references `MemberStatus` through `OutcomeStatusID`)
+- `MemberAttributeValue` (references `Member` and `AttributeType`)
+
+`MemberAttributeValue` requires `AttributeType` from Step 1. `AttendanceRule` requires `MemberStatus` from Step 1.
+
+**Step 3 — new entities that reference existing entities.**
+
+- `EventBranch` (references `Event` and `Branch`)
+- `Readmission` (references `Member` and `Admin`)
+- `NotificationSubscription` (references `PermissionTier` and `Admin`)
+- `EntityDeletionPolicy` (references `PermissionTier`)
+- `ConfigurationAuditLog` (references `Admin`)
+
+These reference existing tables but are not referenced by any other new entity.
+
+**Step 4 — new entities that depend on Step 3.**
+
+- `AttendanceRuleScope` (references `AttendanceRule` from Step 2)
+
+**Step 5 — column additions on existing tables.**
+
+The additions that do not affect existing constraints:
+
+- `Role.IsDefault`
+- `DutyRule.ServiceDefID`
+- `ProgramItem.Location`
+- `AttendanceRecord.Source`
+- `Branch.UsesAttendanceRegister`
+- `Event.UsesAttendanceRegister`
+- `MemberStatusId` on `Member` (as a nullable column at this stage; Step 7 makes it non-null)
+- `Member.ReceiptNumber`, `Member.CardNumber`, `Member.JoinReason`
+- `Event.HostBranchID` (as nullable at this stage; Step 7 makes it non-null)
+- `EventDuty.DutyID` (as nullable at this stage; Step 7 makes it non-null)
+- `EventDuty.ServiceDefID`
+- `ConfigurationAuditLog.NotifiedAt` (already created in Step 3, if the entity is created with the field)
+- `IsDeleted` on every configuration entity that gained the two-flag lifecycle
+
+**Step 6 — data migration for the columns that replace others.**
+
+These steps alter existing data, not just schema:
+
+- Populate `Member.MemberStatusID` for every existing member. The status is chosen by the migration script; a sensible default is the row whose `Name` is "Active" or the row that the admin later designates as the default. The migration is where the choice is made; the specification does not prescribe a mapping for existing rows.
+- Populate `Event.HostBranchID` for every existing event. The pre-amendment schema had `Event.Location` as free text. Migration to `HostBranchID` requires the admin to select a branch. The migration may leave `HostBranchID` null temporarily and backfill after the admin has chosen. The specification does not prescribe a mapping for existing rows.
+- Migrate `EventDuty.Label` to `EventDuty.DutyID`. Pre-amendment `EventDuty` rows carried a free-text `Label`. Post-amendment, they reference a `Duty`. The migration either creates a Duty row for each distinct Label or leaves the `DutyID` null. The specification does not prescribe a mapping for existing rows.
+
+**Step 7 — constraints on the added columns.**
+
+- Make `Member.MemberStatusID` non-null.
+- Make `Event.HostBranchID` non-null.
+- Make `EventDuty.DutyID` non-null.
+- Add the `RosterAssignment (MemberID, DutyID, OccurrenceID)` uniqueness constraint (already present in the initial schema).
+- Add the `AttendanceRecord (MemberID, OccurrenceID)` uniqueness constraint (already present).
+- Add the `ServiceSchedule (ServiceDefID, TimeSlotID)` active-row uniqueness constraint (already present).
+- Add the `ServiceOccurrence (ScheduleID, Date)` schedule-sourced uniqueness constraint (already present).
+- Add the `AttendanceRuleScope (AttendanceRuleID, CriteriaType, CriteriaValue)` composite primary key.
+- Add the check constraint forbidding `IsActive = true AND IsDeleted = true` on every configuration entity that carries both.
+- Add the B18 check on `ServiceOccurrence` — exactly one of `ScheduleID`, `EventID` is non-null.
+
+**Step 8 — removed columns.**
+
+- Drop `Member.IsActive`.
+- Drop `Event.Location`.
+- Drop `EventDuty.Label`.
+
+Removal happens after the data migration in Step 6 has ensured the replacing columns carry the data the old columns held.
+
+**Step 9 — data integrity re-validation.**
+
+Every surviving row is checked against every constraint added in Step 7. If any row violates a constraint, the migration fails and the failing rows are identified. The specification does not prescribe a repair strategy; the admin decides.
+
+**Step 10 — seed data.**
+
+Seed scripts are re-written against the frozen schema. See `seed-migration.md`.
+
+---
+
+## What the ordering guarantees
+
+Applying the steps in the order stated leaves the schema in the target state. Applying them out of order produces one of the following failures:
+
+- **Foreign key violation.** A new entity references a table that does not yet exist.
+- **NOT NULL violation.** A column is made non-null before its data migration.
+- **Unique violation.** A uniqueness constraint is added before duplicate rows are resolved.
+- **Check violation.** A check constraint is added before its data migration.
+
+The order eliminates each.
+
+---
+
+## What the ordering does not prescribe
+
+- The mechanism. One migration or ten. EF Core `dotnet ef migrations add` calls or hand-written SQL. The specification does not care.
+- The naming of the steps. The numbering above is for reference.
+- The data migration mapping for pre-amendment rows. This is an administrative decision.
+- The transaction boundary per step. Each step should be atomic, but the mechanism is implementation choice.
+- Whether steps can be combined. Two adjacent steps with no dependency can be applied as one.
+
+---
+
+*Source: System Design Specification §4, §15; the frozen commit's schema state.*
+
+==============================================================================
 FILE: docs/database/schema.md
 LINES: 505
 ==============================================================================
@@ -24689,6 +25024,131 @@ A configuration-lifecycle store holds ConfigurationAuditLog, EntityDeletionPolic
 ---
 
 *Source: System Design Specification §4, §15.*
+
+==============================================================================
+FILE: docs/database/seed-migration.md
+LINES: 119
+==============================================================================
+
+# Seed Migration
+
+*How the existing seed scripts are reconciled with the frozen specification. Derived from the specification and the current seed scripts. Where this document conflicts with the specification, the specification wins.*
+
+---
+
+## Purpose
+
+This document states the strategy for reconciling the seed scripts with the frozen specification. The seed scripts are non-authoritative. They exist to bring a development or test database into a known state. They do not define behaviour; they configure a starting state for testing.
+
+The strategy is a rewrite, not a patch. The existing scripts reflect the pre-amendment schema; the target is the frozen schema. Attempting to patch them produces a script whose structure is half old and half new. A clean rewrite is smaller and clearer.
+
+---
+
+## The current seed scripts
+
+Two scripts exist at the freeze commit:
+
+- `backend/scripts/seed-development.sql` — the minimal configuration to exercise the configuration layer and 11.0.
+- `backend/scripts/seed-assignment.sql` — the additional configuration to exercise 5.0's duty-rule evaluation.
+
+Both are idempotent. Both use `NOT EXISTS` guards on natural keys. Both reflect the pre-amendment schema:
+
+- No `MemberStatus` rows.
+- No `AttributeType` or `MemberAttributeValue` rows.
+- No `EventBranch` rows.
+- `EventDuty` rows with `Label` rather than `DutyID`.
+- `Member` rows with `IsActive` rather than `MemberStatusID`.
+- No settings for the new amendment keys (`DeclinedStatusID`, `TimedOutStatusID`, `YouthAgeMin`, `YouthAgeMax`, the attendance register scope).
+- No `AttendanceRule` rows.
+
+---
+
+## The seed design
+
+The rewrite produces three seed scripts, split by concern.
+
+**`seed-vocabulary.sql`** — the base vocabulary every environment needs.
+
+- Lookup rows: `TimeOfDay`, `ServiceType`, `OutcomeState`, `AssignmentStatus`, `PermissionTier`, `MemberStatus`, `Capability`, `AttributeType`.
+- Vocabulary rows: `Role`, `Duty`.
+- Structural rows: `Branch`, `BranchTimeSlot`, `ServiceDefinition`, `ServiceDefinitionDuty`, `ServiceSchedule`.
+- The `SystemSetting` rows with their production defaults: `OccurrenceHorizonDays`, `InitialAssignmentStatusID`, `DeclinedStatusID`, `TimedOutStatusID`, `ConfirmationTimeoutHours`, the four `OutcomeState*ID` keys, `NotificationChannel`, `ReceiptToCardDurationDays`, `YouthAgeMin`, `YouthAgeMax`, and the global attendance register scope.
+- One default `Role`, one default `MemberStatus`, one default `PermissionTier`. The defaults are the rows the amendment fallback rules use.
+
+**`seed-membership.sql`** — member register and eligibility.
+
+- Members. Each carries a `MemberStatusID` referencing the default status.
+- Identifier history for a subset.
+- Admin rows.
+- Eligibility grants.
+- Member attribute values, where relevant to the duties being exercised.
+
+**`seed-operations.sql`** — the operational configuration that exercises the process contracts.
+
+- Duty rules, with global and per-service rules as the tests require.
+- Attendance rules with different trigger types.
+- Events, programs, program items, and event duties.
+- Additional members where the roster tests require more than the base set.
+
+Splitting the three scripts means a test that needs only vocabulary does not pay for the operational setup, and a test that does not need operational configuration does not carry it.
+
+---
+
+## The rewrite rules
+
+Every rewrite follows the same rules. They are the rules the existing scripts already follow, and they remain correct.
+
+**Idempotency.** Every insert is guarded by a `NOT EXISTS` check on the entity's natural key. The script may be run any number of times; the database ends in the same state.
+
+**Natural-key guards.** The guard names the entity's natural key — `name` for `Role`, `Duty`, `Branch`, `OutcomeState`, `AssignmentStatus`, `PermissionTier`, `MemberStatus`, `AttributeType`, `Capability`, `ServiceType`, `TimeOfDay`; `(name, service_type_id)` for `ServiceDefinition`; `(name, surname)` for `Member`. Where no natural key exists, the guard is a tuple that uniquely identifies the intended row.
+
+**Lowest-id joins.** Where a foreign key must be resolved by name, the join is pinned to the lowest-id matching row: `ORDER BY id LIMIT 1`. This prevents duplicates in a lookup table from multiplying the seeded rows.
+
+**No `ON CONFLICT DO NOTHING` except on primary keys.** `system_setting` uses `ON CONFLICT DO NOTHING` because its key is a true primary key. Every other table uses a `NOT EXISTS` guard, because names are not unique in the schema.
+
+**Deterministic row identities.** Where a script needs to reference a row it inserted, it does so by re-querying on the natural key rather than by assuming an identity value.
+
+---
+
+## What the seed scripts are not
+
+**Not authoritative.** A seed script that disagrees with the specification is wrong. The specification wins.
+
+**Not a migration.** Seed scripts do not alter existing rows. They insert rows that do not exist. A database that already carries a row is left unchanged.
+
+**Not production data.** The scripts populate a development or test environment. Production data is entered by the administrators.
+
+**Not a substitute for configuration.** The seed data represents one possible configuration. The system is not required to run with this configuration; the admin can configure any configuration the specification permits.
+
+**Not illustrative of MKN's actual configuration.** The MKN Configuration Reference (in `docs/spec/`) describes what MKN has configured. The seed data is a development convenience, not a reflection of any real congregation.
+
+---
+
+## What the seed scripts must not do
+
+- **Not reference pre-amendment columns.** No `Member.IsActive`, no `Event.Location`, no `EventDuty.Label`.
+- **Not reference pre-amendment settings.** No `TenureThresholdDays`, no `AgeRangeMin`, no `AgeRangeMax`.
+- **Not depend on execution order** beyond what the foreign-key dependencies require.
+- **Not fail on an empty database.** Every insert must succeed against a database created by `dotnet ef database update`.
+- **Not assume a specific identity for the default rows.** The rewrite queries the default by its flag, not by an assumed primary key.
+
+---
+
+## Verification
+
+After the rewrite, each script is applied to a freshly migrated database. The verification checks:
+
+1. The script succeeds with no error.
+2. The script succeeds again with no error and inserts no new rows.
+3. Every foreign key in every inserted row resolves.
+4. Every `SystemSetting` key the processes require is present.
+5. The default `Role`, default `MemberStatus`, and default `PermissionTier` are identifiable by their flags.
+
+The scripts are treated as tested only when all five checks pass.
+
+---
+
+*Source: System Design Specification §4, §15; the current seed scripts; the migration ordering.*
 
 ==============================================================================
 FILE: docs/database/settings.md
