@@ -1223,7 +1223,7 @@ RosterAssignment is unique on (MemberID, DutyID, OccurrenceID). This is the data
 
 #### 10.1.8 Interaction with 9.0
 
-When 5.0 creates a new automatic assignment, it invokes 9.0 with that assignment as input. 9.0 sends an assignment notice to the member. 5.0 does not wait for the notification result; the invocation is fire-and-forget, and 9.0's failure does not roll back the assignment.
+When 5.0 creates a new automatic assignment, it invokes 9.0 with that assignment as input. 9.0 sends an assignment notice to the member. 5.0 does not wait for the notification result; the invocation is fire-and-forget. A failure of the invocation itself — a thrown exception or a timeout — does not roll back the assignment. 5.0 catches the failure, logs it, and continues to the next assignment. The assignment remains committed. The run is not marked as a failure because a notification was not delivered. The result counters reflect assignments created, not notifications delivered. 5.0 does not retry the invocation; retry, if ever introduced, is a feature of 9.0, not of its callers.
 
 ### 10.2 Read and Write Footprint
 
@@ -1292,7 +1292,6 @@ When 5.0 creates a new automatic assignment, it invokes 9.0 with that assignment
 - Eligibility resolution query shape.
 - Whether 5.0's scheduled and manual runs share a code path.
 - Batching strategy for filling slots across duties within an occurrence.
-- Failure handling when 9.0 invocation fails.
 - The concurrency control mechanism for preserving slot capacity. The required property is stated in §10.3; the mechanism is not prescribed.
 
 ### 10.6 Cross-References
