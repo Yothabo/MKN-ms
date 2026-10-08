@@ -448,7 +448,7 @@ No lifecycle flags.
 | Name | string | No | Administrator-defined label |
 | TriggerType | string | No | AbsenceDays, ReadmissionCount, or Manual |
 | TriggerValue | string | Yes | The trigger's value |
-| OutcomeType | string | No | Notify, SetStatus, IncrementReadmissionCount, or NoOp |
+| OutcomeType | string | No | Notify, SetStatus, or NoOp |
 | OutcomeStatusID | integer | Yes | Foreign key → MemberStatus. Set only when OutcomeType = SetStatus. |
 | Enabled | boolean | No | When false, the rule is not evaluated. |
 | IsActive | boolean | No | True at creation |
@@ -471,12 +471,10 @@ Composite primary key on (AttendanceRuleID, CriteriaType, CriteriaValue). Scope 
 | ReadmissionID | integer | No | Primary key |
 | MemberID | integer | No | Foreign key → Member |
 | ReadmissionDate | date | No |  |
-| PerformedByAdminID | integer | No | Foreign key → Admin |
+| PerformedByAdminID | integer | No | Foreign key → Admin. Records who performed the readmission. |
 | Reason | string | Yes |  |
-| IsActive | boolean | No | True at creation |
-| IsDeleted | boolean | No | False at creation |
 
-One row per readmission event.
+One row per readmission event. A Readmission is a historical fact. It carries no lifecycle flags and is never removed through normal operations.
 
 ---
 
