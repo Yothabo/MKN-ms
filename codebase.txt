@@ -24546,7 +24546,7 @@ For all processes in the current specification, a required setting that is missi
 
 ==============================================================================
 FILE: docs/processes/configuration/1.0-configure-vocabulary.md
-LINES: 169
+LINES: 171
 ==============================================================================
 
 # 1.0 Configure Vocabulary
@@ -24608,14 +24608,16 @@ Administrator action, through the six subprocesses.
 
 ## Entity lifecycle
 
-Every entity created by 1.0 carries lifecycle state except the D10 lookups. For all entities with lifecycle state:
+Every entity created by 1.0 carries the two-flag lifecycle: `IsActive` and `IsDeleted`. Both flags are set at creation, and their meaning is stated in Specification §9.6. The rules are:
 
 - **Creation is immediate.** The entity is active from the moment it is created.
 - **No draft state.** No publish step, no approval gate.
-- **Deactivation, not deletion.** An entity can be deactivated to remove it from future use. It is never deleted.
+- **Deactivation and soft delete, not removal.** An entity may be deactivated, which is reversible, or soft-deleted, which is not reversible through normal operations. The row is never physically removed through normal operations.
+- **Approval and reason requirements are per entity type.** They are configured in `EntityDeletionPolicy`.
+- **Every deactivation and every soft delete writes a `ConfigurationAuditLog` row.**
 - **Edits affect future use only.** No backward propagation to operational records.
 
-D10 lookup values (Outcome State, Assignment Status, Permission Tier, TimeOfDay, ServiceType) do not carry an IsActive flag. They are open lists; retiring a value is a matter of not selecting it in future.
+D10 lookup values (Outcome State, Assignment Status, Permission Tier, TimeOfDay, ServiceType, Capability) also carry both flags. They are open lists; retiring a value is a matter of deactivating or soft-deleting it, not of physical removal.
 
 **Source:** System Design Specification §9.1.1, §9.1.12.
 
@@ -24651,7 +24653,7 @@ StartTime lives on ServiceSchedule, not on ServiceDefinition and not on BranchTi
 
 ### Active schedule uniqueness
 
-An active ServiceSchedule is uniquely identified by the pair (ServiceDefID, TimeSlotID). The uniqueness constraint applies only to active rows. A deactivated schedule does not block creating a new one for the same pair.
+A ServiceSchedule is uniquely identified by the pair (ServiceDefID, TimeSlotID) among rows where `IsActive = true AND IsDeleted = false`. The uniqueness constraint applies only to active, not-deleted rows. A deactivated or soft-deleted schedule does not block creating a new one for the same pair.
 
 **Source:** System Design Specification §9.1.5 (D1 lock).
 
@@ -24678,12 +24680,12 @@ TimeOfDayID is a coarse administrator-defined classification. The actual clock t
 ## Invariants
 
 - No configuration process creates a link between Role and Duty except through a DutyRule row written by 2.0.
-- Configuration entities are deactivated, not deleted.
+- Configuration entities carry both IsActive and IsDeleted. They are deactivated or soft-deleted, never physically removed through normal operations.
 - Editing any configuration row affects future use only.
 - Created entities are active from creation, where the entity has lifecycle state.
 - Names are required but need not be unique.
 - Every foreign key references an existing row.
-- An active ServiceSchedule is uniquely identified by (ServiceDefID, TimeSlotID).
+- A ServiceSchedule is uniquely identified by (ServiceDefID, TimeSlotID) among rows where IsActive = true AND IsDeleted = false.
 - ServiceDefinition.OwningBranchID is enforced when a ServiceSchedule is created or edited.
 - No configuration process evaluates any rule, threshold, or criterion.
 
@@ -24721,7 +24723,7 @@ TimeOfDayID is a coarse administrator-defined classification. The actual clock t
 
 ==============================================================================
 FILE: docs/processes/configuration/2.0-configure-duty-rules.md
-LINES: 178
+LINES: 198
 ==============================================================================
 
 # 2.0 Configure Duty Rules
@@ -24769,10 +24771,12 @@ A Duty Rule is a row with:
 | --- | --- |
 | RuleID | Primary key |
 | DutyID | Foreign key → Duty. The duty this rule ranks candidates for. |
+| ServiceDefID | Foreign key → Service Definition. Optional. Null means the rule applies to the Duty wherever it appears. Set means the rule applies only where the Duty is required by that Service Definition. |
 | TierOrder | Administrator-defined sequence position. |
 | CriteriaType | One of the supported criteria types. |
 | CriteriaValue | The administrator-entered value for that criterion. |
-| IsActive | True at creation. Deactivated, never deleted. |
+| IsActive | True at creation. |
+| IsDeleted | False at creation. |
 
 **Source:** System Design Specification §4 (Duty Rule), §9.1.10.
 
@@ -24789,6 +24793,8 @@ The CriteriaType field is constrained to the fixed vocabulary defined in §5 of 
 - Membership Stage
 - Branch-Attendance Recency
 - Eligibility Flag
+- Member Attribute (references an admin-defined Attribute Type and a required value)
+- Youth (computed from DateOfBirth against the configured YouthAgeMin and YouthAgeMax settings)
 
 Plus three reserved types, which may be written but are not evaluated:
 
@@ -24799,6 +24805,21 @@ Plus three reserved types, which may be written but are not evaluated:
 These are supported criterion *types*, not rules. Their presence in the vocabulary does not activate them anywhere. Which criteria apply to a given Duty is entirely a matter of administrator configuration.
 
 **Source:** System Design Specification §5.
+
+---
+
+## Rule scope
+
+A Duty Rule may be attached to a Duty alone, or to a Duty in the context of a specific Service Definition.
+
+- **Duty-global rule.** `ServiceDefID` is null. The rule applies to the duty wherever the duty appears, on any service that requires it.
+- **Per-service rule.** `ServiceDefID` is set. The rule applies only where the duty is required by that specific Service Definition.
+
+When both kinds of rule exist for the same (Duty, ServiceDefinition) pair, the per-service rules override the duty-global rules entirely for that pair. When only duty-global rules exist, they apply on every service. When only per-service rules exist, they apply on their service and the duty has no rules elsewhere.
+
+Eligibility is not scoped this way. It remains global per (Member, Duty). The per-service refinement is expressed only through Duty Rules.
+
+**Source:** System Design Specification §4 (Duty Rule), §10.1.5.
 
 ---
 
@@ -24854,8 +24875,9 @@ A Duty Rule is deactivated, never deleted. A deactivated rule is invisible to 5.
 - A Duty Rule references an existing Duty.
 - Multiple rules may share TierOrder for a single Duty. Same-tier rules are ANDed.
 - TierOrder gaps are permitted.
-- A deactivated rule is invisible to 5.0.
+- A deactivated rule is invisible to 5.0. A soft-deleted rule is invisible everywhere.
 - Editing a rule does not rewrite any operational record.
+- Per-service rules override duty-global rules entirely for that (Duty, ServiceDefinition) pair.
 - 2.0 never evaluates a rule; it only stores one.
 - The CriteriaType vocabulary is fixed at write time. An administrator cannot invent a new criteria type without a specification revision.
 
@@ -24905,7 +24927,7 @@ A Duty with two tiers, where Tier 2 is "any eligible member," is expressed as a 
 
 ==============================================================================
 FILE: docs/processes/configuration/3.0-manage-membership.md
-LINES: 185
+LINES: 224
 ==============================================================================
 
 # 3.0 Manage Membership
@@ -24969,10 +24991,13 @@ Administrator action.
 - Phone
 - BranchID
 - RoleID
+- MemberStatusID
 
-Only Email is optional.
+Optional fields at creation: Email, JoinReason, ReceiptNumber. CardNumber is null until issued.
 
-**Source:** System Design Specification §9.1.7.
+The member also carries three identifiers. `MemberID` is the system's own primary key, generated by the system, and never changes. `ReceiptNumber` is the congregational identifier held for the first configured duration. `CardNumber` is the congregational identifier issued after the configured duration. Both are administrator-supplied. See the Identifiers section below.
+
+**Source:** System Design Specification §4 (Member), §9.1.7.
 
 ### Cardinality
 
@@ -24986,17 +25011,53 @@ MembershipStage is a free-text field, not a lookup. It is an administrator-defin
 
 **Source:** System Design Specification §9.1.7.
 
+### Member status
+
+A member's operational state is expressed by `MemberStatusID`, a foreign key to the Member Status entity. The administrator defines the status vocabulary. The seeded defaults for MKN are Active, Inactive, RA, preRA, and Deceased.
+
+Each Member Status carries an `IsRosterable` flag. The roster engine consults this flag to determine whether a member with that status may be assigned to a duty. The system does not interpret any status name; the flag is the mechanical property.
+
+The RA and preRA statuses are defined in the vocabulary but no automated transition moves a member into them. Such transitions belong to a future attendance-driven process, which is not in scope for the current specification. An administrator sets the status directly.
+
+**Source:** System Design Specification §4 (Member Status), §9.1.7.
+
 ### Lifecycle
 
-A Member is created active. Deactivation excludes them from new roster generation without touching any existing operational record. A Member is never deleted.
+A Member is created with the default Member Status. Deactivation and soft delete exclude the member from new roster generation without touching any existing operational record. A Member is never physically removed. The two-flag lifecycle is stated in Specification §9.6.
 
-**Source:** System Design Specification §9.1.1.
+**Source:** System Design Specification §9.1.1, §9.6.
 
 ### Edits
 
 Changing a Member's BranchID or RoleID affects only future use. Existing operational records (assignments, attendance) retain their historical context, which is anchored to occurrences, not to the member's current attributes.
 
 **Source:** System Design Specification §9.1.7.
+
+### Member attributes
+
+Beyond the fixed columns, a member may carry any number of administrator-defined attributes. The Attribute Type entity holds the vocabulary of attribute names. The Member Attribute Value entity holds one value per member per attribute set, with the date recorded and the admin who recorded it.
+
+Absence of a value means the attribute is not set. The system does not interpret any attribute name or value. Attributes are used by Duty Rules whose criteria type is Member Attribute.
+
+**Source:** System Design Specification §4 (Attribute Type, Member Attribute Value), §5.
+
+### Identifiers
+
+A member carries three identifiers.
+
+| Identifier | Purpose | Admin-supplied | Never reassigned |
+| --- | --- | --- | --- |
+| MemberID | System identifier. Primary key. | No | N/A — it is the system's own. |
+| ReceiptNumber | Congregational identifier held for the first configured duration. | Yes | No — the row is retired when superseded. |
+| CardNumber | Congregational identifier issued after the configured duration. | Yes | Yes |
+
+The configured duration is a System Setting named `ReceiptToCardDurationDays`. Its value is a deployment choice; the MKN configuration reference uses 90 days.
+
+The administrator issues a receipt at joining. When the configured duration has elapsed, the administrator issues a card. The receipt's Identifier History entry is marked with an `UnassignedDate` and a `Reason`; the card becomes the current identifier. The receipt is not physically removed; it remains in history.
+
+The system does not detect the threshold or issue identifiers automatically. The administrator issues.
+
+**Source:** System Design Specification §4 (Member), §9.1.7.
 
 ---
 
@@ -25025,7 +25086,7 @@ Identifier History is a per-member log of identifier assignments. It tracks ever
 
 ### Lifecycle
 
-Identifier History has no IsActive flag. Entries are added and retired via UnassignedDate; they are never deleted. The entry is a historical record.
+Identifier History carries neither IsActive nor IsDeleted. Entries are added and retired via UnassignedDate; they are never physically removed. The entry is a historical record.
 
 **Source:** System Design Specification §9.1.1, §9.1.7.
 
@@ -25258,7 +25319,7 @@ Eligibility carries neither IsActive nor IsDeleted. Grant/revoke is expressed th
 
 ==============================================================================
 FILE: docs/processes/configuration/8.0-manage-events-and-programs.md
-LINES: 216
+LINES: 231
 ==============================================================================
 
 # 8.0 Manage Events and Programs
@@ -25289,7 +25350,7 @@ Administrator action.
 
 | Direction | Store |
 | --- | --- |
-| Reads | D9 (Event, Program, ProgramItem, EventDuty); D3 (ServiceDefinition for ProgramItem.ServiceDefID); D4 (Member for EventDuty.AssignedMemberID); D10 (AssignmentStatus for EventDuty.AssignmentStatusID) |
+| Reads | D9 (Event, EventBranch, Program, ProgramItem, EventDuty); D3 (ServiceDefinition for ProgramItem.ServiceDefID and EventDuty.ServiceDefID); D4 (Member for EventDuty references); D1 (Duty for EventDuty.DutyID); D10 (AssignmentStatus for EventDuty.AssignmentStatusID) |
 | Writes | D9; D3 (event-sourced ServiceOccurrence rows only) |
 
 **Source:** System Design Specification §9.2.
@@ -25322,13 +25383,23 @@ Administrator action.
 | Name |  |
 | StartDate |  |
 | EndDate |  |
-| Location | Free text |
 | Type | Free text |
-| IsActive | True at creation. Deactivated, never deleted. |
+| HostBranchID | Foreign key → Branch. The branch at which the event is held. |
+| IsActive | True at creation. |
+| IsDeleted | False at creation. |
 
-An Event may span multiple days. StartDate and EndDate are both fields.
+An Event may span multiple days. StartDate and EndDate are both fields. The Event carries no Location field; the host branch expresses where the event is held. A finer physical location, when required, is carried on the Program Item.
 
 **Source:** System Design Specification §4 (Event), §9.1.11.
+
+### EventBranch
+
+| Column | Notes |
+| --- | --- |
+| EventID | Foreign key → Event. Part of composite primary key. |
+| BranchID | Foreign key → Branch. Part of composite primary key. |
+
+The set of branches attending the event. Determines the roster scope across branches. No lifecycle flags; the set is derived from the Event's own state.
 
 ### Program
 
@@ -25337,6 +25408,7 @@ An Event may span multiple days. StartDate and EndDate are both fields.
 | ProgramID | Primary key |
 | EventID | Foreign key → Event. One Program per Event. |
 | Title |  |
+| IsDeleted | False at creation. |
 
 There is exactly one Program per Event.
 
@@ -25353,6 +25425,8 @@ There is exactly one Program per Event.
 | ScheduledStart | Required. Timestamp. |
 | ScheduledEnd | Required. Timestamp. |
 | ServiceDefID | Optional. Foreign key → ServiceDefinition. |
+| Location | Optional. Finer physical location than the branch. |
+| IsDeleted | False at creation. |
 
 **Program Item has no stored status field.** Its live state (upcoming / current / done) is computed at read time from ScheduledStart, ScheduledEnd, and the current time. This is a system-calculated lifecycle, not an administrator-configured one.
 
@@ -25363,14 +25437,16 @@ There is exactly one Program per Event.
 | Column | Notes |
 | --- | --- |
 | EventDutyID | Primary key |
-| ProgramItemID | Foreign key → ProgramItem |
-| Label | Free text, administrator-typed, no preset list |
-| AssignedMemberID | Required. Foreign key → Member. Direct pick. |
-| AssignmentStatusID | Optional. Foreign key → AssignmentStatus. |
+| EventID | Foreign key → Event |
+| DutyID | Foreign key → Duty |
+| ServiceDefID | Optional. Foreign key → ServiceDefinition. When set, the duty uses that service's per-service rules on this event. When null, the duty's global rules apply. |
+| RequiredSlotCount | Required |
+| IsActive | True at creation. |
+| IsDeleted | False at creation. |
 
-EventDuty is not a reference to the Duty table. It represents an ad-hoc role on an event, not a configurable rostering duty. `Label` is free text; the Assignment is a direct member pick, with no Eligibility or Priority run.
+An event duty references a real Duty. Eligibility for the duty comes from the existing Eligibility and Duty Rule modules, not from a parallel path. If the administrator needs a duty that does not yet exist, they create the Duty first, configure its eligibility, then attach it to the event.
 
-**Source:** System Design Specification §4 (Event Duty), §9.1.11.
+**Source:** System Design Specification §4 (Event Duty), §9.1.11, §10.1.5.
 
 ---
 
@@ -25428,9 +25504,9 @@ If a Program Item's ServiceDefID is removed after an occurrence was created, the
 
 ## Lifecycle
 
-Event, Program, ProgramItem, and EventDuty each carry lifecycle state (except Program, which has no IsActive flag in the current specification — it is one-per-event and deactivated only by deactivating its Event).
+Event, Program, ProgramItem, and EventDuty each carry the two-flag lifecycle: IsActive and IsDeleted. Program carries only IsDeleted, because it is one-per-event and deactivated only by deactivating its Event.
 
-Events, ProgramItems, and EventDuties are deactivated, never deleted. Deactivation does not cascade. Existing event-sourced occurrences remain.
+Events, Programs, ProgramItems, and EventDuties may be deactivated or soft-deleted; they are never physically removed through normal operations. Deactivation and soft delete do not cascade to event-sourced occurrences.
 
 **Source:** System Design Specification §9.1.1, §9.1.11.
 
@@ -25440,8 +25516,8 @@ Events, ProgramItems, and EventDuties are deactivated, never deleted. Deactivati
 
 - One Program per Event.
 - ProgramItem does not store status; it is computed.
-- EventDuty references an existing Member directly, with no roster engine run.
-- EventDuty.Label is free text, not a Duty reference.
+- EventDuty references a real Duty. Eligibility comes from the existing Eligibility and Duty Rule modules.
+- EventDuty.ServiceDefID, when set, scopes the duty's per-service rules on that event.
 - Event-sourced ServiceOccurrences are created only by 8.0, never by 11.0.
 - Event-sourced occurrences have GeneratedBy = Administrator and CreatedBy = the acting admin.
 - Event-sourced occurrences derive Date and StartTime from ProgramItem.ScheduledStart.
