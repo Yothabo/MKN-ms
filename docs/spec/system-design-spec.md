@@ -699,6 +699,7 @@ A required setting with no value causes the consuming process to refuse to run a
 | W5 | 4.0 | D6 |
 | W6 | 8.0 | D9; D3 (ServiceOccurrence for event-sourced occurrences) |
 | W7 | 1.0 and 8.0 as needed | D11 (SystemSetting rows) |
+| W8 | Every configuration process | ConfigurationAuditLog (written on every deactivation and every soft delete) |
 
 **Stores never touched:** D7, D8, D12. No configuration process invokes 5.0, 6.0, 7.0, 9.0, 10.0, or 11.0.
 
@@ -769,7 +770,8 @@ The only write to an operational store is 8.0's insertion of event-sourced Servi
 - §13 — Record Attendance.
 - §14 — Dispatch Notification.
 - §15 — Consolidated schema amendments.
-- §16 — System-wide invocation model.
+- §16 — System-wide invocation model. Note: §16 distinguishes invocation from triggering. Configuration processes do not invoke 9.0; the authority-notification path is a scheduled trigger of 9.0, not an invocation.
+- §17 — Create Manual Assignment. Not a configuration-layer process, but listed here because it uses the same Eligibility and DutyRule modules this layer configures.
 
 *End of §9. This section derives from the locked contracts of 1.0, 2.0, 3.0, 4.0, and 8.0, and from the two decisions locked immediately prior to §8 (D1 schedule uniqueness, D2 OutcomeState mapping).*
 
@@ -1452,6 +1454,8 @@ The current scope assumes a single global channel. Per-member channel preference
 - Any configuration change.
 - Any occurrence materialization.
 
+**Invocation versus triggering for 9.0.** The three rows above are invocations: 5.0, 7.0, and 12.0 call 9.0 directly. 9.0 additionally has an independent scheduled trigger — the authority-notification sweep. The sweep reads new ConfigurationAuditLog entries and dispatches notifications for them. It is a trigger, not an invocation: no process calls 9.0 for this path; the scheduler starts 9.0 directly. The durable invariant is unaffected — 9.0 is still the sole process any other process is permitted to invoke.
+
 #### 14.1.4 No delivery tracking
 
 The system does not record that a notification was sent, when, through which channel, or whether it was delivered. There is no NotificationLog.
@@ -1524,7 +1528,7 @@ No index is prescribed at specification level for 9.0.
 - §12 — Evaluate Fill Status.
 - §13 — Record Attendance.
 - §15 — Consolidated schema amendments.
-- §16 — System-wide invocation model.
+- §16 — System-wide invocation model. Note: §16 distinguishes invocation from triggering. 9.0 is invoked by 5.0, 7.0, and 12.0, and independently carries a scheduled authority-notification trigger. The scheduled trigger reads new ConfigurationAuditLog entries. It is not an invocation.
 
 *End of §14. This section derives from the locked 9.0 contract and does not extend it.*
 
@@ -1775,7 +1779,9 @@ The system's default integration mechanism is **shared data**. Processes read fr
 
 Direct process invocation is the exception. It exists only where a process has just created a new RosterAssignment row that requires a response from a member — meaning 9.0 Dispatch Notification must be invoked at that moment, rather than deferred to a polling process. No other process is ever invoked by another process.
 
-The durable invariant is stated as: **9.0 Dispatch Notification is the sole process any other process is permitted to invoke.** The number of processes that invoke it may change as the system grows; the invariant does not.
+The system distinguishes **invocation** from **triggering**. Invocation is a process-to-process call. Triggering is what starts a process running — an administrator action, a scheduled run, a member action, or an invocation by another process. A process may have more than one trigger, and it may both be invokable and carry its own independent triggers.
+
+The durable invariant is stated as: **9.0 Dispatch Notification is the sole process any other process is permitted to invoke.** The number of processes that invoke it may change as the system grows; the invariant does not. This invariant concerns invocation, not triggering. 9.0 additionally carries an independent scheduled trigger for authority notifications, which is a trigger and not an invocation.
 
 ### 16.1 The Full Topology
 
@@ -1861,7 +1867,7 @@ Conditionality is not a property of any specific edge. 7.0's edge (I2) and 12.0'
 | 6.0 Record attendance | Member action; manual admin entry |
 | 7.0 Manage confirmation | Member response; scheduled timeout check |
 | 8.0 Manage events and programs | Administrator action |
-| 9.0 Dispatch notification | Invocation by 5.0, 7.0, or 12.0 |
+| 9.0 Dispatch notification | Invocation by 5.0, 7.0, or 12.0; scheduled authority-notification sweep |
 | 10.0 Evaluate fill status | Periodic sweep; internally observes assignment changes since the last run |
 | 11.0 Materialize occurrences | Scheduled run; manual admin trigger |
 | 12.0 Create manual assignment | Administrator action |
@@ -1869,6 +1875,8 @@ Conditionality is not a property of any specific edge. 7.0's edge (I2) and 12.0'
 Every process has an independent trigger mechanism except 9.0. Operational data dependencies remain: a process may require records produced by another process to exist before meaningful work can be performed. These are data dependencies, not process dependencies.
 
 **On 10.0's trigger.** The phrase "after assignment changes" describes when 10.0's work becomes necessary, not how 10.0 learns that it has become necessary. No process invokes 10.0. It observes the current state of RosterAssignment on its own periodic sweep. The sweep is what turns assignment changes into evaluated fill status. This is the same data-mediated relationship the rest of §16 describes: the writer (5.0 or 7.0) writes to D7, the reader (10.0) reads D7 on its own trigger. No fourth invocation edge exists.
+
+**On the trigger matrix versus the invocation matrix.** The table above is the trigger matrix. It is distinct from the invocation matrix in §16.3, because triggering and invocation are two different things. 9.0 Dispatch Notification appears in the trigger matrix with two triggers: it is invoked by 5.0, 7.0, and 12.0 on new-assignment creation, and it independently runs a scheduled authority-notification sweep that reads new ConfigurationAuditLog entries. Only the first of those is an invocation. The scheduled sweep is a trigger — the scheduler starts 9.0 directly, and no other process calls it. The invocation matrix is unchanged: 9.0 is still invoked by exactly three processes, and no process invokes it for the authority-notification path.
 
 ### 16.5 Data Store Mediation
 
@@ -1884,8 +1892,9 @@ Every process has an independent trigger mechanism except 9.0. Operational data 
 
 ### 16.6 Invariants of the Invocation Model
 
-- **9.0 Dispatch Notification is the sole process any other process is permitted to invoke.** This is the durable form of the invariant; the current count of invoking processes is three (5.0, 7.0, 12.0), but the invariant is stated without a count so it survives future growth.
+- **9.0 Dispatch Notification is the sole process any other process is permitted to invoke.** This is the durable form of the invariant; the current count of invoking processes is three (5.0, 7.0, 12.0), but the invariant is stated without a count so it survives future growth. This invariant concerns invocation, not triggering.
 - **Three direct invocation edges currently exist.** 5.0 → 9.0 (unconditional), 7.0 → 9.0 (conditional, on replacement only), 12.0 → 9.0 (conditional, only when AssignmentStatusID is NULL at creation). All three terminate at 9.0.
+- **9.0 additionally has an independent scheduled trigger.** The authority-notification sweep is a scheduled trigger of 9.0, not an invocation. It reads new ConfigurationAuditLog entries and dispatches notifications for them. No process invokes 9.0 for this path; the scheduler starts 9.0 directly.
 - **Shared data is the default integration mechanism.**
 - **No orchestration.** No process orchestrates another.
 - **No process depends on another process's successful completion for its own persisted business result.** 5.0 and 7.0 invoke 9.0 fire-and-forget; whether the invocation is technically synchronous or asynchronous is an implementation choice and does not create a semantic dependency.
