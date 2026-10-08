@@ -56,6 +56,12 @@ These are indexes that may be warranted based on the access patterns the process
 - **RosterAssignment (OccurrenceID, DutyID).** Already noted for 5.0; serves 10.0's fill-state computation as well.
 - **ServiceOccurrence (FillStatusID).** Serves "which occurrences are unfilled" queries from administrator dashboards. Whether warranted depends on whether such queries are common.
 
+### Serves 13.0 Attendance Rule Engine
+
+- **AttendanceRule (Enabled).** Serves the query for the enabled rule set.
+- **AttendanceRuleScope (AttendanceRuleID).** Serves rule scope resolution.
+- **Readmission (MemberID, IsDeleted).** Serves the readmission count.
+
 ### Serves 6.0 Record Attendance
 
 - **AttendanceRecord (OccurrenceID).** Natural access pattern for "who attended this occurrence" queries.

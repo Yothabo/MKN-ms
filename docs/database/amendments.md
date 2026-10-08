@@ -300,7 +300,47 @@ The amendments below were added after the original fifteen. They are the changes
 
 `ReceiptToCardDurationDays` was already defined in the original settings list.
 
-### 5.5 — Removed columns
+### 5.5 — Attendance amendment set
+
+#### 5.5.1 New entities
+
+| Entity | Purpose | Source |
+| --- | --- | --- |
+| AttendanceRule | Admin-defined attendance rule with a trigger and an outcome | §4, §13.6 |
+| AttendanceRuleScope | Join table of scope criteria for an Attendance Rule | §4, §13.6 |
+| Readmission | One row per readmission event | §4, §13.6 |
+
+#### 5.5.2 New columns
+
+| Table | Column | Type | Nullable | Source |
+| --- | --- | --- | --- | --- |
+| AttendanceRecord | Source | string | No | §4 |
+| Branch | UsesAttendanceRegister | boolean | Yes | §4, §9.6 |
+| Event | UsesAttendanceRegister | boolean | Yes | §4, §9.6 |
+
+#### 5.5.3 New process
+
+| # | Process | Trigger | Source |
+| --- | --- | --- | --- |
+| 13.0 | Attendance Rule Engine | Scheduled; manual admin | §13.6, §16 |
+
+#### 5.5.4 New invocation edge
+
+| # | From | To | Trigger | Conditionality | Source |
+| --- | --- | --- | --- | --- | --- |
+| I4 | 13.0 Attendance Rule Engine | 9.0 Dispatch Notification | Attendance Rule with OutcomeType = Notify fires | Conditional | §16.2 |
+
+The count of invoking processes is now four: 5.0, 7.0, 12.0, 13.0.
+
+#### 5.5.5 Behaviour rules
+
+| Rule | Statement | Source |
+| --- | --- | --- |
+| Attendance register scope resolution | Most specific scope wins: event, then branch, then global | §9.6 |
+| Branch-Attendance Recency skip | The criterion is skipped when the effective register scope is off | §10.1.5 |
+| Attendance register eligibility | A member is eligible only if they hold a ReceiptNumber or CardNumber | §4, §9.1.7 |
+
+### 5.6 — Removed columns
 
 | Table | Column | Reason | Source |
 | --- | --- | --- | --- |

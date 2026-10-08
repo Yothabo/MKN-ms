@@ -55,6 +55,15 @@ Inactive schedules are excluded. A deactivated schedule may be replaced.
 
 Applies regardless of AssignmentSource. Prevents both automatic and manual duplicate inserts.
 
+### `AttendanceRuleScope (AttendanceRuleID, CriteriaType, CriteriaValue)`
+
+| Property | Value |
+| --- | --- |
+| Table | AttendanceRuleScope |
+| Columns | (AttendanceRuleID, CriteriaType, CriteriaValue) |
+| Purpose | Composite primary key. Scope rows for one rule are ANDed. |
+| Source | §4, §13.6 |
+
 ### `AttendanceRecord (MemberID, OccurrenceID)`
 
 | Property | Value |
