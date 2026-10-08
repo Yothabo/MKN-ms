@@ -80,7 +80,7 @@ These processes read configuration at run time. None of them embeds an organizat
           ▼
    AttendanceRecord
 ~~~
-The three invocation edges (5.0 → 9.0, 7.0 → 9.0, and 12.0 → 9.0) are the only process-to-process calls in the system. Every other relationship is data-mediated.
+The four invocation edges (5.0 → 9.0, 7.0 → 9.0, 12.0 → 9.0, and 13.0 → 9.0) are the only process-to-process calls in the system. Every other relationship is data-mediated.
 
 ---
 
@@ -91,7 +91,7 @@ The three invocation edges (5.0 → 9.0, 7.0 → 9.0, and 12.0 → 9.0) are the 
 | 5.0 Generate Assignment | Scheduled run; manual administrator action |
 | 6.0 Record Attendance | Member action; manual administrator entry |
 | 7.0 Manage Confirmation | Member response; scheduled timeout check |
-| 9.0 Dispatch Notification | Invocation by 5.0, 7.0, or 12.0 |
+| 9.0 Dispatch Notification | Invocation by 5.0, 7.0, 12.0, or 13.0; scheduled authority-notification sweep |
 | 10.0 Evaluate Fill Status | After assignment changes; scheduled sweep |
 | 11.0 Materialize Occurrences | Scheduled run (daily); manual administrator action |
 | 12.0 Create Manual Assignment | Administrator action |
@@ -115,7 +115,7 @@ The three invocation edges (5.0 → 9.0, 7.0 → 9.0, and 12.0 → 9.0) are the 
 ## Universal invariants
 
 - **No process writes outside its footprint.** Each process writes only to the stores it is contractually allowed to write to.
-- **No process invokes another except the three locked edges.** 5.0 → 9.0, 7.0 → 9.0, and 12.0 → 9.0.
+- **No process invokes another except the four locked edges.** 5.0 → 9.0, 7.0 → 9.0, 12.0 → 9.0, and 13.0 → 9.0.
 - **Required-setting discipline.** Each process that depends on a required `SystemSetting` refuses to run if the setting is absent, and surfaces a configuration error.
 - **Lifecycle ownership is clean.** 5.0 creates assignments with `AssignmentStatusID = NULL`; 7.0 owns the status lifecycle. 11.0 creates occurrences with `FillStatusID = NULL`; 10.0 owns the fill status lifecycle.
 - **Additivity.** 5.0 is additive (never modifies or removes an existing assignment). 11.0 is additive and idempotent (never modifies or deletes an existing occurrence).
@@ -134,6 +134,7 @@ For a reader new to the operations layer:
 6. **`6.0-record-attendance.md`** — the raw presence fact.
 7. **`9.0-dispatch-notification.md`** — the outbound channel.
 8. **`12.0-create-manual-assignment.md`** — the direct admin override.
+9. **`13.0-attendance-rule-engine.md`** — the attendance rule engine.
 
 ---
 

@@ -21854,7 +21854,7 @@ Each of these is a deliberate decision, not an oversight.
 
 ==============================================================================
 FILE: docs/architecture/entity-reference.md
-LINES: 615
+LINES: 613
 ==============================================================================
 
 # Entity Reference
@@ -22375,7 +22375,7 @@ Exactly one of RecipientTierID or RecipientAdminID is set per row.
 | Name | string | No | Administrator-defined label |
 | TriggerType | string | No | AbsenceDays, ReadmissionCount, or Manual |
 | TriggerValue | string | Yes | The trigger's value |
-| OutcomeType | string | No | Notify, SetStatus, IncrementReadmissionCount, or NoOp |
+| OutcomeType | string | No | Notify, SetStatus, or NoOp |
 | OutcomeStatusID | integer | Yes | Foreign key → Member Status. Set only when OutcomeType = SetStatus. |
 | Enabled | boolean | No | When false, the rule is not evaluated. |
 | IsActive | boolean | No | True at creation. |
@@ -22398,12 +22398,10 @@ Composite primary key on (AttendanceRuleID, CriteriaType, CriteriaValue). Multip
 | ReadmissionID | integer | No | Primary key |
 | MemberID | integer | No | Foreign key → Member |
 | ReadmissionDate | date | No |  |
-| PerformedByAdminID | integer | No | Foreign key → Admin |
+| PerformedByAdminID | integer | No | Foreign key → Admin. Records who performed the readmission. |
 | Reason | string | Yes |  |
-| IsActive | boolean | No | True at creation. |
-| IsDeleted | boolean | No | False at creation. |
 
-One row per readmission event.
+One row per readmission event. A Readmission is a historical fact. It carries no lifecycle flags and is never removed through normal operations.
 
 ## Summary of foreign keys
 
@@ -22840,7 +22838,7 @@ The following topology matches §16 of the System Design Specification. Only con
 | 6.0 Record Attendance | — | — |
 | 7.0 Manage Confirmation | 9.0 | — |
 | 8.0 Manage Events and Programs | — | — |
-| 9.0 Dispatch Notification | — | 5.0, 7.0, 12.0 |
+| 9.0 Dispatch Notification | — | 5.0, 7.0, 12.0, 13.0 |
 | 10.0 Evaluate Fill Status | — | — |
 | 11.0 Materialize Occurrences | — | — |
 | 12.0 Create Manual Assignment | 9.0 | — |
@@ -24272,7 +24270,7 @@ These are indexes that may be warranted based on the access patterns the process
 
 - **AttendanceRule (Enabled).** Serves the query for the enabled rule set.
 - **AttendanceRuleScope (AttendanceRuleID).** Serves rule scope resolution.
-- **Readmission (MemberID, IsDeleted).** Serves the readmission count.
+- **Readmission (MemberID).** Serves the readmission count.
 
 ### Serves 6.0 Record Attendance
 
@@ -28301,7 +28299,7 @@ No new index is required. The uniqueness check is served by the existing `Roster
 
 ==============================================================================
 FILE: docs/processes/operations/13.0-attendance-rule-engine.md
-LINES: 166
+LINES: 165
 ==============================================================================
 
 # 13.0 Attendance Rule Engine
@@ -28338,7 +28336,7 @@ The engine does not depend on any other process running first. It reads current 
 | Direction | Store |
 | --- | --- |
 | Reads | D2 (AttendanceRule, AttendanceRuleScope), D3 (Branch.UsesAttendanceRegister, Event.UsesAttendanceRegister — effective scope), D4 (Member, MemberStatus), D5 (Readmission), D7 (AttendanceRecord), D10 (MemberStatus lookup), D11 (SystemSetting — the global register scope) |
-| Writes | D4 (MemberStatusID when a SetStatus outcome fires), D5 (Readmission rows when readmission is recorded) |
+| Writes | D4 (MemberStatusID when a SetStatus outcome fires). The engine reads Readmission and never writes it; process 3.0 owns Readmission creation. |
 
 **Never reads or writes:** D1, D6, D8, D9, D12. Never modifies AttendanceRecord. Never modifies any assignment. Never modifies fill status. Never invokes any process.
 
@@ -28356,7 +28354,7 @@ An Attendance Rule is one row created by the administrator. It carries:
 | Name | Administrator-defined label |
 | TriggerType | AbsenceDays, ReadmissionCount, or Manual |
 | TriggerValue | The trigger's value. Days for AbsenceDays, count for ReadmissionCount. Unused for Manual. |
-| OutcomeType | Notify, SetStatus, IncrementReadmissionCount, or NoOp |
+| OutcomeType | Notify, SetStatus, or NoOp |
 | OutcomeStatusID | Foreign key to Member Status. Set only when OutcomeType = SetStatus. |
 | Enabled | When false, the rule is not evaluated. |
 
@@ -28380,7 +28378,6 @@ The rule's scope is expressed through the Attendance Rule Scope join table. Mult
 
 - **Notify.** A notification is composed and sent through the configured channel. No status change.
 - **SetStatus.** The member's MemberStatusID is set to the status named by OutcomeStatusID.
-- **IncrementReadmissionCount.** The member's readmission count is incremented. In the current phase, readmission counts are derived from Readmission rows, which are recorded by an administrator. The outcome is a no-op until readmission recording is more fully specified.
 - **NoOp.** The rule does nothing. Used to define a rule that is disabled without deleting it.
 
 **Source:** System Design Specification §13.6.
@@ -28397,7 +28394,7 @@ For each enabled rule:
 4. Evaluate the trigger. AbsenceDays compares the member's last attendance against the current date, against TriggerValue. ReadmissionCount compares the member's readmission count against TriggerValue. Manual fires only when the admin invokes the rule explicitly.
 5. Apply the outcome.
 
-The engine is idempotent. Running twice with unchanged data produces the same result.
+The engine is not idempotent with respect to its external outcomes. Repeating a run while a trigger remains true may produce another notification or another outcome application, even when the member's resulting state is unchanged. Determinism is not idempotency: for a given state the same inputs produce the same outcomes, but running twice may apply the same SetStatus outcome twice if the trigger still holds.
 
 **Source:** System Design Specification §13.6.
 
@@ -28434,7 +28431,7 @@ The two cases are expressed as separate rules. A rule scoped to one branch group
 
 - Idempotent per run.
 - Reads attendance facts, does not modify them.
-- Writes only MemberStatusID and Readmission rows.
+- Writes only MemberStatusID. The engine reads Readmission and never writes it; process 3.0 owns Readmission creation.
 - Invokes only 9.0, and only when a Notify outcome fires.
 - On no other invocation edge.
 - Does not resolve the scope of any rule on its own initiative. It applies the scopes the administrator configured.
@@ -28450,7 +28447,7 @@ The two cases are expressed as separate rules. A rule scoped to one branch group
 - **`AttendanceRule (Enabled)`** — natural access pattern for the enabled rule set.
 - **`AttendanceRuleScope (AttendanceRuleID)`** — natural access pattern for resolving a rule's scope.
 - **`AttendanceRecord (MemberID, Timestamp)`** — natural access pattern for the absence check.
-- **`Readmission (MemberID, IsDeleted)`** — natural access pattern for the readmission count.
+- **`Readmission (MemberID)`** — natural access pattern for the readmission count.
 
 Physical forms are implementation-dependent.
 
@@ -29377,7 +29374,7 @@ No index is prescribed at specification level for 9.0.
 
 ==============================================================================
 FILE: docs/processes/operations/README.md
-LINES: 140
+LINES: 141
 ==============================================================================
 
 
@@ -29462,7 +29459,7 @@ These processes read configuration at run time. None of them embeds an organizat
           ▼
    AttendanceRecord
 ~~~
-The three invocation edges (5.0 → 9.0, 7.0 → 9.0, and 12.0 → 9.0) are the only process-to-process calls in the system. Every other relationship is data-mediated.
+The four invocation edges (5.0 → 9.0, 7.0 → 9.0, 12.0 → 9.0, and 13.0 → 9.0) are the only process-to-process calls in the system. Every other relationship is data-mediated.
 
 ---
 
@@ -29473,7 +29470,7 @@ The three invocation edges (5.0 → 9.0, 7.0 → 9.0, and 12.0 → 9.0) are the 
 | 5.0 Generate Assignment | Scheduled run; manual administrator action |
 | 6.0 Record Attendance | Member action; manual administrator entry |
 | 7.0 Manage Confirmation | Member response; scheduled timeout check |
-| 9.0 Dispatch Notification | Invocation by 5.0, 7.0, or 12.0 |
+| 9.0 Dispatch Notification | Invocation by 5.0, 7.0, 12.0, or 13.0; scheduled authority-notification sweep |
 | 10.0 Evaluate Fill Status | After assignment changes; scheduled sweep |
 | 11.0 Materialize Occurrences | Scheduled run (daily); manual administrator action |
 | 12.0 Create Manual Assignment | Administrator action |
@@ -29497,7 +29494,7 @@ The three invocation edges (5.0 → 9.0, 7.0 → 9.0, and 12.0 → 9.0) are the 
 ## Universal invariants
 
 - **No process writes outside its footprint.** Each process writes only to the stores it is contractually allowed to write to.
-- **No process invokes another except the three locked edges.** 5.0 → 9.0, 7.0 → 9.0, and 12.0 → 9.0.
+- **No process invokes another except the four locked edges.** 5.0 → 9.0, 7.0 → 9.0, 12.0 → 9.0, and 13.0 → 9.0.
 - **Required-setting discipline.** Each process that depends on a required `SystemSetting` refuses to run if the setting is absent, and surfaces a configuration error.
 - **Lifecycle ownership is clean.** 5.0 creates assignments with `AssignmentStatusID = NULL`; 7.0 owns the status lifecycle. 11.0 creates occurrences with `FillStatusID = NULL`; 10.0 owns the fill status lifecycle.
 - **Additivity.** 5.0 is additive (never modifies or removes an existing assignment). 11.0 is additive and idempotent (never modifies or deletes an existing occurrence).
@@ -29516,6 +29513,7 @@ For a reader new to the operations layer:
 6. **`6.0-record-attendance.md`** — the raw presence fact.
 7. **`9.0-dispatch-notification.md`** — the outbound channel.
 8. **`12.0-create-manual-assignment.md`** — the direct admin override.
+9. **`13.0-attendance-rule-engine.md`** — the attendance rule engine.
 
 ---
 
@@ -29684,7 +29682,7 @@ Wednesday's Branch Time Slot start time changes between school term and school h
 
 ==============================================================================
 FILE: docs/spec/dfd.md
-LINES: 290
+LINES: 303
 ==============================================================================
 
 
@@ -29714,7 +29712,7 @@ flowchart TB
 
 Level 1 — Process Decomposition
 
-Twelve processes. 11.0 Materialize Occurrences is system/time-triggered, with an optional manual trigger from Administrator. 12.0 Create Manual Assignment is administrator-triggered, with no scheduled component. These are the only two processes without a required external-entity input on their primary trigger path.
+Thirteen processes. 11.0 Materialize Occurrences is system/time-triggered, with an optional manual trigger from Administrator. 12.0 Create Manual Assignment is administrator-triggered, with no scheduled component. 13.0 Attendance Rule Engine is scheduled, with an optional manual invocation.
 
 ```mermaid
 flowchart TB
@@ -29740,6 +29738,7 @@ flowchart TB
         P10((10.0 Evaluate fill status))
         P11((11.0 Materialize occurrences))
         P12((12.0 Create manual assignment))
+        P13((13.0 Attendance Rule Engine))
     end
 
     D1[(D1 Role / Duty)]
@@ -29754,6 +29753,7 @@ flowchart TB
     D10[(D10 Config Lookups)]
     D11[(D11 System Setting)]
     D12[(D12 Materializer Run Log)]
+    D13[(D13 Attendance Rule / Scope / Readmission)]
 
     Admin -->|Define roles, duties, branches, services| P1
     P1 --> D1
@@ -29813,6 +29813,15 @@ flowchart TB
     D7 -.->|Uniqueness check| P12
     P12 -->|Creates manual assignment| D7
     P12 -.->|Invokes only when AssignmentStatusID is NULL| P9
+
+    D2 -.->|Reads Attendance Rule and Scope| P13
+    D3 -.->|Reads register scope| P13
+    D4 -.->|Reads Member and Member Status| P13
+    D4 -.->|Reads readmission history| P13
+    D7 -.->|Reads Attendance Record| P13
+    D10 -.->|Reads Member Status lookup| P13
+    P13 -.->|Writes Member Status ID| D4
+    P13 -.->|Invokes when Outcome Type is Notify| P9
 ```
 
 ---
@@ -29950,6 +29959,7 @@ Process Dictionary
 
 11.0 Materialize occurrences D11, D3 D3, D12
 12.0 Create manual assignment D2, D3, D4, D6, D7 D7
+13.0 Attendance Rule Engine D2, D3, D4, D5, D7, D10 D4
 
 Data Store Dictionary
 
@@ -29966,6 +29976,7 @@ D9 Event, Program, Program Item, Event Duty
 D10 Outcome State, Assignment Status, Permission Tier, TimeOfDay, ServiceType
 D11 System Setting
 D12 Materializer Run Log
+D13 Attendance Rule, Attendance Rule Scope, Readmission
 
 ---
 

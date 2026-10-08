@@ -211,7 +211,7 @@ The following topology matches §16 of the System Design Specification. Only con
 | 6.0 Record Attendance | — | — |
 | 7.0 Manage Confirmation | 9.0 | — |
 | 8.0 Manage Events and Programs | — | — |
-| 9.0 Dispatch Notification | — | 5.0, 7.0, 12.0 |
+| 9.0 Dispatch Notification | — | 5.0, 7.0, 12.0, 13.0 |
 | 10.0 Evaluate Fill Status | — | — |
 | 11.0 Materialize Occurrences | — | — |
 | 12.0 Create Manual Assignment | 9.0 | — |

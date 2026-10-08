@@ -25,7 +25,7 @@ flowchart TB
 
 Level 1 — Process Decomposition
 
-Twelve processes. 11.0 Materialize Occurrences is system/time-triggered, with an optional manual trigger from Administrator. 12.0 Create Manual Assignment is administrator-triggered, with no scheduled component. These are the only two processes without a required external-entity input on their primary trigger path.
+Thirteen processes. 11.0 Materialize Occurrences is system/time-triggered, with an optional manual trigger from Administrator. 12.0 Create Manual Assignment is administrator-triggered, with no scheduled component. 13.0 Attendance Rule Engine is scheduled, with an optional manual invocation.
 
 ```mermaid
 flowchart TB
@@ -51,6 +51,7 @@ flowchart TB
         P10((10.0 Evaluate fill status))
         P11((11.0 Materialize occurrences))
         P12((12.0 Create manual assignment))
+        P13((13.0 Attendance Rule Engine))
     end
 
     D1[(D1 Role / Duty)]
@@ -65,6 +66,7 @@ flowchart TB
     D10[(D10 Config Lookups)]
     D11[(D11 System Setting)]
     D12[(D12 Materializer Run Log)]
+    D13[(D13 Attendance Rule / Scope / Readmission)]
 
     Admin -->|Define roles, duties, branches, services| P1
     P1 --> D1
@@ -124,6 +126,15 @@ flowchart TB
     D7 -.->|Uniqueness check| P12
     P12 -->|Creates manual assignment| D7
     P12 -.->|Invokes only when AssignmentStatusID is NULL| P9
+
+    D2 -.->|Reads Attendance Rule and Scope| P13
+    D3 -.->|Reads register scope| P13
+    D4 -.->|Reads Member and Member Status| P13
+    D4 -.->|Reads readmission history| P13
+    D7 -.->|Reads Attendance Record| P13
+    D10 -.->|Reads Member Status lookup| P13
+    P13 -.->|Writes Member Status ID| D4
+    P13 -.->|Invokes when Outcome Type is Notify| P9
 ```
 
 ---
@@ -261,6 +272,7 @@ Process Dictionary
 
 11.0 Materialize occurrences D11, D3 D3, D12
 12.0 Create manual assignment D2, D3, D4, D6, D7 D7
+13.0 Attendance Rule Engine D2, D3, D4, D5, D7, D10 D4
 
 Data Store Dictionary
 
@@ -277,6 +289,7 @@ D9 Event, Program, Program Item, Event Duty
 D10 Outcome State, Assignment Status, Permission Tier, TimeOfDay, ServiceType
 D11 System Setting
 D12 Materializer Run Log
+D13 Attendance Rule, Attendance Rule Scope, Readmission
 
 ---
 

@@ -60,7 +60,7 @@ These are indexes that may be warranted based on the access patterns the process
 
 - **AttendanceRule (Enabled).** Serves the query for the enabled rule set.
 - **AttendanceRuleScope (AttendanceRuleID).** Serves rule scope resolution.
-- **Readmission (MemberID, IsDeleted).** Serves the readmission count.
+- **Readmission (MemberID).** Serves the readmission count.
 
 ### Serves 6.0 Record Attendance
 
