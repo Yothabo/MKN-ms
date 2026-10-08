@@ -123,15 +123,6 @@ Maps the Filled mechanical condition.
 
 The following settings are referenced by the locked contracts but were described in the MKN Configuration Reference and in §4 of the specification, not introduced by the amendment sweep. They are listed here for completeness.
 
-### TenureThresholdDays
-
-| Property | Value |
-| --- | --- |
-| Key | TenureThresholdDays |
-| Type | integer |
-| Unit | days |
-| Consumed by | 5.0 Generate Assignment, when a Tenure criterion is evaluated |
-| Source | MKN Configuration Reference |
 
 ### ReceiptToCardDurationDays
 
@@ -169,16 +160,6 @@ The minimum age at which a member counts as a youth, for the computed youth pseu
 
 The maximum age at which a member counts as a youth, for the computed youth pseudo-attribute.
 
-### Age-range bounds
-
-| Property | Value |
-| --- | --- |
-| Key(s) | AgeRangeMin, AgeRangeMax (or equivalent) |
-| Type | integer |
-| Consumed by | 5.0 Generate Assignment, when an Age Range criterion is evaluated |
-| Source | MKN Configuration Reference |
-
----
 
 ## The complete list
 
@@ -192,7 +173,6 @@ The maximum age at which a member counts as a youth, for the computed youth pseu
 | OutcomeStateFilledID | integer | true | 10.0 |
 | OutcomeStateCancelledID | integer | false | 10.0 |
 | NotificationChannel | string | deployment choice | 9.0 |
-| TenureThresholdDays | integer | not fixed | 5.0 (Tenure criterion) |
 | ReceiptToCardDurationDays | integer | not fixed | Administrative |
 | Age-range bounds | integer | not fixed | 5.0 (Age Range criterion) |
 

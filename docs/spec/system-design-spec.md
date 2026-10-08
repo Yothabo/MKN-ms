@@ -561,6 +561,8 @@ One row per readmission event. A member's readmission count is the number of non
 
 These are supported criterion *types*, not rules. Their presence in this vocabulary does not activate them anywhere.
 
+The vocabulary is fixed, and each criterion's value language is fixed by §10.1.5. The administrator chooses the value; the system does not accept a value that does not match the criterion's grammar.
+
 **Tier composition:** a tier may combine more than one criterion. Multiple Duty Rule rows may share the same TierOrder for a given Duty, and all rows sharing a TierOrder must be satisfied for that tier to match — an AND across whatever criteria the administrator has placed at that tier. No OR operator is provided within a tier, because tiers themselves already express ordered-preference OR. No NOT operator is provided.
 
 **Tier evaluation — two separate mechanisms:** Duty Rule governs ranking, not candidacy. Whether a member is a candidate at all is governed separately by Eligibility.
@@ -914,7 +916,9 @@ The configuration layer writes SystemSetting rows. Some are consumed only by ope
 - OutcomeStateUnfilledID, OutcomeStatePartiallyFilledID, OutcomeStateFilledID — required; consumed by 10.0.
 - OutcomeStateCancelledID — non-required; consumed by 10.0.
 - NotificationChannel — deployment choice; consumed by 9.0.
-- TenureThresholdDays, ReceiptToCardDurationDays, ConfirmationTimeoutHours, age-range bounds — consumed by whichever processes reference them.
+- ReceiptToCardDurationDays, ConfirmationTimeoutHours, YouthAgeMin, YouthAgeMax, and the global attendance register scope — consumed by whichever processes reference them.
+
+The settings AgeRangeMin, AgeRangeMax, and TenureThresholdDays were used by earlier revisions to provide fallback values for the Age Range and Tenure criteria. They are removed. The criterion value is the sole source; there is no fallback.
 
 A required setting with no value causes the consuming process to refuse to run and surface a configuration error.
 
@@ -1176,6 +1180,28 @@ Criteria are evaluated per CriteriaType:
 | Youth | Member's age, computed from DateOfBirth against the configured YouthAgeMin and YouthAgeMax settings, falls within the configured range |
 
 **Rule scope.** A Duty Rule may carry a null ServiceDefID, in which case it applies to the duty wherever the duty appears. A rule may carry a ServiceDefID, in which case it applies only where the duty is required by that specific Service Definition, and it overrides the duty-global rules entirely for that (Service, Duty) pair. If no per-service rules exist for a pair, the duty-global rules apply. If neither exists, every eligible member is an equal candidate.
+
+##### Criteria value grammars
+
+Each criterion's `CriteriaValue` has a fixed grammar. The grammar is part of the specification, not configuration: the administrator chooses the value, but cannot redefine what constitutes a valid value.
+
+Before evaluation, the value is trimmed of leading and trailing whitespace. Whitespace inside the value is handled by the grammar: it is rejected where the grammar does not permit it, and preserved where the value is a string whose content may legitimately contain spaces.
+
+| Criterion | Grammar | Matching |
+| --- | --- | --- |
+| Role | A role name, case-sensitive | Resolved against the Role table by exact name; matched by RoleID |
+| Gender | A gender value, case-sensitive | Exact match against Member.Gender |
+| Membership Stage | A membership stage value, case-sensitive | Exact match against Member.MembershipStage |
+| Age Range | `min-max`, both non-negative integers, inclusive, no whitespace | Computed from Member.DateOfBirth against today's date |
+| Tenure | A non-negative integer, days, no whitespace | Days since Member.JoinDate, >= the value |
+| Branch-Attendance Recency | A non-negative integer, days, no whitespace | The member has an AttendanceRecord at the occurrence's branch within the last N days |
+| Eligibility Flag | A positive integer, the DutyID, no whitespace | The member has a current Eligibility grant for the referenced Duty |
+| Member Attribute | `AttributeTypeName=RequiredValue` | The AttributeType is resolved by exact case-sensitive name. The member must hold a MemberAttributeValue for that type whose Value equals RequiredValue exactly. The RequiredValue may contain spaces; the syntax around the `=` does not permit spaces. |
+| Youth | Empty | Computed from Member.DateOfBirth against YouthAgeMin and YouthAgeMax |
+
+**Malformed values.** A rule whose `CriteriaValue` does not match its grammar produces no candidates. It is not an error and does not fail the run. Evaluation continues. If a tier contains no candidate because of a malformed rule, the engine falls through to the next tier as it would for any tier producing no candidate.
+
+**Deprecated.** The settings `AgeRangeMin`, `AgeRangeMax`, and `TenureThresholdDays` are removed. The specification no longer falls back to any default for the Age Range or Tenure criteria. The criterion value is the sole source.
 
 Reserved criteria types (Acceptance Rate, Duties Carried, Days Since Last Assignment) are not evaluated until a future specification revision activates them. If a tier consists entirely of rules whose criteria types are reserved, the tier is treated as producing no candidates.
 
