@@ -1759,7 +1759,7 @@ A subsequent tap for an existing pair is a no-op. The uniqueness constraint is t
 
 The Attendance Rule engine is the process that reads Attendance Rules, evaluates each against the member population, and applies the configured outcomes. It is the thirteenth process in the system.
 
-**Trigger.** Scheduled run. It also runs on demand when an admin invokes it.
+**Trigger.** Scheduled run. It also runs on demand when an admin invokes it. A scheduled run does not evaluate rules whose `TriggerType` is `Manual`; those rules fire only through the explicit administrative invocation.
 
 **Reads:** `AttendanceRule`, `AttendanceRuleScope`, `Member`, `AttendanceRecord`, `Readmission`, `MemberStatus`, `SystemSetting` (the global register scope), `Branch.UsesAttendanceRegister`, `Event.UsesAttendanceRegister`.
 
@@ -1787,6 +1787,8 @@ Four consequences follow from sequential evaluation:
 The engine does not arbitrate between rules. The administrator is responsible for scoping rules so their effects are what the administrator intends. Ascending `AttendanceRuleID` is the normative ordering; the specification does not provide a priority column, and reordering rules by editing primary keys is not a supported administrative mechanism.
 
 **Determinism.** Rule evaluation is deterministic for a given set of persisted inputs: the same Attendance Rules, the same rule order by AttendanceRuleID, the same scope criteria, the same configuration, the same member population state, the same attendance facts, and the same calendar date in the same timezone produce the same outcome sequence. This is a statement about determinism, not idempotency. Running the engine twice with the same inputs may apply the same `SetStatus` outcome twice if the trigger still holds. Absence evaluation specifically is idempotent for a given calendar date: two runs on the same date in the same timezone evaluate the same absence window and produce the same absence set.
+
+**Idempotency.** The engine is not idempotent with respect to its external outcomes. Repeating a run while a trigger remains true may produce another notification or another outcome application, even when the member's resulting state is unchanged. The engine does not maintain per-rule execution history. Whether the persistence layer optimises an identical status write away is an implementation detail and is not part of the behavioural contract. The administrator controls repetition by ensuring the trigger condition ceases to hold once the outcome has been applied — for example, by placing a `SetStatus` rule earlier in the ordering so that a later notifying rule's scope no longer matches.
 
 **Source:** System Design Specification §9.6, §13.
 
