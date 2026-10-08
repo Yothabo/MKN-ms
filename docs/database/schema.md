@@ -53,6 +53,7 @@ Configuration entities carry both `IsActive` and `IsDeleted`. Operational entiti
 | BranchID | integer | No | Primary key |
 | Name | string | No |  |
 | Location | structured | No | Single entry, structured internally |
+| UsesAttendanceRegister | boolean | Yes | Null means no override at this scope |
 | IsActive | boolean | No | True at creation |
 | IsDeleted | boolean | No | False at creation |
 
@@ -267,6 +268,7 @@ Unique on (MemberID, DutyID, OccurrenceID). Operational entity; no lifecycle fla
 | MemberID | integer | No | Foreign key → Member |
 | OccurrenceID | integer | No | Foreign key → ServiceOccurrence |
 | Timestamp | timestamp | No |  |
+| Source | string | No | Manual or Tap. Tap is defined but not produced by any implemented path. |
 
 Unique on (MemberID, OccurrenceID). Operational entity; no lifecycle flags.
 
@@ -280,6 +282,7 @@ Unique on (MemberID, OccurrenceID). Operational entity; no lifecycle flags.
 | EndDate | date | No |  |
 | Type | string | No | Free text |
 | HostBranchID | integer | No | Foreign key → Branch |
+| UsesAttendanceRegister | boolean | Yes | Null means no override at this scope |
 | IsActive | boolean | No | True at creation |
 | IsDeleted | boolean | No | False at creation |
 
@@ -437,6 +440,44 @@ No lifecycle flags.
 
 No lifecycle flags.
 
+## AttendanceRule
+
+| Column | Type | Nullable | Notes |
+| --- | --- | --- | --- |
+| AttendanceRuleID | integer | No | Primary key |
+| Name | string | No | Administrator-defined label |
+| TriggerType | string | No | AbsenceDays, ReadmissionCount, or Manual |
+| TriggerValue | string | Yes | The trigger's value |
+| OutcomeType | string | No | Notify, SetStatus, IncrementReadmissionCount, or NoOp |
+| OutcomeStatusID | integer | Yes | Foreign key → MemberStatus. Set only when OutcomeType = SetStatus. |
+| Enabled | boolean | No | When false, the rule is not evaluated. |
+| IsActive | boolean | No | True at creation |
+| IsDeleted | boolean | No | False at creation |
+
+## AttendanceRuleScope
+
+| Column | Type | Nullable | Notes |
+| --- | --- | --- | --- |
+| AttendanceRuleID | integer | No | Foreign key → AttendanceRule. Part of composite primary key. |
+| CriteriaType | string | No | Same vocabulary as DutyRule. |
+| CriteriaValue | string | No |  |
+
+Composite primary key on (AttendanceRuleID, CriteriaType, CriteriaValue). Scope rows are ANDed.
+
+## Readmission
+
+| Column | Type | Nullable | Notes |
+| --- | --- | --- | --- |
+| ReadmissionID | integer | No | Primary key |
+| MemberID | integer | No | Foreign key → Member |
+| ReadmissionDate | date | No |  |
+| PerformedByAdminID | integer | No | Foreign key → Admin |
+| Reason | string | Yes |  |
+| IsActive | boolean | No | True at creation |
+| IsDeleted | boolean | No | False at creation |
+
+One row per readmission event.
+
 ---
 
 ## Summary
@@ -451,6 +492,7 @@ No lifecycle flags.
 | D6 | Eligibility |
 | D7 | RosterAssignment |
 | D8 | AttendanceRecord |
+| D13 | AttendanceRule, AttendanceRuleScope, Readmission |
 | D9 | Event, EventBranch, Program, ProgramItem, EventDuty |
 | D10 | OutcomeState, AssignmentStatus, PermissionTier, TimeOfDay, ServiceType, Capability |
 | D11 | SystemSetting |

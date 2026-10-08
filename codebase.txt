@@ -21329,7 +21329,7 @@ The core principle forbids the following, without exception:
 
 ==============================================================================
 FILE: docs/architecture/data-model.md
-LINES: 254
+LINES: 267
 ==============================================================================
 
 # Data Model
@@ -21358,6 +21358,7 @@ The system groups its data into twelve conceptual stores. Each holds a distinct 
 | D6 | Eligibility |
 | D7 | Roster Assignment |
 | D8 | Attendance Record |
+| D13 | Attendance Rule, Attendance Rule Scope, Readmission |
 | D9 | Event, Event Branch, Program, Program Item, Event Duty |
 | D10 | Outcome State, Assignment Status, Permission Tier, TimeOfDay, ServiceType, Capability |
 | D11 | System Setting |
@@ -21441,6 +21442,10 @@ erDiagram
     Admin ||--o{ ConfigurationAuditLog : initiates
     Admin ||--o{ ConfigurationAuditLog : approves
     Admin ||--o{ NotificationSubscription : "recipient admin"
+    Admin ||--o{ Readmission : performs
+    Member ||--o{ Readmission : has
+    MemberStatus ||--o{ AttendanceRule : "outcome status"
+    AttendanceRule ||--o{ AttendanceRuleScope : scopes
 ~~~
 
 ---
@@ -21518,6 +21523,14 @@ Entities that record the two-flag lifecycle and its notification fan-out.
 - **Entity Deletion Policy** — the per-entity-type configuration of the deletion model: approval requirement, required permission tier, and reason requirement.
 - **Notification Subscription** — the recipient configuration for authority notifications. Either a permission tier or a specific admin, never both.
 
+### Attendance entities
+
+Entities supporting the attendance register and the attendance-driven status rules.
+
+- **Attendance Rule** — an administrator-defined rule that reads attendance and applies a configured outcome.
+- **Attendance Rule Scope** — the join table of scope criteria for an Attendance Rule.
+- **Readmission** — one row per readmission event.
+
 ### Settings
 
 - **System Setting** — scalar, non-list configuration values. Horizons, thresholds, durations, and the mapping settings that connect mechanical conditions to administrator-defined vocabulary.
@@ -21589,7 +21602,7 @@ Each of these is a deliberate decision, not an oversight.
 
 ==============================================================================
 FILE: docs/architecture/entity-reference.md
-LINES: 570
+LINES: 615
 ==============================================================================
 
 # Entity Reference
@@ -21661,6 +21674,7 @@ Per-service rules override duty-global rules entirely for that (Service, Duty) p
 | BranchID | integer | No | Primary key |
 | Name | string | No | Administrator-defined label |
 | Location | structured | No | Single entry, structured internally |
+| UsesAttendanceRegister | boolean | Yes | Null means no override at this scope; the effective state follows the global setting. |
 | IsActive | boolean | No | True at creation. |
 | IsDeleted | boolean | No | False at creation. |
 
@@ -21878,6 +21892,7 @@ Unique on (MemberID, DutyID, OccurrenceID). Operational entity. No `IsActive` an
 | MemberID | integer | No | Foreign key → Member |
 | OccurrenceID | integer | No | Foreign key → Service Occurrence |
 | Timestamp | timestamp | No |  |
+| Source | string | No | Administrator-defined. Seeded values: Manual, Tap. Tap is defined but not produced by any implemented path in the current phase. |
 
 Unique on (MemberID, OccurrenceID). Operational entity. No `IsActive` and no `IsDeleted`.
 
@@ -21895,6 +21910,7 @@ Unique on (MemberID, OccurrenceID). Operational entity. No `IsActive` and no `Is
 | EndDate | date | No |  |
 | Type | string | No | Free text |
 | HostBranchID | integer | No | Foreign key → Branch. The branch at which the event is held. |
+| UsesAttendanceRegister | boolean | Yes | Null means no override at this scope. |
 | IsActive | boolean | No | True at creation. |
 | IsDeleted | boolean | No | False at creation. |
 
@@ -22099,6 +22115,44 @@ Exactly one of RecipientTierID or RecipientAdminID is set per row.
 
 ---
 
+### AttendanceRule
+
+| Column | Type | Nullable | Notes |
+| --- | --- | --- | --- |
+| AttendanceRuleID | integer | No | Primary key |
+| Name | string | No | Administrator-defined label |
+| TriggerType | string | No | AbsenceDays, ReadmissionCount, or Manual |
+| TriggerValue | string | Yes | The trigger's value |
+| OutcomeType | string | No | Notify, SetStatus, IncrementReadmissionCount, or NoOp |
+| OutcomeStatusID | integer | Yes | Foreign key → Member Status. Set only when OutcomeType = SetStatus. |
+| Enabled | boolean | No | When false, the rule is not evaluated. |
+| IsActive | boolean | No | True at creation. |
+| IsDeleted | boolean | No | False at creation. |
+
+### AttendanceRuleScope
+
+| Column | Type | Nullable | Notes |
+| --- | --- | --- | --- |
+| AttendanceRuleID | integer | No | Foreign key → Attendance Rule. Part of composite primary key. |
+| CriteriaType | string | No | Same vocabulary as Duty Rule. |
+| CriteriaValue | string | No |  |
+
+Composite primary key on (AttendanceRuleID, CriteriaType, CriteriaValue). Multiple scope rows for one rule are ANDed.
+
+### Readmission
+
+| Column | Type | Nullable | Notes |
+| --- | --- | --- | --- |
+| ReadmissionID | integer | No | Primary key |
+| MemberID | integer | No | Foreign key → Member |
+| ReadmissionDate | date | No |  |
+| PerformedByAdminID | integer | No | Foreign key → Admin |
+| Reason | string | Yes |  |
+| IsActive | boolean | No | True at creation. |
+| IsDeleted | boolean | No | False at creation. |
+
+One row per readmission event.
+
 ## Summary of foreign keys
 
 | From | Column | To |
@@ -22158,6 +22212,10 @@ Exactly one of RecipientTierID or RecipientAdminID is set per row.
 | EntityDeletionPolicy | RequiredDeactivatePermissionTierID | PermissionTier |
 | NotificationSubscription | RecipientTierID | PermissionTier |
 | NotificationSubscription | RecipientAdminID | Admin |
+| AttendanceRule | OutcomeStatusID | MemberStatus |
+| AttendanceRuleScope | AttendanceRuleID | AttendanceRule |
+| Readmission | MemberID | Member |
+| Readmission | PerformedByAdminID | Admin |
 
 ---
 
@@ -23841,7 +23899,7 @@ The specification does not prescribe physical indexes. It names the access patte
 
 ==============================================================================
 FILE: docs/database/schema.md
-LINES: 463
+LINES: 505
 ==============================================================================
 
 # Schema
@@ -23899,6 +23957,7 @@ Configuration entities carry both `IsActive` and `IsDeleted`. Operational entiti
 | BranchID | integer | No | Primary key |
 | Name | string | No |  |
 | Location | structured | No | Single entry, structured internally |
+| UsesAttendanceRegister | boolean | Yes | Null means no override at this scope |
 | IsActive | boolean | No | True at creation |
 | IsDeleted | boolean | No | False at creation |
 
@@ -24113,6 +24172,7 @@ Unique on (MemberID, DutyID, OccurrenceID). Operational entity; no lifecycle fla
 | MemberID | integer | No | Foreign key → Member |
 | OccurrenceID | integer | No | Foreign key → ServiceOccurrence |
 | Timestamp | timestamp | No |  |
+| Source | string | No | Manual or Tap. Tap is defined but not produced by any implemented path. |
 
 Unique on (MemberID, OccurrenceID). Operational entity; no lifecycle flags.
 
@@ -24126,6 +24186,7 @@ Unique on (MemberID, OccurrenceID). Operational entity; no lifecycle flags.
 | EndDate | date | No |  |
 | Type | string | No | Free text |
 | HostBranchID | integer | No | Foreign key → Branch |
+| UsesAttendanceRegister | boolean | Yes | Null means no override at this scope |
 | IsActive | boolean | No | True at creation |
 | IsDeleted | boolean | No | False at creation |
 
@@ -24283,6 +24344,44 @@ No lifecycle flags.
 
 No lifecycle flags.
 
+## AttendanceRule
+
+| Column | Type | Nullable | Notes |
+| --- | --- | --- | --- |
+| AttendanceRuleID | integer | No | Primary key |
+| Name | string | No | Administrator-defined label |
+| TriggerType | string | No | AbsenceDays, ReadmissionCount, or Manual |
+| TriggerValue | string | Yes | The trigger's value |
+| OutcomeType | string | No | Notify, SetStatus, IncrementReadmissionCount, or NoOp |
+| OutcomeStatusID | integer | Yes | Foreign key → MemberStatus. Set only when OutcomeType = SetStatus. |
+| Enabled | boolean | No | When false, the rule is not evaluated. |
+| IsActive | boolean | No | True at creation |
+| IsDeleted | boolean | No | False at creation |
+
+## AttendanceRuleScope
+
+| Column | Type | Nullable | Notes |
+| --- | --- | --- | --- |
+| AttendanceRuleID | integer | No | Foreign key → AttendanceRule. Part of composite primary key. |
+| CriteriaType | string | No | Same vocabulary as DutyRule. |
+| CriteriaValue | string | No |  |
+
+Composite primary key on (AttendanceRuleID, CriteriaType, CriteriaValue). Scope rows are ANDed.
+
+## Readmission
+
+| Column | Type | Nullable | Notes |
+| --- | --- | --- | --- |
+| ReadmissionID | integer | No | Primary key |
+| MemberID | integer | No | Foreign key → Member |
+| ReadmissionDate | date | No |  |
+| PerformedByAdminID | integer | No | Foreign key → Admin |
+| Reason | string | Yes |  |
+| IsActive | boolean | No | True at creation |
+| IsDeleted | boolean | No | False at creation |
+
+One row per readmission event.
+
 ---
 
 ## Summary
@@ -24297,6 +24396,7 @@ No lifecycle flags.
 | D6 | Eligibility |
 | D7 | RosterAssignment |
 | D8 | AttendanceRecord |
+| D13 | AttendanceRule, AttendanceRuleScope, Readmission |
 | D9 | Event, EventBranch, Program, ProgramItem, EventDuty |
 | D10 | OutcomeState, AssignmentStatus, PermissionTier, TimeOfDay, ServiceType, Capability |
 | D11 | SystemSetting |

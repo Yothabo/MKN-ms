@@ -24,6 +24,7 @@ The system groups its data into twelve conceptual stores. Each holds a distinct 
 | D6 | Eligibility |
 | D7 | Roster Assignment |
 | D8 | Attendance Record |
+| D13 | Attendance Rule, Attendance Rule Scope, Readmission |
 | D9 | Event, Event Branch, Program, Program Item, Event Duty |
 | D10 | Outcome State, Assignment Status, Permission Tier, TimeOfDay, ServiceType, Capability |
 | D11 | System Setting |
@@ -107,6 +108,10 @@ erDiagram
     Admin ||--o{ ConfigurationAuditLog : initiates
     Admin ||--o{ ConfigurationAuditLog : approves
     Admin ||--o{ NotificationSubscription : "recipient admin"
+    Admin ||--o{ Readmission : performs
+    Member ||--o{ Readmission : has
+    MemberStatus ||--o{ AttendanceRule : "outcome status"
+    AttendanceRule ||--o{ AttendanceRuleScope : scopes
 ~~~
 
 ---
@@ -183,6 +188,14 @@ Entities that record the two-flag lifecycle and its notification fan-out.
 - **Configuration Audit Log** — the permanent record of every deactivation and every soft delete.
 - **Entity Deletion Policy** — the per-entity-type configuration of the deletion model: approval requirement, required permission tier, and reason requirement.
 - **Notification Subscription** — the recipient configuration for authority notifications. Either a permission tier or a specific admin, never both.
+
+### Attendance entities
+
+Entities supporting the attendance register and the attendance-driven status rules.
+
+- **Attendance Rule** — an administrator-defined rule that reads attendance and applies a configured outcome.
+- **Attendance Rule Scope** — the join table of scope criteria for an Attendance Rule.
+- **Readmission** — one row per readmission event.
 
 ### Settings
 

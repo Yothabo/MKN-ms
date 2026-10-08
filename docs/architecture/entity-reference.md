@@ -67,6 +67,7 @@ Per-service rules override duty-global rules entirely for that (Service, Duty) p
 | BranchID | integer | No | Primary key |
 | Name | string | No | Administrator-defined label |
 | Location | structured | No | Single entry, structured internally |
+| UsesAttendanceRegister | boolean | Yes | Null means no override at this scope; the effective state follows the global setting. |
 | IsActive | boolean | No | True at creation. |
 | IsDeleted | boolean | No | False at creation. |
 
@@ -284,6 +285,7 @@ Unique on (MemberID, DutyID, OccurrenceID). Operational entity. No `IsActive` an
 | MemberID | integer | No | Foreign key → Member |
 | OccurrenceID | integer | No | Foreign key → Service Occurrence |
 | Timestamp | timestamp | No |  |
+| Source | string | No | Administrator-defined. Seeded values: Manual, Tap. Tap is defined but not produced by any implemented path in the current phase. |
 
 Unique on (MemberID, OccurrenceID). Operational entity. No `IsActive` and no `IsDeleted`.
 
@@ -301,6 +303,7 @@ Unique on (MemberID, OccurrenceID). Operational entity. No `IsActive` and no `Is
 | EndDate | date | No |  |
 | Type | string | No | Free text |
 | HostBranchID | integer | No | Foreign key → Branch. The branch at which the event is held. |
+| UsesAttendanceRegister | boolean | Yes | Null means no override at this scope. |
 | IsActive | boolean | No | True at creation. |
 | IsDeleted | boolean | No | False at creation. |
 
@@ -505,6 +508,44 @@ Exactly one of RecipientTierID or RecipientAdminID is set per row.
 
 ---
 
+### AttendanceRule
+
+| Column | Type | Nullable | Notes |
+| --- | --- | --- | --- |
+| AttendanceRuleID | integer | No | Primary key |
+| Name | string | No | Administrator-defined label |
+| TriggerType | string | No | AbsenceDays, ReadmissionCount, or Manual |
+| TriggerValue | string | Yes | The trigger's value |
+| OutcomeType | string | No | Notify, SetStatus, IncrementReadmissionCount, or NoOp |
+| OutcomeStatusID | integer | Yes | Foreign key → Member Status. Set only when OutcomeType = SetStatus. |
+| Enabled | boolean | No | When false, the rule is not evaluated. |
+| IsActive | boolean | No | True at creation. |
+| IsDeleted | boolean | No | False at creation. |
+
+### AttendanceRuleScope
+
+| Column | Type | Nullable | Notes |
+| --- | --- | --- | --- |
+| AttendanceRuleID | integer | No | Foreign key → Attendance Rule. Part of composite primary key. |
+| CriteriaType | string | No | Same vocabulary as Duty Rule. |
+| CriteriaValue | string | No |  |
+
+Composite primary key on (AttendanceRuleID, CriteriaType, CriteriaValue). Multiple scope rows for one rule are ANDed.
+
+### Readmission
+
+| Column | Type | Nullable | Notes |
+| --- | --- | --- | --- |
+| ReadmissionID | integer | No | Primary key |
+| MemberID | integer | No | Foreign key → Member |
+| ReadmissionDate | date | No |  |
+| PerformedByAdminID | integer | No | Foreign key → Admin |
+| Reason | string | Yes |  |
+| IsActive | boolean | No | True at creation. |
+| IsDeleted | boolean | No | False at creation. |
+
+One row per readmission event.
+
 ## Summary of foreign keys
 
 | From | Column | To |
@@ -564,6 +605,10 @@ Exactly one of RecipientTierID or RecipientAdminID is set per row.
 | EntityDeletionPolicy | RequiredDeactivatePermissionTierID | PermissionTier |
 | NotificationSubscription | RecipientTierID | PermissionTier |
 | NotificationSubscription | RecipientAdminID | Admin |
+| AttendanceRule | OutcomeStatusID | MemberStatus |
+| AttendanceRuleScope | AttendanceRuleID | AttendanceRule |
+| Readmission | MemberID | Member |
+| Readmission | PerformedByAdminID | Admin |
 
 ---
 
