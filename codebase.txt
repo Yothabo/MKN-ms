@@ -25367,6 +25367,200 @@ For all processes in the current specification, a required setting that is missi
 *Source: System Design Specification §4, §7, §11, §12, §14, §15; MKN Configuration Reference.*
 
 ==============================================================================
+FILE: docs/modules/README.md
+LINES: 33
+==============================================================================
+
+# Modules
+
+*A documentation grouping for named system concerns whose content is deliberately open. Not an architectural claim. Where a document in this directory conflicts with the specification, the specification wins.*
+
+---
+
+## Purpose
+
+This directory names five system concerns that the specification recognises but has not yet made implementation-ready. Each has its own boundary stated, its current status stated, and its non-dependency on the defined processes stated.
+
+The directory is a grouping. It does not assert that these concerns are modules in the architectural or process sense. They may become processes, entities, settings, or something else when their content is decided. Until then, they are named concerns with open content.
+
+## The five concerns
+
+- `authentication.md`
+- `authorization.md`
+- `notification-templates.md`
+- `per-member-channel-preferences.md`
+- `tap-ingestion.md`
+
+## What this directory does not contain
+
+It does not contain fields, entities, process contracts, APIs, storage mechanisms, invocation edges, or implementation assumptions. Each file states only what is named above.
+
+## Relationship to the specification
+
+The specification is authoritative. Each concern is recognised by the specification and marked as open there. The files in this directory restate the boundary and the status. They do not extend either.
+
+The thirteen defined processes do not depend on the content of any concern in this directory. Every process defined by the specification can be implemented without those contents being decided.
+
+---
+
+*Source: System Design Specification; FREEZE.md.*
+
+==============================================================================
+FILE: docs/modules/authentication.md
+LINES: 25
+==============================================================================
+
+# Authentication
+
+---
+
+## Named concern
+
+Authentication. How a caller becomes a known identity in the system.
+
+## Boundary
+
+The boundary is between the caller and the processes. The system receives a caller; whether that caller is authenticated is currently outside the specification. The processes receive an `AdminID` and presume it resolves to a non-deleted `Admin` row. The specification does not state how the `AdminID` was obtained, how the caller proved they were the member the ID names, or what happens if a caller presents an `AdminID` that is not theirs.
+
+The boundary is stated in `docs/processes/contracts.md` under "C6 — Identity and context."
+
+## Status
+
+Recognised, but not implementation-ready. The specification does not define the fields, the process contract, the storage, or the API surface of authentication. The concern is named; its content is open.
+
+## Non-dependency
+
+The thirteen defined processes do not depend on the content of authentication. Every process can be implemented, tested, and run without authentication being decided. A process receives an `AdminID`; where that ID came from is not a concern the process can see.
+
+---
+
+*Source: System Design Specification; docs/processes/contracts.md C6.*
+
+==============================================================================
+FILE: docs/modules/authorization.md
+LINES: 25
+==============================================================================
+
+# Authorization
+
+---
+
+## Named concern
+
+Authorization. How the system decides whether a given identity may perform a given operation.
+
+## Boundary
+
+The boundary is upstream of every process. The specification states that authorisation is upstream and that processes assume the caller has passed the applicable authority check. The specification does not state what that check is, what it consults, who decides which identity may perform which operation, or what happens when an identity lacks a required permission.
+
+The `Capability` entity exists as a vocabulary of named actions. The specification does not state which role, tier, or admin holds which capability. The boundary between the capability vocabulary and the enforcement of a capability check is where authorisation sits.
+
+## Status
+
+Recognised, but not implementation-ready. The specification does not define the fields, the process contract, the storage, or the API surface of authorisation. The concern is named; its content is open.
+
+## Non-dependency
+
+The thirteen defined processes do not depend on the content of authorisation. Every process can be implemented, tested, and run without authorisation being decided. A process receives an `AdminID`; whether that ID was permitted to invoke the process is not a concern the process can see.
+
+---
+
+*Source: System Design Specification §4 (Capability); docs/processes/contracts.md C6.*
+
+==============================================================================
+FILE: docs/modules/notification-templates.md
+LINES: 25
+==============================================================================
+
+# Notification Templates
+
+---
+
+## Named concern
+
+Notification templates. The text a notification carries.
+
+## Boundary
+
+The boundary is inside 9.0 Dispatch Notification. The specification states that the message is composed and sent, and that the exact format is channel-dependent and outside the schema. The specification does not state where the message text comes from, whether the text is editable, whether templates are stored as entities, what happens when a template is missing, or whether template edits are audited.
+
+The member-facing path composes its message. The authority-notification path composes its message from a `ConfigurationAuditLog` entry. Neither composition is defined by the specification.
+
+## Status
+
+Recognised, but not implementation-ready. The specification does not define the entities, the storage, or the API surface of templates. The concern is named; its content is open.
+
+## Non-dependency
+
+The thirteen defined processes do not depend on the content of notification templates. Every process can be implemented, tested, and run without the template content being decided. 9.0 composes a message; what the message says is not a concern the specification currently fixes.
+
+---
+
+*Source: System Design Specification §14.*
+
+==============================================================================
+FILE: docs/modules/per-member-channel-preferences.md
+LINES: 25
+==============================================================================
+
+# Per-Member Channel Preferences
+
+---
+
+## Named concern
+
+Per-member channel preferences. Which channel a member prefers to receive notifications through.
+
+## Boundary
+
+The boundary is inside 9.0 Dispatch Notification. The specification states that the current scope assumes a single global channel and that per-member channel preferences are not modelled. The specification does not state whether a member carries a preferred channel, whether a separate entity stores preferences, or how a preference would interact with the global channel setting.
+
+The `NotificationChannel` setting names the transport. The specification does not state what happens when a member's preference and the global setting differ.
+
+## Status
+
+Recognised, but not implementation-ready. The specification does not define the entities, the storage, or the API surface of per-member preferences. The concern is named; its content is open.
+
+## Non-dependency
+
+The thirteen defined processes do not depend on the content of per-member channel preferences. Every process can be implemented, tested, and run without the preference content being decided. 9.0 dispatches through the configured channel; whether a member prefers a different one is not a concern the current specification fixes.
+
+---
+
+*Source: System Design Specification §14.*
+
+==============================================================================
+FILE: docs/modules/tap-ingestion.md
+LINES: 25
+==============================================================================
+
+# Tap Ingestion
+
+---
+
+## Named concern
+
+Tap ingestion. The path by which an NFC tap or equivalent signal becomes an attendance record.
+
+## Boundary
+
+The boundary is between the physical source of a tap and the `AttendanceRecord` the system writes. The specification defines `AttendanceRecord.Source` with a `Tap` value, and states that `Tap` is defined in the vocabulary but is not produced by any implemented path in the current phase. The specification does not define what a tap payload carries, how the payload resolves to a member, whether the resolution uses the card number or a distinct token, or which process receives the tap.
+
+The manual register marking path is the only implemented producer of `AttendanceRecord` rows.
+
+## Status
+
+Recognised, but not implementation-ready. The specification does not define the process contract, the payload, the resolution step, or the storage. The concern is named; its content is open.
+
+## Non-dependency
+
+The thirteen defined processes do not depend on the content of tap ingestion. Every process can be implemented, tested, and run without tap ingestion being decided. 6.0 writes attendance rows; whether a row's `Source` is `Manual` or, in a future phase, `Tap` does not change what 6.0 does.
+
+---
+
+*Source: System Design Specification §4 (AttendanceRecord.Source), §13.*
+
+==============================================================================
 FILE: docs/processes/acceptance-matrix.md
 LINES: 308
 ==============================================================================
