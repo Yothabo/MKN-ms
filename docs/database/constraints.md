@@ -38,7 +38,7 @@ Physical expression: filtered unique index, partial unique index, or NULL-distin
 | --- | --- |
 | Table | ServiceSchedule |
 | Columns | (ServiceDefID, TimeSlotID) |
-| Scope | Rows where IsActive = true |
+| Scope | Rows where IsActive = true AND IsDeleted = false |
 | Purpose | An active schedule is uniquely identified by the pair |
 | Source | §9.1.5, §9 D1 lock, §15.2.3 |
 

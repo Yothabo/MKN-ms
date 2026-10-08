@@ -143,6 +143,32 @@ The following settings are referenced by the locked contracts but were described
 | Consumed by | Administrative process (receipt-to-card issuance) |
 | Source | MKN Configuration Reference |
 
+### YouthAgeMin
+
+| Property | Value |
+| --- | --- |
+| Key | YouthAgeMin |
+| Type | integer |
+| Required | true |
+| Consumed by | 5.0 Generate Assignment, when a Youth criterion is evaluated |
+| Behavior if absent | The Youth criterion cannot be evaluated. A rule of type Youth matches no candidate. |
+| Source | §4, §5 |
+
+The minimum age at which a member counts as a youth, for the computed youth pseudo-attribute.
+
+### YouthAgeMax
+
+| Property | Value |
+| --- | --- |
+| Key | YouthAgeMax |
+| Type | integer |
+| Required | true |
+| Consumed by | 5.0 Generate Assignment, when a Youth criterion is evaluated |
+| Behavior if absent | The Youth criterion cannot be evaluated. A rule of type Youth matches no candidate. |
+| Source | §4, §5 |
+
+The maximum age at which a member counts as a youth, for the computed youth pseudo-attribute.
+
 ### Age-range bounds
 
 | Property | Value |

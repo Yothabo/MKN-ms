@@ -23,7 +23,7 @@ These are correctness constraints, not performance indexes. Their physical imple
 | Table | Constraint | Source |
 | --- | --- | --- |
 | ServiceOccurrence | UNIQUE (ScheduleID, Date), schedule-sourced rows | §7, §8, §15.2.4 |
-| ServiceSchedule | UNIQUE (ServiceDefID, TimeSlotID), active rows | §9.1.5, §15.2.3 |
+| ServiceSchedule | UNIQUE (ServiceDefID, TimeSlotID), rows where IsActive = true AND IsDeleted = false | §9.1.5, §15.2.3 |
 | RosterAssignment | UNIQUE (MemberID, DutyID, OccurrenceID) | §10.4.1, §15.2.1 |
 | AttendanceRecord | UNIQUE (MemberID, OccurrenceID) | §13.4.1, §15.2.2 |
 
@@ -90,7 +90,7 @@ Physical indexes are chosen during implementation, against the actual load and q
 The ServiceOccurrence (ScheduleID, Date) and ServiceSchedule (ServiceDefID, TimeSlotID) uniqueness rules apply only to a subset of rows:
 
 - ServiceOccurrence: only rows where ScheduleID IS NOT NULL.
-- ServiceSchedule: only rows where IsActive = true.
+- ServiceSchedule: only rows where IsActive = true AND IsDeleted = false.
 
 How this is expressed depends on the target database. The logical rule is fixed. The physical form is a target-database choice.
 

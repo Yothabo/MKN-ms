@@ -248,6 +248,66 @@ Each is a candidate for a future additive change if a real requirement emerges. 
 
 ---
 
+## 5. Later amendments
+
+The amendments below were added after the original fifteen. They are the changes agreed in the A–G amendment set.
+
+### 5.1 — New entities
+
+| Entity | Purpose | Source |
+| --- | --- | --- |
+| MemberStatus | Admin-defined vocabulary of member states, with an `IsRosterable` flag | §4 |
+| AttributeType | Admin-defined vocabulary of member attribute names | §4 |
+| MemberAttributeValue | One value per member per attribute set | §4 |
+| EventBranch | Set of branches attending an event | §4 |
+| Capability | Vocabulary of named actions the system can perform | §4 |
+| ConfigurationAuditLog | Permanent record of every deactivation and every soft delete | §4, §9.6 |
+| EntityDeletionPolicy | Per-entity-type configuration of the deletion model | §4, §9.6 |
+| NotificationSubscription | Recipient configuration for authority notifications | §4, §14.1.3 |
+
+### 5.2 — New columns
+
+| Table | Column | Type | Nullable | Source |
+| --- | --- | --- | --- | --- |
+| Member | ReceiptNumber | string | Yes | §4 |
+| Member | CardNumber | string | Yes | §4 |
+| Member | JoinReason | string | Yes | §4 |
+| Member | MemberStatusID | integer | No | §4 |
+| Member | (IsActive removed) | — | — | §4 |
+| Role | IsDefault | boolean | No | §4 |
+| DutyRule | ServiceDefID | integer | Yes | §4, §10.1.5 |
+| ProgramItem | Location | string | Yes | §4 |
+| Event | HostBranchID | integer | No | §4 |
+| Event | (Location removed) | — | — | §4 |
+| EventDuty | DutyID | integer | No | §4 |
+| EventDuty | ServiceDefID | integer | Yes | §4 |
+| EventDuty | (Label removed) | — | — | §4 |
+| Every configuration entity | IsDeleted | boolean | No | §4, §9.6 |
+
+### 5.3 — Extended criteria vocabulary
+
+| Criterion | Meaning | Source |
+| --- | --- | --- |
+| Member Attribute | Member holds the named Attribute Type with the required value | §5, §10.1.5 |
+| Youth | Member's age falls within the configured YouthAgeMin and YouthAgeMax range | §5, §10.1.5 |
+
+### 5.4 — New settings
+
+| Key | Type | Required | Consumed by | Source |
+| --- | --- | --- | --- | --- |
+| YouthAgeMin | integer | true | 5.0 (Youth criterion) | §4, §5 |
+| YouthAgeMax | integer | true | 5.0 (Youth criterion) | §4, §5 |
+
+`ReceiptToCardDurationDays` was already defined in the original settings list.
+
+### 5.5 — Removed columns
+
+| Table | Column | Reason | Source |
+| --- | --- | --- | --- |
+| Event | Location | Replaced by HostBranchID; finer location on Program Item | §4 |
+| EventDuty | Label | Replaced by DutyID reference | §4 |
+| Member | IsActive | Replaced by MemberStatusID | §4 |
+
 ## Physical expression
 
 How each amendment is expressed in a target database depends on the engine:
