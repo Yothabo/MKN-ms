@@ -21065,7 +21065,7 @@ What an endpoint may not do:
 
 - Chain multiple processes into one endpoint.
 - Introduce behavior that no single process defines.
-- Cause a process to invoke another process outside the three locked edges (5.0 → 9.0, 7.0 → 9.0, and 12.0 → 9.0).
+- Cause a process to invoke another process outside the four locked edges (5.0 → 9.0, 7.0 → 9.0, 12.0 → 9.0, and 13.0 → 9.0).
 
 This rule is what keeps the API surface a faithful presentation of the process model. Any endpoint that appears to break it is either mis-labelled (it should be labelled as invoking one process) or is introducing behavior the system does not have.
 
@@ -21075,7 +21075,7 @@ This rule is what keeps the API surface a faithful presentation of the process m
 
 - **One endpoint, one process (or subprocess).** Stated above.
 - **No invented behavior.** Endpoints cannot introduce writes outside the process's store footprint.
-- **No new invocation edges.** Endpoints trigger processes; they do not cause processes to invoke each other beyond the three locked edges.
+- **No new invocation edges.** Endpoints trigger processes; they do not cause processes to invoke each other beyond the four locked edges.
 - **Required-setting errors are surfaced.** An endpoint that triggers a process depending on a required setting reports the configuration error when the setting is absent.
 
 ---
@@ -21210,7 +21210,7 @@ These constraints come from the process model, not from any API design choice:
 
 - **No composite endpoints that stitch together behavior from multiple processes.** One endpoint, one process or subprocess.
 - **No writes outside the process's store footprint.** The endpoint inherits the process's footprint; it does not extend it.
-- **No new invocation edges.** The endpoint invokes one process; it does not cause that process to invoke another, beyond the three locked edges.
+- **No new invocation edges.** The endpoint invokes one process; it does not cause that process to invoke another, beyond the four locked edges.
 - **No delivery status on notifications.** 9.0 is not exposed; its fire-and-forget behavior is not observable through the API.
 - **No fabricated state.** If a process refuses to run because a required setting is absent, the endpoint returns a configuration error, not a fabricated response.
 
@@ -21844,7 +21844,7 @@ The full list, with sources, is in `../database/amendments.md`.
 - No notification log. Notifications are fire-and-forget.
 - No attendance-event table. One row per member per occurrence.
 - No tombstone table. Configuration entities are deactivated, not deleted.
-- No orchestration entity. The three invocation edges are process-to-process, not mediated.
+- No orchestration entity. The four invocation edges are process-to-process, not mediated.
 
 Each of these is a deliberate decision, not an oversight.
 
@@ -22849,7 +22849,7 @@ The following topology matches §16 of the System Design Specification. Only con
 - 5.0 invokes 9.0, unconditionally. Nothing invokes 5.0.
 - 7.0 invokes 9.0, on replacement only. Nothing invokes 7.0.
 - 12.0 invokes 9.0, only when the created assignment's AssignmentStatusID is NULL. Nothing invokes 12.0.
-- 9.0 invokes nothing. It is invoked by 5.0, 7.0, and 12.0. It also carries its own independent scheduled trigger, which is a trigger and not an invocation. The trigger reads new Configuration Audit Log entries and dispatches authority notifications.
+- 9.0 invokes nothing. It is invoked by 5.0, 7.0, 12.0, and 13.0. It also carries its own independent scheduled trigger, which is a trigger and not an invocation. The trigger reads new Configuration Audit Log entries and dispatches authority notifications.
 - 13.0 Attendance Rule Engine is invoked by nothing. It is triggered by the scheduler or by an administrator. It invokes 9.0 only when a rule's outcome is Notify.
 - No other process invokes another, and 9.0 is the only process any process invokes.
 
@@ -22888,7 +22888,7 @@ Every process has an independent trigger mechanism except 9.0.
 | 6.0 | Member action at an occurrence; manual admin entry |
 | 7.0 | Member response; scheduled timeout check |
 | 8.0 | Administrator action |
-| 9.0 | Invocation by 5.0, 7.0, or 12.0 |
+| 9.0 | Invocation by 5.0, 7.0, 12.0, or 13.0; scheduled authority-notification sweep |
 | 10.0 | After assignment changes; scheduled sweep |
 | 11.0 | Scheduled run; manual admin trigger |
 | 12.0 | Administrator action |
@@ -29180,7 +29180,7 @@ LINES: 199
 
 ## Responsibility
 
-9.0 Dispatch Notification is the outbound process that sends assignment notices to members. It is invoked by 5.0, 7.0, and 12.0 when they create assignments that require a response — meaning an assignment created with no status. It is the only process in the system whose primary effect is an external side effect rather than a write to an internal data store.
+9.0 Dispatch Notification is the outbound process that sends assignment notices to members. It is invoked by 5.0, 7.0, 12.0, and 13.0 when they create assignments that require a response — meaning an assignment created with no status. It is the only process in the system whose primary effect is an external side effect rather than a write to an internal data store.
 
 It reads the assignment, the member, the occurrence, and the configured channel, composes a message, sends it, and stops. It does not write to any store, does not track delivery, does not retry, and does not invoke any other process.
 
@@ -29337,7 +29337,7 @@ Whether the invocation is synchronous or asynchronous from the invoking process'
 
 - Outbound only. 9.0's only product is a message sent to a member.
 - Read-only on all stores. 9.0 reads what it needs; it writes nothing.
-- Trigger is bounded. Invoked only by 5.0, 7.0, and 12.0, only on new assignment creation that requires a response.
+- Trigger is bounded. Path 1 is invoked only by 5.0, 7.0, 12.0, and 13.0, on new assignment creation that requires a response.
 - No invocation on status change.
 - No invocation on any other event.
 - Channel selected by setting. Follows the setting's configured validity behavior; no channel-specific fallback.
@@ -31951,7 +31951,7 @@ Recipient resolution produces zero or more admins from the matching `Notificatio
 
 - Outbound only. 9.0's only product is a message sent to a member.
 - Read-only on all stores.
-- Trigger is bounded. Invoked only by 5.0, 7.0, and 12.0, only on new assignment creation that requires a response.
+- Trigger is bounded. Path 1 is invoked only by 5.0, 7.0, 12.0, and 13.0, on new assignment creation that requires a response. Path 2 is a scheduled sweep, not an invocation.
 - No invocation on status change.
 - No invocation on any other event.
 - Channel selected by setting. Follows the setting's configured validity behavior.
@@ -32399,7 +32399,7 @@ Every process has an independent trigger mechanism except 9.0. Operational data 
 
 **On 10.0's trigger.** The phrase "after assignment changes" describes when 10.0's work becomes necessary, not how 10.0 learns that it has become necessary. No process invokes 10.0. It observes the current state of RosterAssignment on its own periodic sweep. The sweep is what turns assignment changes into evaluated fill status. This is the same data-mediated relationship the rest of §16 describes: the writer (5.0 or 7.0) writes to D7, the reader (10.0) reads D7 on its own trigger. No fourth invocation edge exists.
 
-**On the trigger matrix versus the invocation matrix.** The table above is the trigger matrix. It is distinct from the invocation matrix in §16.3, because triggering and invocation are two different things. 9.0 Dispatch Notification appears in the trigger matrix with two triggers: it is invoked by 5.0, 7.0, and 12.0 on new-assignment creation, and it independently runs a scheduled authority-notification sweep that reads new ConfigurationAuditLog entries. Only the first of those is an invocation. The scheduled sweep is a trigger — the scheduler starts 9.0 directly, and no other process calls it. The invocation matrix names four invoking processes: 5.0, 7.0, 12.0, and 13.0. No process invokes 9.0 for the authority-notification path.
+**On the trigger matrix versus the invocation matrix.** The table above is the trigger matrix. It is distinct from the invocation matrix in §16.3, because triggering and invocation are two different things. 9.0 Dispatch Notification appears in the trigger matrix with two triggers: it is invoked by 5.0, 7.0, 12.0, and 13.0 on new-assignment creation and on Notify outcomes, and it independently runs a scheduled authority-notification sweep that reads new ConfigurationAuditLog entries. Only the first of those is an invocation. The scheduled sweep is a trigger — the scheduler starts 9.0 directly, and no other process calls it. The invocation matrix names four invoking processes: 5.0, 7.0, 12.0, and 13.0. No process invokes 9.0 for the authority-notification path.
 
 ### 16.5 Data Store Mediation
 

@@ -50,7 +50,7 @@ What an endpoint may not do:
 
 - Chain multiple processes into one endpoint.
 - Introduce behavior that no single process defines.
-- Cause a process to invoke another process outside the three locked edges (5.0 → 9.0, 7.0 → 9.0, and 12.0 → 9.0).
+- Cause a process to invoke another process outside the four locked edges (5.0 → 9.0, 7.0 → 9.0, 12.0 → 9.0, and 13.0 → 9.0).
 
 This rule is what keeps the API surface a faithful presentation of the process model. Any endpoint that appears to break it is either mis-labelled (it should be labelled as invoking one process) or is introducing behavior the system does not have.
 
@@ -60,7 +60,7 @@ This rule is what keeps the API surface a faithful presentation of the process m
 
 - **One endpoint, one process (or subprocess).** Stated above.
 - **No invented behavior.** Endpoints cannot introduce writes outside the process's store footprint.
-- **No new invocation edges.** Endpoints trigger processes; they do not cause processes to invoke each other beyond the three locked edges.
+- **No new invocation edges.** Endpoints trigger processes; they do not cause processes to invoke each other beyond the four locked edges.
 - **Required-setting errors are surfaced.** An endpoint that triggers a process depending on a required setting reports the configuration error when the setting is absent.
 
 ---

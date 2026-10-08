@@ -222,7 +222,7 @@ The following topology matches §16 of the System Design Specification. Only con
 - 5.0 invokes 9.0, unconditionally. Nothing invokes 5.0.
 - 7.0 invokes 9.0, on replacement only. Nothing invokes 7.0.
 - 12.0 invokes 9.0, only when the created assignment's AssignmentStatusID is NULL. Nothing invokes 12.0.
-- 9.0 invokes nothing. It is invoked by 5.0, 7.0, and 12.0. It also carries its own independent scheduled trigger, which is a trigger and not an invocation. The trigger reads new Configuration Audit Log entries and dispatches authority notifications.
+- 9.0 invokes nothing. It is invoked by 5.0, 7.0, 12.0, and 13.0. It also carries its own independent scheduled trigger, which is a trigger and not an invocation. The trigger reads new Configuration Audit Log entries and dispatches authority notifications.
 - 13.0 Attendance Rule Engine is invoked by nothing. It is triggered by the scheduler or by an administrator. It invokes 9.0 only when a rule's outcome is Notify.
 - No other process invokes another, and 9.0 is the only process any process invokes.
 
@@ -261,7 +261,7 @@ Every process has an independent trigger mechanism except 9.0.
 | 6.0 | Member action at an occurrence; manual admin entry |
 | 7.0 | Member response; scheduled timeout check |
 | 8.0 | Administrator action |
-| 9.0 | Invocation by 5.0, 7.0, or 12.0 |
+| 9.0 | Invocation by 5.0, 7.0, 12.0, or 13.0; scheduled authority-notification sweep |
 | 10.0 | After assignment changes; scheduled sweep |
 | 11.0 | Scheduled run; manual admin trigger |
 | 12.0 | Administrator action |

@@ -94,7 +94,7 @@ These constraints come from the process model, not from any API design choice:
 
 - **No composite endpoints that stitch together behavior from multiple processes.** One endpoint, one process or subprocess.
 - **No writes outside the process's store footprint.** The endpoint inherits the process's footprint; it does not extend it.
-- **No new invocation edges.** The endpoint invokes one process; it does not cause that process to invoke another, beyond the three locked edges.
+- **No new invocation edges.** The endpoint invokes one process; it does not cause that process to invoke another, beyond the four locked edges.
 - **No delivery status on notifications.** 9.0 is not exposed; its fire-and-forget behavior is not observable through the API.
 - **No fabricated state.** If a process refuses to run because a required setting is absent, the endpoint returns a configuration error, not a fabricated response.
 

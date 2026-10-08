@@ -258,7 +258,7 @@ The full list, with sources, is in `../database/amendments.md`.
 - No notification log. Notifications are fire-and-forget.
 - No attendance-event table. One row per member per occurrence.
 - No tombstone table. Configuration entities are deactivated, not deleted.
-- No orchestration entity. The three invocation edges are process-to-process, not mediated.
+- No orchestration entity. The four invocation edges are process-to-process, not mediated.
 
 Each of these is a deliberate decision, not an oversight.
 

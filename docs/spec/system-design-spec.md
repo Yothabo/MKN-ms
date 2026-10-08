@@ -1955,7 +1955,7 @@ Recipient resolution produces zero or more admins from the matching `Notificatio
 
 - Outbound only. 9.0's only product is a message sent to a member.
 - Read-only on all stores.
-- Trigger is bounded. Invoked only by 5.0, 7.0, and 12.0, only on new assignment creation that requires a response.
+- Trigger is bounded. Path 1 is invoked only by 5.0, 7.0, 12.0, and 13.0, on new assignment creation that requires a response. Path 2 is a scheduled sweep, not an invocation.
 - No invocation on status change.
 - No invocation on any other event.
 - Channel selected by setting. Follows the setting's configured validity behavior.
@@ -2403,7 +2403,7 @@ Every process has an independent trigger mechanism except 9.0. Operational data 
 
 **On 10.0's trigger.** The phrase "after assignment changes" describes when 10.0's work becomes necessary, not how 10.0 learns that it has become necessary. No process invokes 10.0. It observes the current state of RosterAssignment on its own periodic sweep. The sweep is what turns assignment changes into evaluated fill status. This is the same data-mediated relationship the rest of §16 describes: the writer (5.0 or 7.0) writes to D7, the reader (10.0) reads D7 on its own trigger. No fourth invocation edge exists.
 
-**On the trigger matrix versus the invocation matrix.** The table above is the trigger matrix. It is distinct from the invocation matrix in §16.3, because triggering and invocation are two different things. 9.0 Dispatch Notification appears in the trigger matrix with two triggers: it is invoked by 5.0, 7.0, and 12.0 on new-assignment creation, and it independently runs a scheduled authority-notification sweep that reads new ConfigurationAuditLog entries. Only the first of those is an invocation. The scheduled sweep is a trigger — the scheduler starts 9.0 directly, and no other process calls it. The invocation matrix names four invoking processes: 5.0, 7.0, 12.0, and 13.0. No process invokes 9.0 for the authority-notification path.
+**On the trigger matrix versus the invocation matrix.** The table above is the trigger matrix. It is distinct from the invocation matrix in §16.3, because triggering and invocation are two different things. 9.0 Dispatch Notification appears in the trigger matrix with two triggers: it is invoked by 5.0, 7.0, 12.0, and 13.0 on new-assignment creation and on Notify outcomes, and it independently runs a scheduled authority-notification sweep that reads new ConfigurationAuditLog entries. Only the first of those is an invocation. The scheduled sweep is a trigger — the scheduler starts 9.0 directly, and no other process calls it. The invocation matrix names four invoking processes: 5.0, 7.0, 12.0, and 13.0. No process invokes 9.0 for the authority-notification path.
 
 ### 16.5 Data Store Mediation
 
