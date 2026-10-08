@@ -83,7 +83,7 @@ The base schema is defined in §4 of the System Design Specification. The locked
 **One nullability clarification:**
 - `RosterAssignment.AssignmentStatusID` is nullable
 
-No new entities, no new tables. Fifteen amendments total.
+The original set introduced fifteen amendments. Two later sets have been added: the A–G amendment set and the attendance amendment set. Both are documented in `amendments.md`.
 
 ---
 

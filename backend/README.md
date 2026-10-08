@@ -1,6 +1,6 @@
 # MKN-MS — Backend
 
-ASP.NET Core Web API implementing the twelve processes defined in the System Design Specification.
+ASP.NET Core Web API implementing the thirteen processes defined in the System Design Specification.
 
 ## Authority
 
@@ -64,7 +64,7 @@ Without `TZDIR`, the two `TimeZoneResolverTests` that exercise the configured-ti
     ├── MknMs.sln
     ├── src/
     │   ├── MknMs.Api/             HTTP endpoints; one controller per process group
-    │   ├── MknMs.Application/     The twelve processes; one folder per process
+    │   ├── MknMs.Application/     The thirteen processes; one folder per process
     │   ├── MknMs.Domain/          Entities, value objects, domain rules
     │   ├── MknMs.Persistence/     EF Core, PostgreSQL, migrations
     │   └── MknMs.Infrastructure/  External integrations (Quartz scheduler, notification transport)
@@ -72,7 +72,7 @@ Without `TZDIR`, the two `TimeZoneResolverTests` that exercise the configured-ti
         ├── MknMs.UnitTests/
         └── MknMs.IntegrationTests/
 
-Each of the twelve processes from the specification has a corresponding folder under `MknMs.Application/Processes/`. See the process documentation at `../docs/processes/` for details.
+Each of the thirteen processes from the specification has a corresponding folder under `MknMs.Application/Processes/`. See the process documentation at `../docs/processes/` for details.
 
 ## Dependency direction
 
@@ -82,7 +82,7 @@ Every project references only projects to its left in this diagram. This is the 
 
 - `Domain` — entities. No project references.
 - `Persistence` — `MknDbContext`, entity configurations, migrations, the snake_case naming convention.
-- `Application` — the twelve processes; depends on `Domain` and `Persistence`.
+- `Application` — the thirteen processes; depends on `Domain` and `Persistence`.
 - `Infrastructure` — external integrations. Holds the Quartz job classes and the scheduler registration.
 - `API` — hosts the HTTP surface and the composition root.
 

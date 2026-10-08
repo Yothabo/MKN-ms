@@ -1749,7 +1749,7 @@ The engine is idempotent. Running it twice with unchanged data produces the same
 
 ### 14.0 Process Boundary
 
-9.0 Dispatch Notification is the outbound process that sends assignment notices to members. It is invoked by 5.0 and 7.0 when they create new automatic assignments. 9.0 is the system's only process whose primary effect is an external side effect rather than a write to an internal data store.
+9.0 Dispatch Notification is the outbound process that sends assignment notices to members. It is invoked by 5.0, 7.0, 12.0, and 13.0 under the conditions stated in §14.1.3 and §16.2. 9.0 is the system's only process whose primary effect is an external side effect rather than a write to an internal data store.
 
 It reads the assignment, the member, the occurrence, and the configured channel, composes a message, sends it, and stops. It does not write to any store, does not track delivery, does not retry, and does not invoke any other process.
 
@@ -1800,7 +1800,7 @@ The current scope assumes a single global channel. Per-member channel preference
 - Attendance records by 6.0.
 - Any occurrence materialization.
 
-**Invocation versus triggering for 9.0.** The three rows in Path 1 are invocations: 5.0, 7.0, and 12.0 call 9.0 directly. Path 2 is a trigger, not an invocation. No process calls 9.0 for the authority-notification sweep; the scheduler starts 9.0 directly. The durable invariant is unaffected — 9.0 is still the sole process any other process is permitted to invoke.
+**Invocation versus triggering for 9.0.** The four rows in Path 1 are invocations: 5.0, 7.0, 12.0, and 13.0 call 9.0 directly. Path 2 is a trigger, not an invocation. No process calls 9.0 for the authority-notification sweep; the scheduler starts 9.0 directly. The durable invariant is unaffected — 9.0 is still the sole process any other process is permitted to invoke.
 
 #### 14.1.4 No delivery tracking
 
@@ -1874,7 +1874,7 @@ No index is prescribed at specification level for 9.0.
 - §12 — Evaluate Fill Status.
 - §13 — Record Attendance.
 - §15 — Consolidated schema amendments.
-- §16 — System-wide invocation model. Note: §16 distinguishes invocation from triggering. 9.0 is invoked by 5.0, 7.0, and 12.0, and independently carries a scheduled authority-notification trigger. The scheduled trigger reads new ConfigurationAuditLog entries. It is not an invocation.
+- §16 — System-wide invocation model. Note: §16 distinguishes invocation from triggering. 9.0 is invoked by 5.0, 7.0, 12.0, and 13.0, and independently carries a scheduled authority-notification trigger. The scheduled trigger reads new ConfigurationAuditLog entries. It is not an invocation.
 
 *End of §14. This section derives from the locked 9.0 contract and does not extend it.*
 
@@ -2255,7 +2255,7 @@ Edge I4 was added by the attendance amendment set. The Attendance Rule engine in
 | 6.0 Record attendance | Member action; manual admin entry |
 | 7.0 Manage confirmation | Member response; scheduled timeout check |
 | 8.0 Manage events and programs | Administrator action |
-| 9.0 Dispatch notification | Invocation by 5.0, 7.0, or 12.0; scheduled authority-notification sweep |
+| 9.0 Dispatch notification | Invocation by 5.0, 7.0, 12.0, or 13.0; scheduled authority-notification sweep |
 | 10.0 Evaluate fill status | Periodic sweep; internally observes assignment changes since the last run |
 | 11.0 Materialize occurrences | Scheduled run; manual admin trigger |
 | 12.0 Create manual assignment | Administrator action |
@@ -2265,7 +2265,7 @@ Every process has an independent trigger mechanism except 9.0. Operational data 
 
 **On 10.0's trigger.** The phrase "after assignment changes" describes when 10.0's work becomes necessary, not how 10.0 learns that it has become necessary. No process invokes 10.0. It observes the current state of RosterAssignment on its own periodic sweep. The sweep is what turns assignment changes into evaluated fill status. This is the same data-mediated relationship the rest of §16 describes: the writer (5.0 or 7.0) writes to D7, the reader (10.0) reads D7 on its own trigger. No fourth invocation edge exists.
 
-**On the trigger matrix versus the invocation matrix.** The table above is the trigger matrix. It is distinct from the invocation matrix in §16.3, because triggering and invocation are two different things. 9.0 Dispatch Notification appears in the trigger matrix with two triggers: it is invoked by 5.0, 7.0, and 12.0 on new-assignment creation, and it independently runs a scheduled authority-notification sweep that reads new ConfigurationAuditLog entries. Only the first of those is an invocation. The scheduled sweep is a trigger — the scheduler starts 9.0 directly, and no other process calls it. The invocation matrix is unchanged: 9.0 is still invoked by exactly three processes, and no process invokes it for the authority-notification path.
+**On the trigger matrix versus the invocation matrix.** The table above is the trigger matrix. It is distinct from the invocation matrix in §16.3, because triggering and invocation are two different things. 9.0 Dispatch Notification appears in the trigger matrix with two triggers: it is invoked by 5.0, 7.0, and 12.0 on new-assignment creation, and it independently runs a scheduled authority-notification sweep that reads new ConfigurationAuditLog entries. Only the first of those is an invocation. The scheduled sweep is a trigger — the scheduler starts 9.0 directly, and no other process calls it. The invocation matrix names four invoking processes: 5.0, 7.0, 12.0, and 13.0. No process invokes 9.0 for the authority-notification path.
 
 ### 16.5 Data Store Mediation
 
@@ -2282,7 +2282,7 @@ Every process has an independent trigger mechanism except 9.0. Operational data 
 
 ### 16.6 Invariants of the Invocation Model
 
-- **9.0 Dispatch Notification is the sole process any other process is permitted to invoke.** This is the durable form of the invariant; the current count of invoking processes is three (5.0, 7.0, 12.0), but the invariant is stated without a count so it survives future growth. This invariant concerns invocation, not triggering.
+- **9.0 Dispatch Notification is the sole process any other process is permitted to invoke.** This is the durable form of the invariant; the current count of invoking processes is four (5.0, 7.0, 12.0, 13.0), but the invariant is stated without a count so it survives future growth. This invariant concerns invocation, not triggering.
 - **Four direct invocation edges currently exist.** 5.0 → 9.0 (unconditional), 7.0 → 9.0 (conditional, on replacement only), 12.0 → 9.0 (conditional, only when AssignmentStatusID is NULL at creation), 13.0 → 9.0 (conditional, only when an Attendance Rule's outcome is Notify). All four terminate at 9.0.
 - **13.0 Attendance Rule Engine is invoked by nothing.** It is triggered by the scheduler or by an administrator. It writes Member Status and Readmission rows. Its only invocation is to 9.0, and only on Notify outcomes.
 - **9.0 additionally has an independent scheduled trigger.** The authority-notification sweep is a scheduled trigger of 9.0, not an invocation. It reads new ConfigurationAuditLog entries and dispatches notifications for them. No process invokes 9.0 for this path; the scheduler starts 9.0 directly.

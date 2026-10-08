@@ -220,6 +220,8 @@ Each process reads from and writes to a defined set of stores. No process writes
 | 12.0 | D2, D3, D4, D6, D7 | D7 |
 | 13.0 | D2, D3, D4, D5, D7, D10 | D4 |
 
+A configuration-audit store and an attendance store are also present. The configuration-audit store holds Configuration Audit Log, Entity Deletion Policy, and Notification Subscription. The attendance store is D13, holding Attendance Rule, Attendance Rule Scope, and Readmission.
+
 ---
 
 ## Process invariants summary

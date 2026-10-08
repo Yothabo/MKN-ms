@@ -15,7 +15,7 @@ The additions fall into four categories:
 3. New settings
 4. Nullability clarifications
 
-No new entities are introduced. No new tables. No new processes. Fifteen amendments total.
+The original set introduced fifteen amendments. Two later sets have been added: the A–G amendment set and the attendance amendment set. Both are documented in §5 below. The consolidated count is now forty-one amendments across the three sets.
 
 ---
 
