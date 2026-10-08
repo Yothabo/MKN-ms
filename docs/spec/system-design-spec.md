@@ -1853,11 +1853,11 @@ The engine does not arbitrate between rules. The administrator is responsible fo
 
 9.0 Dispatch Notification is the outbound process that sends assignment notices to members. It is invoked by 5.0, 7.0, 12.0, and 13.0 under the conditions stated in §14.1.3 and §16.2. 9.0 is the system's only process whose primary effect is an external side effect rather than a write to an internal data store.
 
-It reads the assignment, the member, the occurrence, and the configured channel, composes a message, sends it, and stops. It does not write to any store, does not track delivery, does not retry, and does not invoke any other process.
+It reads the assignment, the member, the occurrence, and the configured channel, composes a message, sends it, and stops. It does not write to any store, does not track delivery, and does not invoke any other process. Retry semantics differ by path: the member-facing path does not retry; the authority-notification sweep retries through subsequent sweeps while `NotifiedAt` remains null. See §14.1.4 and §14.1.5.
 
 **At a glance:**
 
-- **Trigger:** 5.0 creates an automatic assignment; 7.0 creates a replacement assignment.
+- **Trigger:** Path 1 — invoked by 5.0, 7.0, 12.0, and 13.0 on new-assignment creation and on Notify outcomes. Path 2 — a scheduled authority-notification sweep, triggered by the scheduler.
 - **Reads:** D7 RosterAssignment, D4 Member, D3 ServiceOccurrence, D11 SystemSetting.
 - **Writes:** none.
 - **Does not:** track delivery, retry, log, invoke any other process.
