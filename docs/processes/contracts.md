@@ -531,3 +531,112 @@ Every process returns a result carrying at least a `Status` field. The value is 
 **Exception shape.** A failure that indicates a caller error — validation, not-found, conflict, lifecycle violation, missing configuration — is returned as a Failure result, not thrown. A failure that indicates a system fault — a database connection loss, an invariant violation that should be impossible, a serialization failure — is thrown. The caller's error handler decides what to do with a thrown exception; the specification does not require catching them at every boundary.
 
 **No process returns a partial-success status.** A process either completes its work for the requested scope or returns Failure for the whole requested scope. A sweep that processes some rows and fails on others is not a partial success; it is a Failure, and the rows already processed remain processed (per B17's transaction boundaries, each row's work is its own atomic unit).
+---
+
+## C4 — Validation rules
+
+Validation occurs at three distinct boundaries. Each boundary validates what it is responsible for and does not duplicate the others.
+
+### Boundary 1 — command shape
+
+The command shape is validated before the process runs. Required fields must be present. Field types must match. Dates must parse. Enumerated values must be within their vocabulary.
+
+The command shape is stated per process in the sections above. A command that fails shape validation produces a `ValidationFailed` result. The process does not run.
+
+Where the command shape is validated is an implementation choice. It may be validated at the HTTP boundary, at a service entry point, or in a dedicated validator. The specification fixes only that validation occurs before the process runs, and that a shape failure produces a `ValidationFailed` result.
+
+### Boundary 2 — referenced entities
+
+Once the command shape is valid, the process validates that the entities the command references exist and are in a state the process can use.
+
+- Every foreign-key value in the command is checked against its target table.
+- Every referenced entity is checked to be non-deleted, unless the process explicitly permits deleted entities.
+- The check is performed within the process; the shape validator does not query the database.
+
+A missing or invalid referenced entity produces a `NotFound` result. A referenced entity whose state is incompatible with the operation produces a `ValidationFailed` or `LifecycleViolation` result, depending on the reason.
+
+### Boundary 3 — outcome invariants
+
+Once the process has begun writing, it must preserve the invariants the specification states. The relevant invariants per process are named in the process's invariants section.
+
+When a write would violate an invariant, the process does not proceed. It either rolls back the transaction (if the write is one of several in the same atomic unit per §9.8) or returns a Failure. Which invariant violations result in which behaviour is stated per invariant:
+
+- **Capacity invariants** — a `ConcurrencyConflict` or `LifecycleViolation` result.
+- **Uniqueness invariants** — a `Conflict` result.
+- **Should-be-impossible invariants** — a thrown `InvariantViolation`.
+
+### What is not validated
+
+- **Authorisation.** The process does not check whether the caller is permitted. Authorisation is upstream, per the specification's stated boundary. The process receives an `AdminID` that is presumed authorised.
+- **Semantic content of free-text fields.** `JoinReason`, `MembershipStage`, `Type`, `Label`, and other free-text values are stored as written. The system does not validate their content.
+- **`CriteriaValue` grammar beyond what B1 states.** A `CriteriaValue` that does not match its grammar is accepted at write time. It produces an inert rule at evaluation time. The write is not refused because a rule with a malformed value is not an error, it is a rule that never matches.
+
+---
+
+## C5 — Transaction boundaries
+
+The transaction boundaries are stated normatively in Specification §9.8. This section restates them for reference and does not extend them.
+
+| Operation | Atomic unit | Outside the atomic unit |
+| --- | --- | --- |
+| 5.0 per assignment | `RosterAssignment` insertion | 9.0 invocation |
+| 7.0 respond | `AssignmentStatusID` update and, if terminal, replacement `RosterAssignment` insertion | 9.0 invocation |
+| 7.0 sweep | Each assignment's status transition, individually | Between assignments in the sweep |
+| 9.0 authority sweep | `NotifiedAt` update on the audit row | Dispatch |
+| 10.0 per occurrence | `FillStatusID` write | Between occurrences in the run |
+| 11.0 per occurrence | Each `ServiceOccurrence` insertion, individually | Between occurrences; the `MaterializerRun` record written separately |
+| 12.0 manual assignment | `RosterAssignment` insertion | 9.0 invocation |
+| 13.0 per rule per member | Each outcome application | Between rules; between members |
+| Configuration soft delete | Fallback updates, dependent row removals, and the `ConfigurationAuditLog` write | — |
+
+An external process invocation is never part of a database atomic unit. This follows from B7 and B17: the invocation is fire-and-forget with respect to the caller's persisted business result.
+
+---
+
+## C6 — Identity and context
+
+Every process that acts on behalf of an administrator receives the identity of that administrator. The identity is an `AdminID` that the process resolves to a non-deleted `Admin` row.
+
+The process does not authenticate the caller. The process does not check whether the caller is permitted to perform the operation. Both are upstream. What the process checks is that the `AdminID` resolves — the row exists and is not soft-deleted. If it does not resolve, the process returns `NotFound`.
+
+### Processes that receive an identity
+
+| Process | Source of identity |
+| --- | --- |
+| 1.1–1.6 Configure Vocabulary | `ActingAdminID` on the command |
+| 2.0 Configure Duty Rules | `ActingAdminID` on the command |
+| 3.1 Manage Member Record | `ActingAdminID` on the command |
+| 3.2 Manage Identifier History | `AuthorizedByAdminID` or `ActingAdminID` on the command |
+| 3.x Member Management (Attendance Rule, Readmission, Attribute) | `ActingAdminID` on the command |
+| 4.0 Manage Eligibility | `GrantedByAdminID` or `ActingAdminID` on the command |
+| 8.1–8.4 Manage Events and Programs | `ActingAdminID` on the command |
+| 11.0 Materialize Occurrences | `TriggeredByAdminId` on the command, required only when `TriggerType` is Manual |
+| 12.0 Create Manual Assignment | `ActingAdminId` on the command |
+| 13.0 Attendance Rule Engine (manual invocation) | The invocation itself; no admin field is required by the current entity shape |
+
+### Processes that do not receive an identity
+
+| Process | Reason |
+| --- | --- |
+| 5.0 Generate Assignment | Triggered by the scheduler, or by an administrator; the assignment rows 5.0 creates do not record the administrator who triggered a manual run |
+| 6.0 Record Attendance | Records a fact; the fact does not carry an administrator identity |
+| 7.0 Manage Confirmation (respond path) | The responding member's identity is not modelled as an Admin; the member responds |
+| 7.0 Manage Confirmation (sweep path) | Triggered by the scheduler |
+| 9.0 Dispatch Notification | Reads and sends; no identity needed |
+| 10.0 Evaluate Fill Status | Reads and writes a mechanical classification; no identity needed |
+| 11.0 Materialize Occurrences (scheduled) | Triggered by the scheduler; `TriggeredByAdminId` is null |
+| 13.0 Attendance Rule Engine (scheduled run) | Triggered by the scheduler |
+
+### What the process does with the identity
+
+The process writes the `AdminID` into the audit columns of the records it creates or modifies. For a create operation, `CreatedBy` or an equivalent column is set. For an update, `ChangedBy` or an equivalent column is set. For a configuration-lifecycle operation, `InitiatedByAdminID` and `ApprovedByAdminID` on the `ConfigurationAuditLog` row are set.
+
+The identity is not used for authorisation, for filtering, or for any purpose other than attribution.
+
+### Identity on the read-only paths
+
+Processes that do not write do not need an identity. A process that reads and returns data does not carry an administrator identity unless the read is scoped by the administrator's authority, which the specification does not currently require.
+
+### Identity is not an authorisation claim
+
+The `AdminID` is a pointer, not a claim. It says "this operation was performed by this administrator." It does not say "this administrator was permitted to perform this operation." The latter is decided upstream.

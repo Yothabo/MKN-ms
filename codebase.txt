@@ -23878,6 +23878,154 @@ The logical rules are fixed. The physical forms are implementation choices.
 *Source: System Design Specification §7, §8, §9, §10, §11, §13, §15.*
 
 ==============================================================================
+FILE: docs/database/errors.md
+LINES: 142
+==============================================================================
+
+# Errors
+
+*The system-wide error taxonomy. Derived from the System Design Specification §9–§17 and the process contracts. Where this document conflicts with the specification, the specification wins.*
+
+---
+
+## Purpose
+
+This document states the semantic categories of errors the system produces, what each category means, and whether the process returns it as a Failure result or throws it.
+
+The categories are semantic. They are not HTTP statuses. An HTTP adapter maps each category to a status; the mapping is the adapter's concern, not the specification's.
+
+---
+
+## Categories
+
+### ValidationFailed
+
+**Meaning.** The input does not satisfy the stated rules. A required field is missing. A field has the wrong type. A field's value is outside the permitted range. A pair of fields is contradictory.
+
+**Behaviour.** Returned as a Failure result. The result carries the failing field name and a description of the rule that was violated.
+
+**Examples.** `Operation` supplied as neither "Confirm" nor "Decline." `SequenceOrder` negative. `TriggerType` outside the fixed vocabulary.
+
+### NotFound
+
+**Meaning.** A referenced entity does not exist.
+
+**Behaviour.** Two cases.
+
+- When the entity is a *command input* — the caller supplied an ID for an entity the command references — the process returns a Failure result.
+- When the entity is the *target* of the operation — the service was asked to operate on a missing row that the caller should have provided — the process throws `EntityNotFoundException`.
+
+**Examples.** A MemberID supplied in a CreateManualAssignment command that names no member: Failure. A RoleID supplied in a RenameRole operation that names no role: thrown.
+
+### Conflict
+
+**Meaning.** A uniqueness or state constraint is violated.
+
+**Behaviour.** Returned as a Failure result.
+
+**Examples.** A manual assignment for a (MemberID, DutyID, OccurrenceID) triple that already exists. A Program created for an Event that already has one. A Role that is already inactive when deactivation is requested.
+
+### LifecycleViolation
+
+**Meaning.** A permitted-transition rule rejected the operation. The entity exists; the requested transition is not permitted from its current state.
+
+**Behaviour.** Returned as a Failure result.
+
+**Examples.** A terminal-to-non-terminal transition that would exceed the effective required slot count for the affected (OccurrenceID, DutyID) pair.
+
+### ConfigurationMissing
+
+**Meaning.** A required `SystemSetting` referenced by the process is absent.
+
+**Behaviour.** Returned as a Failure result. The process refuses to run. This is the required-setting rule stated in §2.
+
+**Examples.** `OccurrenceHorizonDays` absent when 11.0 runs. `InitialAssignmentStatusID` absent when 7.0 runs. `OutcomeStateUnfilledID` absent when 10.0 runs.
+
+### ConfigurationInvalid
+
+**Meaning.** A required `SystemSetting` is present but its value is unparseable, or it points at a row that does not exist.
+
+**Behaviour.** Returned as a Failure result.
+
+**Examples.** `OccurrenceHorizonDays` present but not a non-negative integer. `InitialAssignmentStatusID` present but not a valid AssignmentStatusID.
+
+### ConcurrencyConflict
+
+**Meaning.** A concurrent write prevented the process from preserving a required invariant.
+
+**Behaviour.** Returned as a Failure result, or thrown, depending on the mechanism. If a process detects that it cannot satisfy the invariant — for example, an advisory lock could not be acquired, a serialization failure occurred — it either returns a Failure naming the conflict or throws. The mechanism is implementation choice per B6.
+
+**Examples.** Two materializer runs contended for the advisory lock. Two 5.0 runs contended for the same slot.
+
+### DependencyFailure
+
+**Meaning.** An external dependency could not be reached. A notification transport failed. A scheduled job's infrastructure is unavailable.
+
+**Behaviour.** Depends on the process.
+
+- A member-facing notification invocation that fails is caught and logged by the caller; the assignment stands. Not surfaced as a Failure.
+- An authority-notification dispatch that fails leaves `NotifiedAt` null and the row is retried on a later sweep. Not surfaced as a Failure of the sweep.
+- Any other external dependency failure is a system fault and is thrown.
+
+**Examples.** The configured notification channel is unreachable during a member-facing dispatch. The database connection drops mid-run.
+
+### InvariantViolation
+
+**Meaning.** An invariant that should be impossible to violate has been violated. This is a defect, not a caller error.
+
+**Behaviour.** Thrown. Not returned as a Failure. The caller's error handler surfaces the exception; the process does not attempt recovery.
+
+**Examples.** A `RosterAssignment` row written with both `ScheduleID` and `EventID` null (the B18 invariant). A `ServiceOccurrence` row for a schedule-sourced occurrence with a null `ScheduleID`. A `Program` row that is the second one for the same event.
+
+---
+
+## What is not in this taxonomy
+
+**No HTTP statuses.** The categories are semantic. A `ValidationFailed` might map to HTTP 400, and a `Conflict` to HTTP 409, and a `NotFound` to HTTP 404, in a REST adapter. That mapping belongs to the adapter.
+
+**No transport-level errors.** A network timeout, a DNS failure, a database connection loss — those are handled by the runtime and by the process that experiences them. They are not part of this semantic taxonomy unless the process chooses to surface them as a DependencyFailure.
+
+**No authorisation errors.** The specification assumes the caller has passed the applicable authority check. The process receives an `AdminID` that is presumed authorised. If the process receives an `AdminID` that does not resolve to a non-deleted `Admin` row, that is a `NotFound` for the command input, not an authorisation failure.
+
+---
+
+## The relationship to `ConfigurationErrorCodes`
+
+The existing code in the API layer uses a smaller set of codes (`ConfigurationErrorCodes`) for the configuration processes. That set is a subset of the taxonomy in this document. Specifically:
+
+| Existing code | Corresponds to |
+| --- | --- |
+| not_found | NotFound |
+| duplicate_name | Conflict |
+| invalid_value | ValidationFailed |
+| referenced_entity_inactive | NotFound |
+| referenced_entity_missing | NotFound |
+| already_inactive | Conflict |
+| already_active | Conflict |
+
+When the implementation is brought to the frozen specification, the configuration-layer codes either expand to cover the taxonomy or remain a smaller refinement of it. The taxonomy in this document is the authority; the codes are an implementation detail.
+
+---
+
+## Summary
+
+| Category | Returned or thrown | When it applies |
+| --- | --- | --- |
+| ValidationFailed | Returned | Input does not satisfy stated rules |
+| NotFound | Returned for command input; thrown for target entity | A referenced entity does not exist |
+| Conflict | Returned | A uniqueness or state constraint is violated |
+| LifecycleViolation | Returned | A permitted-transition rule rejected the operation |
+| ConfigurationMissing | Returned | A required setting is absent |
+| ConfigurationInvalid | Returned | A required setting is present but invalid |
+| ConcurrencyConflict | Returned or thrown | A concurrent write prevented an invariant from holding |
+| DependencyFailure | Thrown, or caught and logged | An external dependency could not be reached |
+| InvariantViolation | Thrown | A should-be-impossible condition occurred |
+
+---
+
+*Source: System Design Specification §2, §9, §10, §11, §12, §13, §14, §16, §17; the process contracts.*
+
+==============================================================================
 FILE: docs/database/indexes.md
 LINES: 148
 ==============================================================================
@@ -25873,7 +26021,7 @@ For a reader new to the configuration layer:
 
 ==============================================================================
 FILE: docs/processes/contracts.md
-LINES: 533
+LINES: 642
 ==============================================================================
 
 # Process Contracts
@@ -26409,6 +26557,115 @@ Every process returns a result carrying at least a `Status` field. The value is 
 **Exception shape.** A failure that indicates a caller error — validation, not-found, conflict, lifecycle violation, missing configuration — is returned as a Failure result, not thrown. A failure that indicates a system fault — a database connection loss, an invariant violation that should be impossible, a serialization failure — is thrown. The caller's error handler decides what to do with a thrown exception; the specification does not require catching them at every boundary.
 
 **No process returns a partial-success status.** A process either completes its work for the requested scope or returns Failure for the whole requested scope. A sweep that processes some rows and fails on others is not a partial success; it is a Failure, and the rows already processed remain processed (per B17's transaction boundaries, each row's work is its own atomic unit).
+---
+
+## C4 — Validation rules
+
+Validation occurs at three distinct boundaries. Each boundary validates what it is responsible for and does not duplicate the others.
+
+### Boundary 1 — command shape
+
+The command shape is validated before the process runs. Required fields must be present. Field types must match. Dates must parse. Enumerated values must be within their vocabulary.
+
+The command shape is stated per process in the sections above. A command that fails shape validation produces a `ValidationFailed` result. The process does not run.
+
+Where the command shape is validated is an implementation choice. It may be validated at the HTTP boundary, at a service entry point, or in a dedicated validator. The specification fixes only that validation occurs before the process runs, and that a shape failure produces a `ValidationFailed` result.
+
+### Boundary 2 — referenced entities
+
+Once the command shape is valid, the process validates that the entities the command references exist and are in a state the process can use.
+
+- Every foreign-key value in the command is checked against its target table.
+- Every referenced entity is checked to be non-deleted, unless the process explicitly permits deleted entities.
+- The check is performed within the process; the shape validator does not query the database.
+
+A missing or invalid referenced entity produces a `NotFound` result. A referenced entity whose state is incompatible with the operation produces a `ValidationFailed` or `LifecycleViolation` result, depending on the reason.
+
+### Boundary 3 — outcome invariants
+
+Once the process has begun writing, it must preserve the invariants the specification states. The relevant invariants per process are named in the process's invariants section.
+
+When a write would violate an invariant, the process does not proceed. It either rolls back the transaction (if the write is one of several in the same atomic unit per §9.8) or returns a Failure. Which invariant violations result in which behaviour is stated per invariant:
+
+- **Capacity invariants** — a `ConcurrencyConflict` or `LifecycleViolation` result.
+- **Uniqueness invariants** — a `Conflict` result.
+- **Should-be-impossible invariants** — a thrown `InvariantViolation`.
+
+### What is not validated
+
+- **Authorisation.** The process does not check whether the caller is permitted. Authorisation is upstream, per the specification's stated boundary. The process receives an `AdminID` that is presumed authorised.
+- **Semantic content of free-text fields.** `JoinReason`, `MembershipStage`, `Type`, `Label`, and other free-text values are stored as written. The system does not validate their content.
+- **`CriteriaValue` grammar beyond what B1 states.** A `CriteriaValue` that does not match its grammar is accepted at write time. It produces an inert rule at evaluation time. The write is not refused because a rule with a malformed value is not an error, it is a rule that never matches.
+
+---
+
+## C5 — Transaction boundaries
+
+The transaction boundaries are stated normatively in Specification §9.8. This section restates them for reference and does not extend them.
+
+| Operation | Atomic unit | Outside the atomic unit |
+| --- | --- | --- |
+| 5.0 per assignment | `RosterAssignment` insertion | 9.0 invocation |
+| 7.0 respond | `AssignmentStatusID` update and, if terminal, replacement `RosterAssignment` insertion | 9.0 invocation |
+| 7.0 sweep | Each assignment's status transition, individually | Between assignments in the sweep |
+| 9.0 authority sweep | `NotifiedAt` update on the audit row | Dispatch |
+| 10.0 per occurrence | `FillStatusID` write | Between occurrences in the run |
+| 11.0 per occurrence | Each `ServiceOccurrence` insertion, individually | Between occurrences; the `MaterializerRun` record written separately |
+| 12.0 manual assignment | `RosterAssignment` insertion | 9.0 invocation |
+| 13.0 per rule per member | Each outcome application | Between rules; between members |
+| Configuration soft delete | Fallback updates, dependent row removals, and the `ConfigurationAuditLog` write | — |
+
+An external process invocation is never part of a database atomic unit. This follows from B7 and B17: the invocation is fire-and-forget with respect to the caller's persisted business result.
+
+---
+
+## C6 — Identity and context
+
+Every process that acts on behalf of an administrator receives the identity of that administrator. The identity is an `AdminID` that the process resolves to a non-deleted `Admin` row.
+
+The process does not authenticate the caller. The process does not check whether the caller is permitted to perform the operation. Both are upstream. What the process checks is that the `AdminID` resolves — the row exists and is not soft-deleted. If it does not resolve, the process returns `NotFound`.
+
+### Processes that receive an identity
+
+| Process | Source of identity |
+| --- | --- |
+| 1.1–1.6 Configure Vocabulary | `ActingAdminID` on the command |
+| 2.0 Configure Duty Rules | `ActingAdminID` on the command |
+| 3.1 Manage Member Record | `ActingAdminID` on the command |
+| 3.2 Manage Identifier History | `AuthorizedByAdminID` or `ActingAdminID` on the command |
+| 3.x Member Management (Attendance Rule, Readmission, Attribute) | `ActingAdminID` on the command |
+| 4.0 Manage Eligibility | `GrantedByAdminID` or `ActingAdminID` on the command |
+| 8.1–8.4 Manage Events and Programs | `ActingAdminID` on the command |
+| 11.0 Materialize Occurrences | `TriggeredByAdminId` on the command, required only when `TriggerType` is Manual |
+| 12.0 Create Manual Assignment | `ActingAdminId` on the command |
+| 13.0 Attendance Rule Engine (manual invocation) | The invocation itself; no admin field is required by the current entity shape |
+
+### Processes that do not receive an identity
+
+| Process | Reason |
+| --- | --- |
+| 5.0 Generate Assignment | Triggered by the scheduler, or by an administrator; the assignment rows 5.0 creates do not record the administrator who triggered a manual run |
+| 6.0 Record Attendance | Records a fact; the fact does not carry an administrator identity |
+| 7.0 Manage Confirmation (respond path) | The responding member's identity is not modelled as an Admin; the member responds |
+| 7.0 Manage Confirmation (sweep path) | Triggered by the scheduler |
+| 9.0 Dispatch Notification | Reads and sends; no identity needed |
+| 10.0 Evaluate Fill Status | Reads and writes a mechanical classification; no identity needed |
+| 11.0 Materialize Occurrences (scheduled) | Triggered by the scheduler; `TriggeredByAdminId` is null |
+| 13.0 Attendance Rule Engine (scheduled run) | Triggered by the scheduler |
+
+### What the process does with the identity
+
+The process writes the `AdminID` into the audit columns of the records it creates or modifies. For a create operation, `CreatedBy` or an equivalent column is set. For an update, `ChangedBy` or an equivalent column is set. For a configuration-lifecycle operation, `InitiatedByAdminID` and `ApprovedByAdminID` on the `ConfigurationAuditLog` row are set.
+
+The identity is not used for authorisation, for filtering, or for any purpose other than attribution.
+
+### Identity on the read-only paths
+
+Processes that do not write do not need an identity. A process that reads and returns data does not carry an administrator identity unless the read is scoped by the administrator's authority, which the specification does not currently require.
+
+### Identity is not an authorisation claim
+
+The `AdminID` is a pointer, not a claim. It says "this operation was performed by this administrator." It does not say "this administrator was permitted to perform this operation." The latter is decided upstream.
 
 ==============================================================================
 FILE: docs/processes/operations/10.0-evaluate-fill-status.md
