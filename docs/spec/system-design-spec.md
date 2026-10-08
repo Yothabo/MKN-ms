@@ -1775,7 +1775,18 @@ For each enabled Attendance Rule, the process:
 4. Evaluates the trigger. `AbsenceDays` measures calendar days in the configured ApplicationTimeZone. The window is `[today - N, today]`, inclusive at both boundaries. The trigger fires when the member has no AttendanceRecord whose related ServiceOccurrence.Date falls within the window. The window is not measured in elapsed hours. The attendance timestamp is not used for the absence-window calculation; the occurrence's Date is. `ReadmissionCount` compares the member's readmission count against the configured value. `Manual` fires only when the admin invokes the rule explicitly.
 5. Applies the outcome. `Notify` composes and sends a notification through the configured channel. `SetStatus` sets `Member.MemberStatusID` to the status named by the rule. `IncrementReadmissionCount` is currently a no-op until readmission events are recorded by admin action; the count is derived from the Readmission rows.
 
-Absence evaluation is deterministic for a given calendar date. Two runs on the same date in the same timezone evaluate the same absence window and produce the same absence set. This does not assert that the entire engine is idempotent: other outcomes, particularly `SetStatus`, have their own state-transition semantics, and running the engine twice may apply a status transition twice if the rule's trigger still holds.
+**Rule evaluation order.** The engine evaluates applicable Attendance Rules sequentially, in ascending `AttendanceRuleID` order. Each rule's outcomes take effect before the next rule is evaluated. A rule is not re-evaluated after a later rule changes member state. This is sequential stateful evaluation, not merely a deterministic ordering: earlier rule outcomes are visible to later rules.
+
+Four consequences follow from sequential evaluation:
+
+- Two `SetStatus` rules for the same member produce the second rule's status, because its write occurs later.
+- A `SetStatus` rule and a `Notify` rule for the same member both take effect. The notification is not suppressed by the status change.
+- Two `Notify` rules for the same member produce two notifications. The engine does not deduplicate, merge, or arbitrate between rules.
+- A later rule's trigger reads the state produced by earlier rules in the same evaluation sequence.
+
+The engine does not arbitrate between rules. The administrator is responsible for scoping rules so their effects are what the administrator intends. Ascending `AttendanceRuleID` is the normative ordering; the specification does not provide a priority column, and reordering rules by editing primary keys is not a supported administrative mechanism.
+
+**Determinism.** Rule evaluation is deterministic for a given set of persisted inputs: the same Attendance Rules, the same rule order by AttendanceRuleID, the same scope criteria, the same configuration, the same member population state, the same attendance facts, and the same calendar date in the same timezone produce the same outcome sequence. This is a statement about determinism, not idempotency. Running the engine twice with the same inputs may apply the same `SetStatus` outcome twice if the trigger still holds. Absence evaluation specifically is idempotent for a given calendar date: two runs on the same date in the same timezone evaluate the same absence window and produce the same absence set.
 
 **Source:** System Design Specification §9.6, §13.
 
