@@ -28218,7 +28218,7 @@ Authentication, session management, authorization/RBAC, privilege escalation pro
 
 ==============================================================================
 FILE: docs/spec/system-design-spec.md
-LINES: 2565
+LINES: 2597
 ==============================================================================
 
 # System Design Specification
@@ -28388,7 +28388,7 @@ Active-and-not-deleted uniqueness on (ServiceDefID, TimeSlotID).
 | CreatedBy | Foreign key → Admin. Populated only when GeneratedBy is Administrator. |
 | ChangedBy | Foreign key → Admin. Records subsequent human modification. |
 
-A schedule-sourced row is unique on (ScheduleID, Date). This constraint does not apply to event-sourced rows. `GeneratedBy` and `CreatedBy` are bound by a check constraint: System implies CreatedBy IS NULL; Administrator implies CreatedBy IS NOT NULL. No `IsActive` and no `IsDeleted` — occurrences are operational records.
+A schedule-sourced row is unique on (ScheduleID, Date). This constraint does not apply to event-sourced rows. `ScheduleID` and `EventID` are mutually exclusive and exactly one must be non-null. `ScheduleID != null` and `EventID == null` is a schedule-sourced occurrence. `ScheduleID == null` and `EventID != null` is an event-sourced occurrence. The combination `null, null` and the combination `non-null, non-null` are both forbidden. The implementation must enforce this invariant. `GeneratedBy` is provenance metadata, set at creation; it is not the mechanism that makes the source invariant true. `GeneratedBy` and `CreatedBy` are bound by a check constraint: System implies CreatedBy IS NULL; Administrator implies CreatedBy IS NOT NULL. No `IsActive` and no `IsDeleted` — occurrences are operational records.
 
 ### Service Occurrence Duty
 
@@ -29082,11 +29082,13 @@ The uniqueness rule is a locked decision (D1). Inactive schedules are excluded, 
 
 #### 9.1.6 OwningBranch enforcement
 
-The OwningBranchID on a ServiceDefinition is enforced at the moment a ServiceSchedule is created or edited, not at ServiceDefinition creation.
+The OwningBranchID on a ServiceDefinition is enforced as a hard data-integrity invariant.
 
 - If OwningBranchID is null, any BranchTimeSlot may be used.
-- If OwningBranchID is set, only BranchTimeSlots whose BranchID matches may be used.
-- A later edit to OwningBranchID does not rewrite existing schedules.
+- If OwningBranchID is set, the BranchTimeSlot referenced by a ServiceSchedule for that ServiceDefinition must have a BranchID equal to OwningBranchID.
+- A ServiceSchedule whose TimeSlot.BranchID differs from its ServiceDefinition.OwningBranchID (when the latter is non-null) is an integrity violation.
+
+The invariant crosses tables. The implementation must enforce it. The mechanism is implementation choice. Validation at schedule creation is not sufficient on its own, because a later change to OwningBranchID or to a referenced BranchTimeSlot would otherwise invalidate the invariant silently.
 
 #### 9.1.7 Member and Identifier History
 
@@ -29125,6 +29127,8 @@ Program is one per Event. ProgramItem carries SequenceOrder, Title, ScheduledSta
 When a ProgramItem links to a ServiceDefinition, an event-sourced ServiceOccurrence is created. It has EventID populated, ScheduleID null, Date and StartTime derived from ProgramItem.ScheduledStart, ServiceTypeID inherited from the linked ServiceDefinition, GeneratedBy = Administrator, and CreatedBy = the admin who performed the action. This is the only write the configuration layer performs to an operational store.
 
 EventDuty carries a free-text Label, a direct AssignedMemberID, and an optional AssignmentStatusID. It does not reference the Duty table.
+
+Event and EventBranch carry the following relational rules. `HostBranchID` must reference a Branch. `EventBranch` may contain zero or more branches. The host and attendee sets are independent: the host need not appear in `EventBranch`, and a branch may appear as both host and attendee. Inactive branches may remain referenced. The composite primary key on (EventID, BranchID) prevents duplicates. No constraint requires `HostBranchID` to appear in `EventBranch`.
 
 #### 9.1.12 D10 — Config Lookups
 
@@ -29302,7 +29306,21 @@ The reason for the change is that the congregation manages configuration by a bo
 
 **Source:** System Design Specification §4, §9.3.
 
-### 9.8 Cross-References
+### 9.8 Transaction boundaries
+
+Every operation that writes more than one row has an atomic boundary. The specification names which writes form an atomic unit. The mechanism — a single `SaveChanges`, an explicit database transaction, or an equivalent — is implementation choice.
+
+- **5.0 per assignment.** The `RosterAssignment` insertion is the atomic persisted operation. The subsequent 9.0 invocation is outside that atomic boundary and cannot cause the assignment transaction to roll back.
+- **7.0 respond.** The `AssignmentStatusID` update and, when the transition is terminal, the replacement `RosterAssignment` insertion are one atomic unit. The subsequent 9.0 invocation is outside it.
+- **7.0 sweep.** Each assignment's status transition is its own atomic unit. The sweep does not wrap all transitions in a single transaction.
+- **9.0 authority sweep.** The `NotifiedAt` update is atomic with respect to the audit row. Dispatch is outside the database atomic boundary.
+- **10.0 per occurrence.** The `FillStatusID` write is atomic per occurrence.
+- **11.0 per occurrence.** Each `ServiceOccurrence` insertion is atomic per row. A failed run leaves the rows created so far; a subsequent run resumes.
+- **12.0 manual assignment.** The `RosterAssignment` insertion is the atomic persisted operation. The conditional 9.0 invocation is outside it.
+- **13.0 per rule per member.** Each outcome application is its own atomic unit. Two rules on one member are two atomic units, applied sequentially per §13.6.
+- **Configuration soft delete.** The cascade — fallback updates, dependent row removals, and the audit write — is one atomic unit.
+
+### 9.9 Cross-References
 
 - §7 — Materialization contract.
 - §8 — Occurrence Materialization derivation.
@@ -30085,8 +30103,6 @@ The current scope assumes a single global channel. Per-member channel preference
 
 **Path 2 — authority-facing, scheduled.** A scheduled authority-notification sweep runs 9.0 on a cadence. On each run, 9.0 reads new Configuration Audit Log entries and dispatches notifications for them.
 
-**Authority-notification reliability.** The authority-notification sweep is at-least-once, driven by `NotifiedAt IS NULL`. A dispatch failure leaves the row eligible for a later sweep. If a dispatch succeeds but the process fails before `NotifiedAt` is persisted, the same audit row may be dispatched again on a later sweep, and duplicate dispatch is possible. The sweep does not maintain a bounded retry counter, does not guarantee exactly-once delivery, and does not track delivery. A persistently failing dispatch can leave a row indefinitely unnotified. Recipients are configured in Notification Subscription, either by permission tier or by specific admin. The sweep sets `NotifiedAt` on each audit row it processes.
-
 9.0 is **not** invoked on:
 
 - Status changes to an existing assignment.
@@ -30100,15 +30116,31 @@ The current scope assumes a single global channel. Per-member channel preference
 
 The system does not record that a notification was sent, when, through which channel, or whether it was delivered. There is no NotificationLog.
 
-#### 14.1.5 No retry
+**Authority-notification reliability.** The authority-notification path is at-least-once with respect to the audit row's `NotifiedAt` field. A `ConfigurationAuditLog` row whose `NotifiedAt` is NULL is eligible for a future sweep. If dispatch fails, `NotifiedAt` is left NULL and a later sweep retries. If dispatch succeeds but the process fails before `NotifiedAt` is persisted, the same audit row may be dispatched again on a later sweep. This is a consequence of the design and is stated deliberately: the system does not attempt exactly-once delivery. There is no bounded retry and no attempt counter. A persistent failure can leave a row indefinitely unnotified. The absence of `NotifiedAt` is the only signal.
 
-If the underlying channel fails, the notification is lost from the system's perspective. 9.0 does not retry.
+The member-facing path (Path 1) does not carry this semantics. Its invocation is fire-and-forget and its success is not tracked at all, per §10.1.8.
+
+#### 14.1.5 No retry on the member-facing path
+
+On the member-facing path (Path 1), if the underlying channel fails, the notification is lost from the system's perspective. 9.0 does not retry the member-facing dispatch.
+
+The authority-notification path (Path 2) is retried implicitly: a `ConfigurationAuditLog` row whose `NotifiedAt` remains NULL is eligible for a subsequent sweep. See §14.1.4.
 
 #### 14.1.6 Content
 
 The notification carries enough information for the member to understand what they are being asked to respond to: the occurrence date and time, the duty, and (implicitly) the expectation of a response. The exact format is channel-dependent and outside the schema.
 
 The notification does not contain a confirmation token or other schema-defined response identifier. Assignment-response correlation is handled by the 7.0 response mechanism and is outside 9.0's schema contract.
+
+### 14.1.9 Recipient lifecycle
+
+Recipient resolution produces zero or more admins from the matching `NotificationSubscription` rows. The following rules apply:
+
+- An inactive or soft-deleted subscription is not consulted.
+- A subscription by tier resolves to all admins at that tier whose `Admin` row is not soft-deleted. Admins whose member is soft-deleted are skipped. If the referenced `PermissionTier` is soft-deleted, the subscription resolves to zero recipients.
+- A subscription by specific admin resolves to that admin if the `Admin` row is not soft-deleted. Otherwise it resolves to zero recipients.
+- Zero recipients is a valid outcome, not a failure. The sweep sets `NotifiedAt` on the audit row anyway.
+- No fallback recipient is invented. If the configured recipients cannot be resolved, no notification is sent and none is sought elsewhere.
 
 ### 14.2 Read and Write Footprint
 
