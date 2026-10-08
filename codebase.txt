@@ -27288,7 +27288,7 @@ Authentication, session management, authorization/RBAC, privilege escalation pro
 
 ==============================================================================
 FILE: docs/spec/system-design-spec.md
-LINES: 2337
+LINES: 2369
 ==============================================================================
 
 # System Design Specification
@@ -28404,6 +28404,10 @@ Criteria are evaluated per CriteriaType:
 | Membership Stage | Member's MembershipStage matches |
 | Branch-Attendance Recency | Member has an AttendanceRecord at the specified branch within the configured window |
 | Eligibility Flag | Member has a current Eligibility grant for the referenced duty |
+| Member Attribute | Member holds the named Attribute Type with the required value in their Member Attribute Value rows |
+| Youth | Member's age, computed from DateOfBirth against the configured YouthAgeMin and YouthAgeMax settings, falls within the configured range |
+
+**Rule scope.** A Duty Rule may carry a null ServiceDefID, in which case it applies to the duty wherever the duty appears. A rule may carry a ServiceDefID, in which case it applies only where the duty is required by that specific Service Definition, and it overrides the duty-global rules entirely for that (Service, Duty) pair. If no per-service rules exist for a pair, the duty-global rules apply. If neither exists, every eligible member is an equal candidate.
 
 Reserved criteria types (Acceptance Rate, Duties Carried, Days Since Last Assignment) are not evaluated until a future specification revision activates them. If a tier consists entirely of rules whose criteria types are reserved, the tier is treated as producing no candidates.
 
@@ -28985,7 +28989,9 @@ The current scope assumes a single global channel. Per-member channel preference
 
 #### 14.1.3 Trigger boundary
 
-9.0 is invoked by three processes, under the conditions described below:
+9.0 has two trigger paths.
+
+**Path 1 — member-facing, invoked.** Invoked by three processes, under the conditions below:
 
 | Invoked by | When |
 | --- | --- |
@@ -28993,15 +28999,16 @@ The current scope assumes a single global channel. Per-member channel preference
 | 7.0 Manage Confirmation | On each replacement assignment created after decline or timeout |
 | 12.0 Create Manual Assignment | Only when the created manual assignment has AssignmentStatusID = NULL at creation |
 
+**Path 2 — authority-facing, scheduled.** A scheduled authority-notification sweep runs 9.0 on a cadence. On each run, 9.0 reads new Configuration Audit Log entries and dispatches notifications for them. Recipients are configured in Notification Subscription, either by permission tier or by specific admin. The sweep sets `NotifiedAt` on each audit row it processes.
+
 9.0 is **not** invoked on:
 
 - Status changes to an existing assignment.
 - Fill status changes by 10.0.
 - Attendance records by 6.0.
-- Any configuration change.
 - Any occurrence materialization.
 
-**Invocation versus triggering for 9.0.** The three rows above are invocations: 5.0, 7.0, and 12.0 call 9.0 directly. 9.0 additionally has an independent scheduled trigger — the authority-notification sweep. The sweep reads new ConfigurationAuditLog entries and dispatches notifications for them. It is a trigger, not an invocation: no process calls 9.0 for this path; the scheduler starts 9.0 directly. The durable invariant is unaffected — 9.0 is still the sole process any other process is permitted to invoke.
+**Invocation versus triggering for 9.0.** The three rows in Path 1 are invocations: 5.0, 7.0, and 12.0 call 9.0 directly. Path 2 is a trigger, not an invocation. No process calls 9.0 for the authority-notification sweep; the scheduler starts 9.0 directly. The durable invariant is unaffected — 9.0 is still the sole process any other process is permitted to invoke.
 
 #### 14.1.4 No delivery tracking
 
@@ -29312,7 +29319,32 @@ Event-sourced occurrences are excluded. Their uniqueness is governed by the 8.0 
 | 15.3.8 | NotificationChannel | New setting | §14 |
 | 15.4.1 | RosterAssignment.AssignmentStatusID nullable | Nullability clarification | §10 |
 
-Fifteen amendments. Two new columns, four new constraints, eight new settings, one nullability clarification.
+Fifteen amendments from the original set. Two new columns, four new constraints, eight new settings, one nullability clarification.
+
+### 15.8 Later Amendments
+
+The following amendments were added after the original fifteen.
+
+| # | Amendment | Type | Source |
+| --- | --- | --- | --- |
+| 15.8.1 | MemberStatus entity and Member.MemberStatusID replaces Member.IsActive | New entity, new column | §4, §9.6 |
+| 15.8.2 | Member.ReceiptNumber, Member.CardNumber | New columns | §4 |
+| 15.8.3 | Member.JoinReason | New column | §4 |
+| 15.8.4 | AttributeType entity | New entity | §4 |
+| 15.8.5 | MemberAttributeValue entity | New entity | §4 |
+| 15.8.6 | DutyRule.ServiceDefID | New column | §4, §10.1.5 |
+| 15.8.7 | MemberAttribute and Youth criteria types | Extended vocabulary | §5, §10.1.5 |
+| 15.8.8 | Event.Location removed; Event.HostBranchID added | Column change | §4 |
+| 15.8.9 | EventBranch entity | New entity | §4 |
+| 15.8.10 | EventDuty.Label removed; EventDuty.DutyID and EventDuty.ServiceDefID added | Column change | §4 |
+| 15.8.11 | ProgramItem.Location | New column | §4 |
+| 15.8.12 | IsDeleted on every configuration entity | New column, many entities | §4, §9.6 |
+| 15.8.13 | Role.IsDefault | New column | §4 |
+| 15.8.14 | ConfigurationAuditLog entity | New entity | §4, §9.6 |
+| 15.8.15 | EntityDeletionPolicy entity | New entity | §4, §9.6 |
+| 15.8.16 | NotificationSubscription entity | New entity | §4, §14.1.3 |
+| 15.8.17 | Capability entity | New entity | §4 |
+| 15.8.18 | ReceiptToCardDurationDays, YouthAgeMin, YouthAgeMax settings | New settings | §4 |
 
 ---
 
