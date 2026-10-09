@@ -136,7 +136,7 @@ Two commands.
 
 **Result on Success:** The created or updated `DutyRule` record.
 
-**Errors:** `ValidationFailed` (including a `CriteriaType` outside the fixed vocabulary, or a `CriteriaValue` that does not match its grammar — the value is accepted at write time but the rule is inert if malformed; validation refuses the write if the type is invalid), `NotFound`.
+**Errors:** `ValidationFailed` (including a `CriteriaType` outside the fixed vocabulary, or a `CriteriaValue` that does not match its grammar — the value is accepted at write time but the rule is inert if malformed; validation refuses the write if the type is invalid). The full criteria vocabulary and value grammars are stated in §5 and §10.1.5 of the specification. The `MemberStatus` criterion's value is a comma-separated list of integer MemberStatusIDs with no whitespace; it accepts IDs, not names. `NotFound`.
 
 ### 3.0 Manage Membership
 

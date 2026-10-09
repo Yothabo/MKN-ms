@@ -273,7 +273,7 @@ The matrix tests each closed decision's boundaries explicitly. The list below na
 
 | Decision | Boundary tested |
 | --- | --- |
-| B1 | A `CriteriaValue` at the edge of its grammar (e.g., `13-35`, `13 - 35`, `Purity=Pure`, `Purity = Pure`) |
+| B1 | A `CriteriaValue` at the edge of its grammar (e.g., `13-35`, `13 - 35`, `Purity=Pure`, `Purity = Pure`, `2,3,4`, `2, 3, 4`) |
 | B2 | YouthAgeMin and YouthAgeMax exactly inclusive |
 | B3 | terminal → non-terminal at and around the slot-capacity threshold |
 | B4 | Each of the three target settings absent |

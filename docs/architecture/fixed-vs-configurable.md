@@ -33,7 +33,7 @@ DutyRule has a DutyID foreign key. That means the schema knows a Duty Rule *can*
 
 ### The criteria-type vocabulary
 
-CriteriaType is constrained to one of a fixed set. Nine supported types are evaluated by the engine:
+CriteriaType is constrained to one of a fixed set. Ten supported types are evaluated by the engine:
 
 - Role
 - Gender
@@ -43,6 +43,7 @@ CriteriaType is constrained to one of a fixed set. Nine supported types are eval
 - Branch-Attendance Recency
 - Eligibility Flag
 - Member Attribute
+- Member Status
 - Youth
 
 Three additional types are reserved for future activation and are not evaluated: Acceptance Rate, Duties Carried, Days Since Last Assignment.
@@ -98,7 +99,7 @@ Which Outcome States exist. Which Assignment Statuses exist. Which Permission Ti
 | **Entities** | Table structure, columns, types | Rows |
 | **Relationships** | Which FKs exist, what they can connect | Which specific connections exist |
 | **Cardinality** | One Member → one BranchID | Whether any specific Branch is populated |
-| **Criteria vocabulary** | The nine supported criteria types, plus three reserved | Which criteria apply to which duty, in what tier order |
+| **Criteria vocabulary** | The ten supported criteria types, plus three reserved | Which criteria apply to which duty, in what tier order |
 | **Role-Duty link** | That a DutyRule can express Role as a criterion | Whether any Duty uses Role as a criterion, and to what value |
 | **Mechanical operations** | How to project a recurring schedule forward N days | What N is |
 | **Provenance** | GeneratedBy is permanent | Whether a specific occurrence was system- or admin-generated |

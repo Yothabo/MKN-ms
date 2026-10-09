@@ -572,6 +572,7 @@ The schema uses three temporal types. Each has one meaning.
 - Branch-Attendance Recency
 - Eligibility Flag (references the Eligibility table)
 - Member Attribute (references an admin-defined Attribute Type and a required value)
+- Member Status (references the Member Status lookup; the value is a comma-separated list of integer MemberStatusIDs, no whitespace)
 - Youth (computed from DateOfBirth against the configured YouthAgeMin and YouthAgeMax settings; carries no value)
 - (Reserved for future use once historical data exists) Acceptance Rate, Duties Carried, Days Since Last Assignment
 
@@ -1237,7 +1238,12 @@ Before evaluation, the value is trimmed of leading and trailing whitespace. Whit
 | Branch-Attendance Recency | A non-negative integer, days, no whitespace | The member has an AttendanceRecord at the occurrence's branch within the last N days |
 | Eligibility Flag | A positive integer, the DutyID, no whitespace | The member has a current Eligibility grant for the referenced Duty |
 | Member Attribute | `AttributeTypeName=RequiredValue` | The AttributeType is resolved by exact case-sensitive name. The member must hold a MemberAttributeValue for that type whose Value equals RequiredValue exactly. The RequiredValue may contain spaces; the syntax around the `=` does not permit spaces. |
+| Member Status | A comma-separated list of positive integers, the MemberStatusIDs, no whitespace | The member's current `MemberStatusID` is one of the listed IDs |
 | Youth | Empty | Computed from Member.DateOfBirth against YouthAgeMin and YouthAgeMax |
+
+**Member Status names IDs, not names.** The Member Status criterion departs from the name-based convention used by Role, Membership Stage, and Member Attribute. Role, Membership Stage, and Attribute Type names are administrator-defined and renameable; a rename silently makes every rule that named the old value inert. MemberStatusID is a stable system identifier that survives renaming. The criterion therefore accepts integer IDs and rejects names.
+
+**Multiple statuses in one value, not multiple rows.** A tier's rows are ANDed (see Tier composition). Naming several acceptable statuses within a single Member Status rule expresses OR across statuses; expressing that as several rows would AND them, which is the opposite of what the administrator intends. The comma-separated value is therefore the correct form for a status set.
 
 **Malformed values.** A rule whose `CriteriaValue` does not match its grammar produces no candidates. It is not an error and does not fail the run. Evaluation continues. If a tier contains no candidate because of a malformed rule, the engine falls through to the next tier as it would for any tier producing no candidate.
 
@@ -2302,6 +2308,7 @@ The following amendments were added after the original fifteen.
 | 15.8.25 | Attendance register scope resolution | Rule | §9.6 |
 | 15.8.26 | Branch-Attendance Recency skips when register off | Rule | §10.1.5 |
 | 15.8.27 | Member and Admin lifecycle: Member has no flags — state is MemberStatusID only; Admin gains IsActive | Amendment | §4, §9.1.1, §9.1.7, §9.7, §14.1.9 |
+| 15.8.28 | Member Status criterion | Amendment | §5, §10.1.5 |
 
 ---
 
