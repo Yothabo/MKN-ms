@@ -1,33 +1,28 @@
-
 # Documentation
 
-*The entry point for this documentation tree. Everything under `docs/` is either the specification — the authority — or a derived document. Where a derived document conflicts with the specification, the specification wins.*
+*The entry point for this documentation tree. Everything under docs/ is either the specification — the authority — or a derived document. Where a derived document conflicts with the specification, the specification wins.*
 
 ---
 
 ## How this tree is organized
 
-```
-
-docs/
-├── README.md              
-├── spec/                  ← the authority
-├── architecture/          ← derived: the system as a whole
-├── processes/             ← derived: process-by-process
-├── database/              ← derived: implementation-facing data model
-└── api/                   ← derived: placeholder until stack is chosen
-
-```
+    docs/
+    ├── README.md
+    ├── spec/                  ← the authority
+    ├── architecture/          ← derived: the system as a whole
+    ├── processes/             ← derived: process-by-process
+    ├── database/              ← derived: implementation-facing data model
+    └── api/                   ← derived: placeholder until stack is chosen
 
 Each directory has a distinct role:
 
 | Directory | Role |
 | --- | --- |
-| `spec/` | The authoritative specification documents. Nothing here derives from anything else. |
-| `architecture/` | The system described top-down. Derived from the spec. |
-| `processes/` | One document per process. Derived from the spec. |
-| `database/` | The implementation-facing reference for the data model. Derived from the spec. |
-| `api/` | A placeholder that will be populated once the stack is chosen. |
+| spec/ | The authoritative specification documents. Nothing here derives from anything else. |
+| architecture/ | The system described top-down. Derived from the spec. |
+| processes/ | One document per process. Derived from the spec. |
+| database/ | The implementation-facing reference for the data model. Derived from the spec. |
+| api/ | A placeholder that will be populated once the stack is chosen. |
 
 ---
 
@@ -35,25 +30,25 @@ Each directory has a distinct role:
 
 For a reader new to the system:
 
-1. **`spec/system-design-spec.md` §1–§3** — purpose, design principle, components.
-2. **`spec/system-design-spec.md` §4** — the entities.
-3. **`spec/system-design-spec.md` §5–§6** — the configuration language and what is fixed.
-4. **`spec/system-design-spec.md` §7** — the materialization contract.
-5. **`spec/dfd.md`** — the same architecture, viewed as data flows.
-6. **`spec/system-design-spec.md` §8–§16** — the derived contracts and consolidations.
-7. **`spec/config-reference.md`** — how MKN has actually configured the system.
+1. **spec/system-design-spec.md §1–§3** — purpose, design principle, components.
+2. **spec/system-design-spec.md §4** — the entities.
+3. **spec/system-design-spec.md §5–§6** — the configuration language and what is fixed.
+4. **spec/system-design-spec.md §7** — the materialization contract.
+5. **spec/dfd.md** — the same architecture, viewed as data flows.
+6. **spec/system-design-spec.md §8–§16** — the derived contracts and consolidations.
+7. **spec/config-reference.md** — how MKN has actually configured the system.
 
 Then move outward into the derived documentation:
 
-8. **`architecture/system-overview.md`** — the top-down view.
-9. **`architecture/core-design-principle.md`** — the fixed/configurable separation, in full.
-10. **`architecture/data-model.md`** and **`entity-reference.md`** — the entities.
-11. **`architecture/process-model.md`** — the thirteen processes.
-12. **`architecture/invocation-model.md`** — the direct invocation edges and the data-mediated relationships.
-13. **`processes/configuration/README.md`** and **`processes/operations/README.md`** — the two process layers.
+8. **architecture/system-overview.md** — the top-down view.
+9. **architecture/core-design-principle.md** — the fixed/configurable separation, in full.
+10. **architecture/data-model.md** and **entity-reference.md** — the entities.
+11. **architecture/process-model.md** — the thirteen processes.
+12. **architecture/invocation-model.md** — the direct invocation edges and the data-mediated relationships.
+13. **processes/configuration/README.md** and **processes/operations/README.md** — the two process layers.
 14. **The individual process documents** — one per process.
-15. **`database/`** — the implementation-facing reference.
-16. **`api/`** — the eventual API surface.
+15. **database/** — the implementation-facing reference.
+16. **api/** — the eventual API surface.
 
 ---
 
@@ -70,61 +65,61 @@ The governing rule for every derived document is:
 5. Do not duplicate large sections of the specification.
 6. If the derived document conflicts with the spec, the spec wins.
 
-Any change to the system's architecture begins in `spec/`, not in a derived document.
+Any change to the system's architecture begins in spec/, not in a derived document.
 
 ---
 
 ## The directories in detail
 
-### `spec/`
+### spec/
 
 The three authoritative documents:
 
-- **`system-design-spec.md`** — the System Design Specification. §1 through §17. Architecture-only.
-- **`dfd.md`** — the Data Flow Diagrams. The same architecture from a data-flow perspective.
-- **`config-reference.md`** — the MKN Configuration Reference. What MKN has actually configured. Not architecture.
+- **system-design-spec.md** — the System Design Specification. §1 through §17. Architecture-only.
+- **dfd.md** — the Data Flow Diagrams. The same architecture from a data-flow perspective.
+- **config-reference.md** — the MKN Configuration Reference. What MKN has actually configured. Not architecture.
 
-See **`spec/README.md`** for the full description of each.
+See **spec/README.md** for the full description of each.
 
-### `architecture/`
+### architecture/
 
 Eight documents describing the system as a whole:
 
-- **`system-overview.md`** — what the system is, top-down.
-- **`core-design-principle.md`** — the fixed/configurable separation, in full.
-- **`components.md`** — the components table and their boundaries.
-- **`fixed-vs-configurable.md`** — what the system knows vs. what administrators decide.
-- **`data-model.md`** — the entities and their relationships.
-- **`entity-reference.md`** — every table, every column.
-- **`process-model.md`** — the thirteen processes, grouped by layer.
-- **`invocation-model.md`** — the direct invocation edges and the data-mediated relationships.
+- **system-overview.md** — what the system is, top-down.
+- **core-design-principle.md** — the fixed/configurable separation, in full.
+- **components.md** — the components table and their boundaries.
+- **fixed-vs-configurable.md** — what the system knows vs. what administrators decide.
+- **data-model.md** — the entities and their relationships.
+- **entity-reference.md** — every table, every column.
+- **process-model.md** — the thirteen processes, grouped by layer.
+- **invocation-model.md** — the direct invocation edges and the data-mediated relationships.
 
-### `processes/`
+### processes/
 
 The thirteen processes, split into two layers:
 
-- **`configuration/`** — the five processes that create and maintain administrator-entered values.
-- **`operations/`** — the eight processes that produce operational records.
+- **configuration/** — the five processes that create and maintain administrator-entered values.
+- **operations/** — the eight processes that produce operational records.
 
 Each subdirectory has a README describing the layer, plus one document per process.
 
-### `database/`
+### database/
 
 The implementation-facing reference for the data model:
 
-- **`schema.md`** — every table, column, type, nullability.
-- **`constraints.md`** — every constraint, sourced.
-- **`settings.md`** — every SystemSetting key.
-- **`indexes.md`** — required, candidate, and physical indexes distinguished.
-- **`amendments.md`** — the consolidated delta from the base schema.
+- **schema.md** — every table, column, type, nullability.
+- **constraints.md** — every constraint, sourced.
+- **settings.md** — every SystemSetting key.
+- **indexes.md** — required, candidate, and physical indexes distinguished.
+- **amendments.md** — the consolidated delta from the base schema.
 
-### `api/`
+### api/
 
 A placeholder. Will be populated once the technology stack is chosen. Contains:
 
-- **`endpoints.md`** — the eventual endpoint list.
-- **`request-response.md`** — request/response conventions.
-- **`process-mapping.md`** — how endpoints map to processes.
+- **endpoints.md** — the eventual endpoint list.
+- **request-response.md** — request/response conventions.
+- **process-mapping.md** — how endpoints map to processes.
 
 ---
 
@@ -139,7 +134,7 @@ The original set added fifteen amendments to the base schema:
 - **Eight new settings:** OccurrenceHorizonDays, InitialAssignmentStatusID, ConfirmationTimeoutHours, OutcomeStateUnfilledID, OutcomeStatePartiallyFilledID, OutcomeStateFilledID, OutcomeStateCancelledID, NotificationChannel.
 - **One nullability clarification:** RosterAssignment.AssignmentStatusID is nullable.
 
-Two later sets have been applied since: the A–G amendment set and the attendance amendment set. The consolidated amendment count is forty-one. Full details in **`database/amendments.md`** and **`spec/system-design-spec.md` §15**.
+Two later sets have been applied since: the A–G amendment set and the attendance amendment set. The consolidated amendment count is forty-one. Full details in **database/amendments.md** and **spec/system-design-spec.md §15**.
 
 ---
 
@@ -149,11 +144,12 @@ The system has four process-to-process invocation edges, all terminating at 9.0 
 
 - **5.0 Generate Assignment → 9.0 Dispatch Notification**, on each new automatic assignment.
 - **7.0 Manage Confirmation → 9.0 Dispatch Notification**, on each replacement assignment.
-- **12.0 Create Manual Assignment → 9.0 Dispatch Notification**, only when the created manual assignment has `AssignmentStatusID = NULL` at creation.
+- **12.0 Create Manual Assignment → 9.0 Dispatch Notification**, only when the created manual assignment has AssignmentStatusID = NULL at creation.
+- **13.0 Attendance Rule Engine → 9.0 Dispatch Notification**, only when an Attendance Rule with OutcomeType = Notify fires.
 
-Everything else is data-mediated. No other process invokes or is invoked by anything.
+9.0 additionally carries an independent scheduled trigger — the authority-notification sweep — which is a trigger, not an invocation. Everything else is data-mediated. No other process invokes another process, and 9.0 is the sole process any other process is permitted to invoke.
 
-Full details in **`architecture/invocation-model.md`** and **`spec/system-design-spec.md` §16**.
+Full details in **architecture/invocation-model.md** and **spec/system-design-spec.md §16**.
 
 ---
 
@@ -161,8 +157,8 @@ Full details in **`architecture/invocation-model.md`** and **`spec/system-design
 
 8.0 Manage Events and Programs is the sole configuration process permitted to create an operational record. When a Program Item is linked to a Service Definition, 8.0 creates an event-sourced ServiceOccurrence directly. This is the only write from the configuration layer to an operational store.
 
-Full details in **`processes/configuration/8.0-manage-events-and-programs.md`** and **`spec/system-design-spec.md` §9**.
+Full details in **processes/configuration/8.0-manage-events-and-programs.md** and **spec/system-design-spec.md §9**.
 
 ---
 
-*Source: this file is a navigational index. It derives from nothing and introduces nothing. The authority is `spec/`.*
+*Source: this file is a navigational index. It derives from nothing and introduces nothing. The authority is spec/.*
