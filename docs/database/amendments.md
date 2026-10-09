@@ -282,7 +282,7 @@ The amendments below were added after the original fifteen. They are the changes
 | EventDuty | DutyID | integer | No | §4 |
 | EventDuty | ServiceDefID | integer | Yes | §4 |
 | EventDuty | (Label removed) | — | — | §4 |
-| Every two-flag configuration entity (not Admin, not Member) | IsDeleted | boolean | No | §4, §9.6 |
+| Every two-flag configuration entity (not Admin, not Member) | IsDeleted | boolean | No | §4, §9.7 |
 
 ### 5.3 — Extended criteria vocabulary
 
