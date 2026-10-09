@@ -171,7 +171,7 @@ Reads Attendance Rules, evaluates each against the member population, and applie
 
 **Trigger:** Scheduled run; manual administrator invocation of a single rule.
 
-**Reads:** D2 (AttendanceRule, AttendanceRuleScope), D3 (register scope), D4 (Member, MemberStatus), D8 (AttendanceRecord), D10 (MemberStatus lookup), D11 (global register scope), D13 (Readmission).
+**Reads:** D13 (AttendanceRule, AttendanceRuleScope, Readmission), D3 (Branch.UsesAttendanceRegister — the member's home-branch scope), D4 (Member, MemberStatus), D8 (AttendanceRecord), D10 (MemberStatus lookup), D11 (SystemSetting — `AttendanceRegisterEnabled`).
 
 **Writes:** D4 (MemberStatusID when a SetStatus outcome fires).
 
