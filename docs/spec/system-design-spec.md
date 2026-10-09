@@ -2224,6 +2224,51 @@ Event-sourced occurrences are excluded. Their uniqueness is governed by the 8.0 
 | Validation | If no valid channel is configured, 9.0 does not send. No channel-specific fallback is defined by the 9.0 contract. |
 | Source | §14 |
 
+#### 15.3.9 DeclinedStatusID
+
+| Property | Value |
+| --- | --- |
+| Type | integer — an AssignmentStatusID |
+| Required | true |
+| Consumed by | 7.0 Manage Confirmation, on the decline path |
+| Behavior if absent | 7.0 refuses the decline operation and surfaces a configuration error |
+| Source | §11.1.7 |
+
+#### 15.3.10 TimedOutStatusID
+
+| Property | Value |
+| --- | --- |
+| Type | integer — an AssignmentStatusID |
+| Required | true |
+| Consumed by | 7.0 Manage Confirmation, on the timeout sweep path |
+| Behavior if absent | 7.0 refuses the sweep operation and surfaces a configuration error |
+| Source | §11.1.7 |
+
+#### 15.3.11 ApplicationTimeZone
+
+| Property | Value |
+| --- | --- |
+| Type | string — an IANA timezone ID |
+| Required | true |
+| Consumed by | 5.0, 7.0, 11.0, 12.0, 13.0, the Quartz job classes, and the Quartz scheduler registration |
+| Behavior if absent | The consuming process refuses to run and surfaces a configuration error |
+| Behavior if unrecognised | The consuming process refuses to run and surfaces a configuration error |
+| Source | §7, §9.6, §13.6 |
+
+`ApplicationTimeZone` is used for one purpose: converting an instant to the calendar date it falls on in that zone. Date and time values are never converted through UTC. The resolver that converts an instant to a date returns the zone's calendar date; when the setting is absent or unrecognised the resolver surfaces a configuration error rather than silently falling back. The Quartz scheduler resolves the setting once at application startup; the processes resolve it on every run.
+
+#### 15.3.12 AttendanceRegisterEnabled
+
+| Property | Value |
+| --- | --- |
+| Type | string — the boolean as text, `"true"` or `"false"` |
+| Required | true |
+| Consumed by | 6.0 Record Attendance, 13.0 Attendance Rule Engine, and 5.0 Generate Assignment's Branch-Attendance Recency criterion |
+| Behavior if absent | The consuming process refuses to run and surfaces a configuration error |
+| Source | §9.6 |
+
+`AttendanceRegisterEnabled` is the global default for the attendance register. The per-branch override (`Branch.UsesAttendanceRegister`) and the per-event override (`Event.UsesAttendanceRegister`) apply first; the global setting is the fallback. No implicit default is assumed.
+
 ### 15.4 Nullability Clarifications
 
 #### 15.4.1 RosterAssignment.AssignmentStatusID — nullable
@@ -2278,9 +2323,13 @@ Event-sourced occurrences are excluded. Their uniqueness is governed by the 8.0 
 | 15.3.6 | OutcomeStateFilledID | New setting | §12 |
 | 15.3.7 | OutcomeStateCancelledID | New setting | §12 |
 | 15.3.8 | NotificationChannel | New setting | §14 |
+| 15.3.9 | DeclinedStatusID | New setting | §11.1.7 |
+| 15.3.10 | TimedOutStatusID | New setting | §11.1.7 |
+| 15.3.11 | ApplicationTimeZone | New setting | §7, §9.6, §13.6 |
+| 15.3.12 | AttendanceRegisterEnabled | New setting | §9.6 |
 | 15.4.1 | RosterAssignment.AssignmentStatusID nullable | Nullability clarification | §10 |
 
-Fifteen amendments from the original set. Two new columns, four new constraints, eight new settings, one nullability clarification.
+Nineteen amendments from the original set. Two new columns, four new constraints, twelve new settings, one nullability clarification.
 
 ### 15.8 Later Amendments
 
@@ -2318,6 +2367,7 @@ The following amendments were added after the original fifteen.
 | 15.8.28 | Member Status criterion | Amendment | §5, §10.1.5 |
 | 15.8.29 | Member register scope and event scope fallback | Amendment | §4, §9.6, §13.6 |
 | 15.8.31 | 13.0 process contract: NoOp distinction, ascending rule order, single-rule manual invocation, ActingAdminID on manual invocation | Amendment | §13.6 |
+| 15.8.32 | Settings inventory: DeclinedStatusID, TimedOutStatusID, ApplicationTimeZone, AttendanceRegisterEnabled | Amendment | §15.3 |
 
 ---
 

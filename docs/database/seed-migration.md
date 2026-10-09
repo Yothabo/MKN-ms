@@ -40,7 +40,11 @@ The rewrite produces three seed scripts, split by concern.
 - Lookup rows: `TimeOfDay`, `ServiceType`, `OutcomeState`, `AssignmentStatus`, `PermissionTier`, `MemberStatus`, `Capability`, `AttributeType`.
 - Vocabulary rows: `Role`, `Duty`.
 - Structural rows: `Branch`, `BranchTimeSlot`, `ServiceDefinition`, `ServiceDefinitionDuty`, `ServiceSchedule`.
-- The `SystemSetting` rows with their production defaults: `OccurrenceHorizonDays`, `InitialAssignmentStatusID`, `DeclinedStatusID`, `TimedOutStatusID`, `ConfirmationTimeoutHours`, the four `OutcomeState*ID` keys, `NotificationChannel`, `ReceiptToCardDurationDays`, `YouthAgeMin`, `YouthAgeMax`, and the global attendance register scope.
+- The `SystemSetting` rows with their production defaults: `OccurrenceHorizonDays`, `InitialAssignmentStatusID`, `DeclinedStatusID`, `TimedOutStatusID`, `ConfirmationTimeoutHours`, the four `OutcomeState*ID` keys, `NotificationChannel`, `ReceiptToCardDurationDays`, `YouthAgeMin`, `YouthAgeMax`, and the following:
+  - `ApplicationTimeZone = 'Africa/Johannesburg'` (or the deployment's IANA zone)
+  - `AttendanceRegisterEnabled = 'true'`
+  - `DeclinedStatusID` populated from the seeded AssignmentStatus row whose `Name = 'Declined'`
+  - `TimedOutStatusID` populated from the seeded AssignmentStatus row whose `Name = 'Timed Out'`
 - One default `Role`, one default `MemberStatus`, one default `PermissionTier`. The defaults are the rows the amendment fallback rules use.
 
 **`seed-membership.sql`** — member register and eligibility.

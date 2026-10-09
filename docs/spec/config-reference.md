@@ -49,8 +49,6 @@ Wednesday's Branch Time Slot start time changes between school term and school h
 
 ## Membership and branch context
 
-**(default — confirm with MKN) Tenure threshold:** described as roughly three months from joining before a member becomes generally duty-eligible. Configured as `System Setting: TenureThresholdDays = 90`. A specific, round, defensible default consistent with "roughly three months" — adjustable in one place the moment MKN confirms an exact figure.
-
 **(default — confirm with MKN) Receipt-to-card issuance duration:** described as roughly three months. Configured as `System Setting: ReceiptToCardDurationDays = 90`, same reasoning as above.
 
 **(default — confirm with MKN) Pre-uniform membership stage duty scope:** described as limited to Theme Reader, with no confirmation that this is the complete scope. Configured default: **Theme Reader only** — the described, not assumed, scope. Expanding it requires a deliberate confirmed addition, not an assumption now.

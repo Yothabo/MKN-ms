@@ -117,6 +117,59 @@ Maps the Filled mechanical condition.
 | Validation | If no valid channel is configured, 9.0 does not send. No channel-specific fallback is defined by the 9.0 contract. Whether the setting is configured as required is a deployment choice, not fixed by the specification. |
 | Source | §14, §15.3.8 |
 
+### DeclinedStatusID
+
+| Property | Value |
+| --- | --- |
+| Key | DeclinedStatusID |
+| Type | integer — an AssignmentStatusID |
+| Required | true |
+| Consumed by | 7.0 Manage Confirmation, on the decline path |
+| Behavior if absent | 7.0 refuses the decline operation and surfaces a configuration error |
+| Source | §11.1.7, §15.3.9 |
+
+The AssignmentStatus to which a declined assignment transitions. Points at an administrator-created row; the system does not name or interpret any status.
+
+### TimedOutStatusID
+
+| Property | Value |
+| --- | --- |
+| Key | TimedOutStatusID |
+| Type | integer — an AssignmentStatusID |
+| Required | true |
+| Consumed by | 7.0 Manage Confirmation, on the timeout sweep path |
+| Behavior if absent | 7.0 refuses the sweep operation and surfaces a configuration error |
+| Source | §11.1.7, §15.3.10 |
+
+The AssignmentStatus to which a timed-out assignment transitions.
+
+### ApplicationTimeZone
+
+| Property | Value |
+| --- | --- |
+| Key | ApplicationTimeZone |
+| Type | string — an IANA timezone ID |
+| Required | true |
+| Consumed by | 5.0, 7.0, 11.0, 12.0, 13.0, the Quartz job classes, and the Quartz scheduler registration |
+| Behavior if absent | The consuming process refuses to run and surfaces a configuration error |
+| Behavior if unrecognised | The consuming process refuses to run and surfaces a configuration error |
+| Source | §7, §9.6, §13.6, §15.3.11 |
+
+Used for one purpose: converting an instant to the calendar date it falls on in that zone. No silent fallback. The Quartz scheduler resolves the value once at application startup; the processes resolve it on every run.
+
+### AttendanceRegisterEnabled
+
+| Property | Value |
+| --- | --- |
+| Key | AttendanceRegisterEnabled |
+| Type | string — the boolean as text, `"true"` or `"false"` |
+| Required | true |
+| Consumed by | 6.0, 13.0, and 5.0's Branch-Attendance Recency criterion |
+| Behavior if absent | The consuming process refuses to run and surfaces a configuration error |
+| Source | §9.6, §15.3.12 |
+
+The global default for the attendance register. Per-branch and per-event overrides apply first.
+
 ---
 
 ## Existing settings referenced but not new
@@ -173,6 +226,10 @@ The maximum age at which a member counts as a youth, for the computed youth pseu
 | OutcomeStateFilledID | integer | true | 10.0 |
 | OutcomeStateCancelledID | integer | false | 10.0 |
 | NotificationChannel | string | deployment choice | 9.0 |
+| DeclinedStatusID | integer | true | 7.0 |
+| TimedOutStatusID | integer | true | 7.0 |
+| ApplicationTimeZone | string | true | 5.0, 7.0, 11.0, 12.0, 13.0, Quartz |
+| AttendanceRegisterEnabled | string | true | 6.0, 13.0, 5.0 |
 | ReceiptToCardDurationDays | integer | not fixed | Administrative |
 | Age-range bounds | integer | not fixed | 5.0 (Age Range criterion) |
 
