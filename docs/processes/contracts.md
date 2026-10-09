@@ -547,6 +547,8 @@ Two commands.
 | StatusChangesApplied | integer |
 | NotificationsDispatched | integer |
 
+**Evaluation order.** A scheduled run evaluates every enabled rule whose `TriggerType` is not `Manual`, sequentially in ascending `AttendanceRuleID` order. Each rule's outcome is persisted before the next rule is evaluated. A `SetStatus` outcome applied by an earlier rule is visible to a later rule's trigger and scope evaluation on the same run.
+
 **Errors:** `ValidationFailed` (the named rule does not exist, is not enabled, or is not a Manual rule), `ConfigurationMissing` (a required setting referenced by an active rule is absent).
 
 ---
