@@ -23269,7 +23269,7 @@ Reads Attendance Rules, evaluates each against the member population, and applie
 
 **Trigger:** Scheduled run; manual administrator invocation of a single rule.
 
-**Reads:** D2 (AttendanceRule, AttendanceRuleScope), D3 (register scope), D4 (Member, MemberStatus), D5 (Readmission), D7 (AttendanceRecord), D10 (MemberStatus lookup), D11 (global register scope).
+**Reads:** D2 (AttendanceRule, AttendanceRuleScope), D3 (register scope), D4 (Member, MemberStatus), D8 (AttendanceRecord), D10 (MemberStatus lookup), D11 (global register scope), D13 (Readmission).
 
 **Writes:** D4 (MemberStatusID when a SetStatus outcome fires).
 
@@ -23328,7 +23328,7 @@ Each process reads from and writes to a defined set of stores. No process writes
 | 10.0 | D3, D7, D10, D11 | D3 |
 | 11.0 | D3, D11 | D3, D12 |
 | 12.0 | D2, D3, D4, D6, D7 | D7 |
-| 13.0 | D2, D3, D4, D5, D7, D10, D11 | D4 |
+| 13.0 | D2, D3, D4, D8, D10, D11, D13 | D4 (MemberStatusID) |
 
 A configuration-audit store and an attendance store are also present. The configuration-audit store holds Configuration Audit Log, Entity Deletion Policy, and Notification Subscription. The attendance store is D13, holding Attendance Rule, Attendance Rule Scope, and Readmission.
 
