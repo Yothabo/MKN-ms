@@ -1,6 +1,6 @@
 # Specification Freeze
 
-**Frozen at commit:** `a69226c`
+**Frozen at commit:** `5601ed5` (tag `spec-v1.0-freeze`)
 **Frozen on:** 2026-10-08
 
 ---
