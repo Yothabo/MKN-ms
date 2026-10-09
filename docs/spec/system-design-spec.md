@@ -1137,7 +1137,7 @@ Every operation that writes more than one row has an atomic boundary. The specif
 
 5.0 Generate Assignment is the process that fills the required duty slots on a ServiceOccurrence by producing RosterAssignment rows. It reads configuration, reads member and eligibility data, reads existing assignments to top up rather than replace, and writes RosterAssignment.
 
-It is one of the two processes in the system that invoke another process directly (the other is 7.0). When 5.0 creates a new RosterAssignment, it invokes 9.0 to dispatch the assignment notice.
+It is one of the four processes in the system that invoke another process directly. The other direct invokers are 7.0, 12.0, and 13.0. When 5.0 creates a new RosterAssignment, it invokes 9.0 to dispatch the assignment notice.
 
 **At a glance:**
 
@@ -1350,7 +1350,7 @@ When 5.0 creates a new automatic assignment, it invokes 9.0 with that assignment
 
 7.0 Manage Confirmation is the process that tracks the response lifecycle of each RosterAssignment. It transitions the assignment's AssignmentStatusID from NULL (as written by 5.0) through the admin-defined statuses, and on decline or timeout it re-resolves only the affected slot.
 
-It is one of the two processes in the system that invoke another process directly (the other is 5.0). When 7.0 creates a replacement assignment after a decline or timeout, it invokes 9.0 to dispatch the assignment notice.
+It is one of the four processes in the system that invoke another process directly. The other direct invokers are 5.0, 12.0, and 13.0. When 7.0 creates a replacement assignment after a decline or timeout, it invokes 9.0 to dispatch the assignment notice.
 
 **At a glance:**
 
