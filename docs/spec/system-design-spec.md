@@ -2376,6 +2376,7 @@ The following amendments were added after the original fifteen.
 | 15.8.33 | ApplicationTimeZone is required; absent or unrecognised produces ConfigurationMissing or ConfigurationInvalid, no silent fallback | Amendment | §7, §15.3.11 |
 | 15.8.34 | Attendance Rule ownership: Create, Update, Disable, Deactivate, Soft-delete commands formalized under 3.0 | Amendment | §9.7, §13.6 |
 | 15.8.35 | Specification stale text: AttendanceRecord.Source distinguishes Manual from Tap; 6.0 register-scope reads named | Amendment | §13.1.4, §13.2, §13.5 |
+| 15.8.36 | API reconciliation: adapter contract is authoritative; endpoint list gains 13.0 manual; 9.0 invoker list corrected to four | Amendment | §14, §16 |
 
 ---
 

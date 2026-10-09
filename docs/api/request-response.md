@@ -6,7 +6,9 @@
 
 ## Status
 
-Not yet defined. The conventions depend on the technology stack and API style, which have not yet been chosen.
+The technology stack is chosen: ASP.NET Core Web API, JSON request and response bodies.
+
+The authoritative conventions are in `adapter-contract.md`. This file states the derived conventions that follow from it and from `../processes/contracts.md`: how request bodies are shaped, how responses are shaped, how errors are surfaced, and how the caller distinguishes an operation failure from a notification failure.
 
 ---
 

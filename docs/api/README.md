@@ -6,9 +6,11 @@
 
 ## Status
 
-This directory is a scaffold. Its files exist to reserve the structure; none of them contains an API contract yet.
+The technology stack is chosen: ASP.NET Core Web API with Minimal API endpoints, on .NET 8, backed by EF Core 8 and PostgreSQL.
 
-The API surface depends on the technology stack, which has not yet been selected. Until then, no endpoints, request/response shapes, or protocol choices exist to document.
+`adapter-contract.md` is the authoritative application-level contract between the HTTP surface and the processes. It states the request shape, the response shape, the error-category-to-HTTP mapping, and what the adapter does and does not do.
+
+`endpoints.md`, `request-response.md`, and `process-mapping.md` are derived from that contract and from `../processes/contracts.md`. They are being brought into line with it. Where any of them conflicts with `adapter-contract.md`, the adapter contract wins; where `adapter-contract.md` conflicts with the specification, the specification wins.
 
 ---
 

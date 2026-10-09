@@ -1,20 +1,18 @@
 # Endpoints
 
-*Placeholder for the endpoint list. To be populated once the API contract exists.*
+*The endpoint list, grouped by the process each endpoint serves. Derived from `adapter-contract.md` and `../processes/contracts.md`; where this document conflicts with the adapter contract or the specification, they win.*
 
 ---
 
 ## Status
 
-Not yet defined. The endpoint list depends on the technology stack and the API style (REST, RPC, GraphQL, or other), which have not yet been chosen.
+The technology stack is chosen: ASP.NET Core Web API, JSON request and response bodies. The authoritative adapter contract is `adapter-contract.md`. The endpoint list below reflects the process exposure the system defines.
 
 ---
 
 ## What will live here
 
-When the API contract is defined, this file will list every endpoint the system exposes. Each endpoint will be organised by the process it serves.
-
-The anticipated groups, mirroring `../processes/`:
+This file lists the endpoints the system exposes, grouped by the process each endpoint serves.
 
 ### Configuration endpoints
 
@@ -32,8 +30,9 @@ The anticipated groups, mirroring `../processes/`:
 - Evaluate Fill Status (10.0)
 - Materialize Occurrences (11.0)
 - Create Manual Assignment (12.0)
+- Attendance Rule Engine (13.0) — manual single-rule invocation. Specified, not yet implemented.
 
-The Notification Dispatcher (9.0) is invoked internally by 5.0 and 7.0; it does not require an externally exposed endpoint.
+The Dispatch Notification process (9.0) is invoked internally by 5.0, 7.0, 12.0, and 13.0, and carries its own scheduled authority-notification sweep. It has no externally exposed endpoint.
 
 ---
 

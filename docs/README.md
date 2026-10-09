@@ -115,11 +115,13 @@ The implementation-facing reference for the data model:
 
 ### api/
 
-A placeholder. Will be populated once the technology stack is chosen. Contains:
+The HTTP surface. The stack is chosen (ASP.NET Core Web API, .NET 8). Contains:
 
-- **endpoints.md** — the eventual endpoint list.
-- **request-response.md** — request/response conventions.
+- **adapter-contract.md** — the authoritative application-level contract between the HTTP surface and the processes.
+- **endpoints.md** — the endpoint list, grouped by the process each endpoint serves.
+- **request-response.md** — request/response conventions, derived from the adapter contract.
 - **process-mapping.md** — how endpoints map to processes.
+- **README.md** — this directory's entry point.
 
 ---
 
