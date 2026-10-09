@@ -211,7 +211,7 @@ The system does not interpret any status name. The `IsRosterable` flag is the me
 | RoleID | Foreign key → Role |
 | MemberStatusID | Foreign key → Member Status |
 
-Member carries no `IsActive` and no `IsDeleted` as boolean columns. A soft-deleted member is marked via `IsDeleted` on this table; a member's operational status is expressed by `MemberStatusID`.
+Member carries no `IsActive` and no `IsDeleted` as boolean columns. A member's operational state is expressed by `MemberStatusID` only. A member row is never removed through normal operations; setting a member's status to a status whose `IsRosterable = false` excludes the member from new roster generation without touching any operational record.
 
 ### Identifier History
 
@@ -348,8 +348,11 @@ Unique on (MemberID, AttributeTypeID). Absence of a row means the attribute is n
 | AdminID | Primary key |
 | MemberID | Foreign key → Member |
 | PermissionTierID | Foreign key → Permission Tier |
+| IsActive | Boolean. Required. True at creation. |
 
 An Admin row records that a member has been granted admin status by another admin. No member is inherently an admin.
+
+Revoking admin status sets `IsActive = false`; the row remains, preserving attribution on any historical record that names the admin. Acting identities must resolve to an Admin row whose `IsActive = true`. Historical attribution resolves regardless of the admin's current `IsActive` value.
 
 ### Attendance Record
 
@@ -836,9 +839,11 @@ For entities that do carry lifecycle state, the rules are uniform:
 - **Every field is editable, always.** Edits take effect for future use.
 - **No deletion, ever.** Configuration entities are historical facts.
 
-Entities with lifecycle state: Role, Duty, Branch, BranchTimeSlot, ServiceDefinition, ServiceDefinitionDuty, ServiceSchedule, Member, DutyRule, Event, Program, ProgramItem, EventDuty.
+Entities with the two-flag lifecycle (`IsActive` and `IsDeleted`): Role, Duty, Branch, BranchTimeSlot, ServiceDefinition, ServiceDefinitionDuty, ServiceSchedule, DutyRule, Event, Program, ProgramItem, EventDuty.
 
-Entities without lifecycle state: IdentifierHistory, Eligibility, SystemSetting, Admin, D10 lookup values.
+Entities with a single lifecycle flag or a non-flag lifecycle mechanism: Admin (`IsActive` only), Member (no flag — state is `MemberStatusID`).
+
+Entities without lifecycle state: IdentifierHistory, Eligibility, SystemSetting, D10 lookup values.
 
 #### 9.1.2 Role and Duty
 
@@ -892,7 +897,7 @@ IdentifierHistory is a per-member log of identifier assignments. Type is free-te
 
 Readmission is a per-member historical fact recorded when a member is readmitted. Process 3.0 owns its creation. The administrator performing the readmission is recorded in `PerformedByAdminID`; the date is recorded in `ReadmissionDate`; an optional `Reason` may be supplied. A Readmission carries no lifecycle flags and is never removed through normal operations. Creating a Readmission does not modify `Member.MemberStatusID`; the status change, if any, is a separate administrative action or a separate Attendance Rule outcome. The system does not require the member to have held any particular status or to have been absent before a readmission can be recorded. No correction or deletion mechanism for Readmission is currently defined; if one becomes necessary, it is a specification amendment.
 
-Deactivating a Member excludes them from new roster generation. It does not touch operational records. Changing a Member's BranchID or RoleID affects only future use.
+A member is not deactivated and not soft-deleted. A member's state is set by assigning a `MemberStatusID` whose `IsRosterable = false`, which excludes the member from new roster generation without touching any operational record. Changing a Member's BranchID or RoleID affects only future use. There is no member status history table; member status changes are not audited by any log.
 
 #### 9.1.8 Admin and Permission Tier
 
@@ -1072,7 +1077,7 @@ On soft delete, the following reference handling applies:
 | --- | --- |
 | Role | Blocked if this is the default Role. Otherwise, members holding the Role fall back to the default Role. Duty Rules whose CriteriaType = Role and whose CriteriaValue names this Role are deleted. |
 | Duty | Blocked if any Service Definition Duty or Event Duty row references the Duty. Otherwise the referencing rows are removed. Existing Roster Assignment rows referencing the Duty are preserved as historical records. |
-| Member Status | Blocked if this is the default Member Status. Otherwise, members with this status fall back to the default. |
+| Member Status | Blocked if this is the default Member Status. Otherwise, members with this status fall back to the default status. Attendance Rules whose `OutcomeStatusID` names this status are removed. Attendance Rule Scope rows whose criteria name this status are removed. |
 | Branch | Blocked if any Member is assigned to the Branch. Otherwise the referencing Branch Time Slot rows are removed. Existing Event HostBranchID and Event Branch rows referencing the Branch are preserved. |
 | Branch Time Slot | Blocked if any Service Schedule references the Time Slot. Otherwise the referencing Service Schedule rows are removed if they were already inactive. |
 | Service Definition | Blocked if any Service Schedule, Program Item, Event Duty, or Duty Rule references the Service Definition. |
@@ -1091,6 +1096,8 @@ On soft delete, the following reference handling applies:
 | Capability | Removed; not soft-deleted independently, because nothing references it. |
 | Entity Deletion Policy | Removed; not soft-deleted independently. |
 | Notification Subscription | Removed; not soft-deleted independently. |
+| Member | No soft-delete operation. A member's state is `MemberStatusID` only. The row is never removed through normal operations. |
+| Admin | No soft-delete operation. Revocation sets `IsActive = false`; the row remains. |
 
 Configuration changes — including deactivation and soft delete — take effect on the next process run. They do not rewrite history. A Roster Assignment, once created, is not re-evaluated because a configuration row it was generated under was later changed or deleted. An Attendance Record names a member, not a role; deleting a role does not touch it.
 
@@ -1932,8 +1939,8 @@ The notification does not contain a confirmation token or other schema-defined r
 Recipient resolution produces zero or more admins from the matching `NotificationSubscription` rows. The following rules apply:
 
 - An inactive or soft-deleted subscription is not consulted.
-- A subscription by tier resolves to all admins at that tier whose `Admin` row is not soft-deleted. Admins whose member is soft-deleted are skipped. If the referenced `PermissionTier` is soft-deleted, the subscription resolves to zero recipients.
-- A subscription by specific admin resolves to that admin if the `Admin` row is not soft-deleted. Otherwise it resolves to zero recipients.
+- A subscription by tier resolves to all admins at that tier whose `Admin` row has `IsActive = true`. If the referenced `PermissionTier` is soft-deleted, the subscription resolves to zero recipients.
+- A subscription by specific admin resolves to that admin if the `Admin` row has `IsActive = true`. Otherwise it resolves to zero recipients.
 - Zero recipients is a valid outcome, not a failure. The sweep sets `NotifiedAt` on the audit row anyway.
 - No fallback recipient is invented. If the configured recipients cannot be resolved, no notification is sent and none is sought elsewhere.
 
@@ -2294,6 +2301,7 @@ The following amendments were added after the original fifteen.
 | 15.8.24 | 13.0 Attendance Rule Engine | New process | §13.6, §16 |
 | 15.8.25 | Attendance register scope resolution | Rule | §9.6 |
 | 15.8.26 | Branch-Attendance Recency skips when register off | Rule | §10.1.5 |
+| 15.8.27 | Member and Admin lifecycle: Member has no flags — state is MemberStatusID only; Admin gains IsActive | Amendment | §4, §9.1.1, §9.1.7, §9.7, §14.1.9 |
 
 ---
 
