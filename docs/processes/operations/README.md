@@ -80,7 +80,7 @@ Every other relationship between processes is data-mediated. 9.0 is the sole pro
 | 10.0 | D3, D7, D10, D11 | D3 |
 | 11.0 | D3, D11 | D3, D12 |
 | 12.0 | D2, D3, D4, D6, D7 | D7 |
-| 13.0 | D2 (AttendanceRule), D3, D4, D5 (Readmission), D7 (AttendanceRecord), D10 (MemberStatus), D11 (scope) | D4 (MemberStatusID) |
+| 13.0 | D2 (AttendanceRule), D3, D4, D8 (AttendanceRecord), D10 (MemberStatus), D11 (scope), D13 (Readmission) | D4 (MemberStatusID) |
 
 ---
 

@@ -2422,7 +2422,7 @@ Every process has an independent trigger mechanism except 9.0. Operational data 
 | 10.0 Evaluate fill status | D3, D7, D10, D11 | D3 |
 | 11.0 Materialize occurrences | D3, D11 | D3, D12 |
 | 12.0 Create manual assignment | D2, D3, D4, D6, D7 | D7 |
-| 13.0 Attendance Rule Engine | D2 (Attendance Rule), D3, D4, D5 (Readmission), D7 (Attendance Record), D10 | D4 (Member Status) |
+| 13.0 Attendance Rule Engine | D2 (Attendance Rule), D3, D4, D8 (Attendance Record), D10, D11, D13 (Readmission) | D4 (Member Status) |
 
 ### 16.6 Invariants of the Invocation Model
 

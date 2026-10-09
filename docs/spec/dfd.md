@@ -272,7 +272,7 @@ Process Dictionary
 
 11.0 Materialize occurrences D11, D3 D3, D12
 12.0 Create manual assignment D2, D3, D4, D6, D7 D7
-13.0 Attendance Rule Engine D2, D3, D4, D5, D7, D10 D4
+13.0 Attendance Rule Engine D2, D3, D4, D8, D10, D11, D13 D4
 
 Data Store Dictionary
 
