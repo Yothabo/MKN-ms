@@ -11,10 +11,25 @@ Run from the repository root:
 
     python3 scripts/consistency_check.py
 
-The check is deliberately pattern-based. It catches the actual forms that
-have drifted historically — process counts, edge counts, section ranges,
-decision-label usage, store-footprint letters — regardless of surrounding
-context. New patterns are added as new drift risks are identified.
+The check runs in two parts.
+
+First, a pattern-based scan. It catches the actual forms that have drifted
+historically — process counts, edge counts, section ranges, decision-label
+usage, store-footprint letters — regardless of surrounding context. New
+patterns are added as new drift risks are identified.
+
+Second, an amendment-register scan. It checks the tree against the terms
+the specification's amendment register names. The term table is
+hand-maintained from §15.1-§15.4 and §15.8 of the specification. When the
+register gains a row, the table gains a row; when the register amends a
+row, the table is amended. The scan is checked against the table, not
+against the register text; the table is checked against the register by a
+human at the time of the amendment.
+
+Rows in the register that describe a rule or a relationship rather than a
+term cannot be checked by keyword. They are listed in
+AMENDMENT_REGISTER_UNVERIFIABLE and printed by the check so that a human
+verifies them when the register changes.
 """
 
 import re
@@ -115,6 +130,145 @@ STALE_PATTERNS_WITH_EXCLUSIONS = [
      re.compile(r"no longer exists|pre-amendment|removed|dropped|15\.8|Drop|Migrate")),
 ]
 
+# --------------------------------------------------------------------------
+# The amendment register — hand-maintained term table
+# --------------------------------------------------------------------------
+#
+# Source of truth: system-design-spec.md §15.1-§15.4 and §15.8.
+#
+# The register stores sentences about terms, not terms themselves. This
+# table is the human reading of those sentences, reduced to (term,
+# polarity, source) triples. When the register gains a row, this table
+# gains a row; when the register amends a row, this table is amended.
+# The scan is checked against this table, not against the register text.
+#
+# Polarity:
+#   "removed" — the term must not appear in the tree except in an explicit
+#               removal context (see REMOVAL_CONTEXT_PHRASES).
+#   "added"   — the term must appear at least once in the tree.
+#   "setting" — the term must appear in docs/database/settings.md and in
+#               the process document that consumes it (SETTING_CONSUMERS).
+#
+AMENDMENT_REGISTER_TERMS = [
+    # §15.8.1
+    ("Member.IsActive", "removed", "§15.8.1"),
+    ("MemberStatus", "added", "§15.8.1"),
+    ("Member.MemberStatusID", "added", "§15.8.1"),
+    # §15.8.2
+    ("Member.ReceiptNumber", "added", "§15.8.2"),
+    ("Member.CardNumber", "added", "§15.8.2"),
+    # §15.8.3
+    ("Member.JoinReason", "added", "§15.8.3"),
+    # §15.8.4
+    ("AttributeType", "added", "§15.8.4"),
+    # §15.8.5
+    ("MemberAttributeValue", "added", "§15.8.5"),
+    # §15.8.6
+    ("DutyRule.ServiceDefID", "added", "§15.8.6"),
+    # §15.8.8
+    ("Event.Location", "removed", "§15.8.8"),
+    ("Event.HostBranchID", "added", "§15.8.8"),
+    # §15.8.9
+    ("EventBranch", "added", "§15.8.9"),
+    # §15.8.10
+    ("EventDuty.Label", "removed", "§15.8.10"),
+    ("EventDuty.DutyID", "added", "§15.8.10"),
+    ("EventDuty.ServiceDefID", "added", "§15.8.10"),
+    # §15.8.11
+    ("ProgramItem.Location", "added", "§15.8.11"),
+    # §15.8.13
+    ("Role.IsDefault", "added", "§15.8.13"),
+    # §15.8.14
+    ("ConfigurationAuditLog", "added", "§15.8.14"),
+    # §15.8.15
+    ("EntityDeletionPolicy", "added", "§15.8.15"),
+    # §15.8.16
+    ("NotificationSubscription", "added", "§15.8.16"),
+    # §15.8.17
+    ("Capability", "added", "§15.8.17"),
+    # §15.8.19
+    ("AttendanceRecord.Source", "added", "§15.8.19"),
+    # §15.8.20
+    ("Branch.UsesAttendanceRegister", "added", "§15.8.20"),
+    ("Event.UsesAttendanceRegister", "added", "§15.8.20"),
+    # §15.8.21
+    ("AttendanceRule", "added", "§15.8.21"),
+    # §15.8.22
+    ("AttendanceRuleScope", "added", "§15.8.22"),
+    # §15.8.23
+    ("Readmission", "added", "§15.8.23"),
+    # §15.8.27
+    ("Admin.IsActive", "added", "§15.8.27"),
+    ("Member.IsDeleted", "removed", "§15.8.27"),
+    # §15.3.1-§15.3.8
+    ("OccurrenceHorizonDays", "setting", "§15.3.1"),
+    ("InitialAssignmentStatusID", "setting", "§15.3.2"),
+    ("ConfirmationTimeoutHours", "setting", "§15.3.3"),
+    ("OutcomeStateUnfilledID", "setting", "§15.3.4"),
+    ("OutcomeStatePartiallyFilledID", "setting", "§15.3.5"),
+    ("OutcomeStateFilledID", "setting", "§15.3.6"),
+    ("OutcomeStateCancelledID", "setting", "§15.3.7"),
+    ("NotificationChannel", "setting", "§15.3.8"),
+    # §15.8.32
+    ("DeclinedStatusID", "setting", "§15.8.32"),
+    ("TimedOutStatusID", "setting", "§15.8.32"),
+    ("ApplicationTimeZone", "setting", "§15.8.32"),
+    ("AttendanceRegisterEnabled", "setting", "§15.8.32"),
+    # §15.8.18
+    ("ReceiptToCardDurationDays", "setting", "§15.8.18"),
+    ("YouthAgeMin", "setting", "§15.8.18"),
+    ("YouthAgeMax", "setting", "§15.8.18"),
+]
+
+# Register rows that describe a rule or a relationship rather than a term.
+# A keyword scan cannot check these. They are printed by the check so a
+# human verifies them when the register changes.
+AMENDMENT_REGISTER_UNVERIFIABLE = [
+    ("§15.8.7",  "MemberAttribute and Youth criteria types — named in the register; the criteria's documented names are 'Member Attribute' and 'Youth'"),
+    ("§15.8.12", "IsDeleted on every configuration entity — a structural property, not a term"),
+    ("§15.8.24", "13.0 Attendance Rule Engine — a process, not a term"),
+    ("§15.8.25", "Attendance register scope resolution — a rule stated in §9.6"),
+    ("§15.8.26", "Branch-Attendance Recency skips when register off — a rule stated in §10.1.5"),
+    ("§15.8.27", "Member has no flags — the term Member.IsDeleted is checked; the structural property itself is human-verified"),
+    ("§15.8.28", "Member Status criterion — a criterion type, checked against the §5 vocabulary by a human"),
+    ("§15.8.29", "Member register scope and event scope fallback — a rule stated in §9.6"),
+    ("§15.8.31", "13.0 process contract items — prose describing behaviour, not terms"),
+    ("§15.8.33", "ApplicationTimeZone required — the setting is checked; the required-ness rule is human-verified"),
+    ("§15.8.34", "Attendance Rule ownership commands — process commands, not terms"),
+    ("§15.8.35", "Specification stale text — a remediation note, not a term"),
+    ("§15.8.36", "API reconciliation — a remediation note, not a term"),
+]
+
+# For a "setting" term, the process document that consumes it. The scan
+# confirms the setting appears in both settings.md and in this document.
+SETTING_CONSUMERS = {
+    "OccurrenceHorizonDays":           "docs/processes/operations/11.0-materialize-occurrences.md",
+    "InitialAssignmentStatusID":       "docs/processes/operations/7.0-manage-confirmation.md",
+    "ConfirmationTimeoutHours":        "docs/processes/operations/7.0-manage-confirmation.md",
+    "OutcomeStateUnfilledID":          "docs/processes/operations/10.0-evaluate-fill-status.md",
+    "OutcomeStatePartiallyFilledID":   "docs/processes/operations/10.0-evaluate-fill-status.md",
+    "OutcomeStateFilledID":            "docs/processes/operations/10.0-evaluate-fill-status.md",
+    "OutcomeStateCancelledID":         "docs/processes/operations/10.0-evaluate-fill-status.md",
+    "NotificationChannel":             "docs/processes/operations/9.0-dispatch-notification.md",
+    "DeclinedStatusID":                "docs/processes/operations/7.0-manage-confirmation.md",
+    "TimedOutStatusID":                "docs/processes/operations/7.0-manage-confirmation.md",
+    "ApplicationTimeZone":             "docs/processes/operations/11.0-materialize-occurrences.md",
+    "AttendanceRegisterEnabled":       "docs/processes/operations/13.0-attendance-rule-engine.md",
+    "ReceiptToCardDurationDays":       "docs/processes/configuration/3.0-manage-membership.md",
+    "YouthAgeMin":                     "docs/processes/operations/5.0-generate-assignment.md",
+    "YouthAgeMax":                     "docs/processes/operations/5.0-generate-assignment.md",
+}
+
+# A "removed" term is not a defect when it appears within this many lines
+# of one of these phrases. The window is symmetric: the phrase may be on
+# the same line, the previous line, or the next line.
+REMOVAL_CONTEXT_PHRASES = (
+    "removed", "no longer exists", "no longer", "pre-amendment",
+    "dropped", "replaced by", "replaced", "§15.8", "15.8",
+    "migration", "was removed", "were removed", "has been removed",
+    "have been removed", "removed in", "removed by",
+)
+
 # The root of the documentation tree, relative to the repository root.
 # The script assumes it is run from the repository root.
 DOCS_ROOT = Path("docs")
@@ -195,6 +349,105 @@ def scan_decision_labels(defined: set) -> list:
     return violations
 
 
+def _removal_context(lines, idx, window=1):
+    """True if any of the removal-context phrases appears within `window`
+    lines of `idx` (inclusive of both)."""
+    lo = max(0, idx - window)
+    hi = min(len(lines), idx + window + 1)
+    for j in range(lo, hi):
+        if any(phrase in lines[j] for phrase in REMOVAL_CONTEXT_PHRASES):
+            return True
+    return False
+
+
+def scan_amendment_register_terms() -> list:
+    """Check the tree against the amendment register's term table.
+
+    Returns a list of (path, line_number, label, text) tuples for every
+    violation, matching the shape of scan()'s output.
+    """
+    violations = []
+
+    # Preload every markdown file once, since we scan the tree several
+    # times (once per term).
+    files = []
+    for md in sorted(DOCS_ROOT.rglob("*.md")):
+        if ".git" in md.parts:
+            continue
+        try:
+            lines = md.read_text(encoding="utf-8").splitlines()
+        except UnicodeDecodeError:
+            continue
+        files.append((md, lines))
+
+    # Removed-term scan: the term must not appear outside a removal context.
+    for term, polarity, source in AMENDMENT_REGISTER_TERMS:
+        if polarity != "removed":
+            continue
+        for md, lines in files:
+            # decisions.md states what the decisions removed; it is a
+            # definition file and legitimately names removed terms.
+            if md.name == "decisions.md":
+                continue
+            # The specification is the authority; §15 and §9.7 legitimately
+            # name removed terms when they describe the removal.
+            if md.name == "system-design-spec.md":
+                continue
+            for i, line in enumerate(lines):
+                if term in line and not _removal_context(lines, i):
+                    violations.append((
+                        md, i + 1,
+                        f"removed term '{term}' ({source}) appears outside a removal context",
+                        line.strip()[:140]))
+
+    # Added-term scan: the term must appear at least once in the tree.
+    for term, polarity, source in AMENDMENT_REGISTER_TERMS:
+        if polarity != "added":
+            continue
+        found = False
+        for md, lines in files:
+            if md.name in ("decisions.md", "consistency_check.py"):
+                continue
+            if any(term in line for line in lines):
+                found = True
+                break
+        if not found:
+            violations.append((
+                Path("<tree>"), 0,
+                f"added term '{term}' ({source}) not found anywhere in docs/",
+                ""))
+
+    # Setting scan: the key must appear in settings.md and in the process
+    # document that consumes it.
+    settings_md = DOCS_ROOT / "database" / "settings.md"
+    settings_lines = settings_md.read_text(encoding="utf-8").splitlines() if settings_md.exists() else []
+    for term, polarity, source in AMENDMENT_REGISTER_TERMS:
+        if polarity != "setting":
+            continue
+        if not any(term in line for line in settings_lines):
+            violations.append((
+                settings_md, 0,
+                f"setting '{term}' ({source}) missing from docs/database/settings.md",
+                ""))
+        consumer_rel = SETTING_CONSUMERS.get(term)
+        if consumer_rel is not None:
+            consumer = Path.home().joinpath("MKN-ms", consumer_rel)
+            if not consumer.exists():
+                violations.append((
+                    consumer, 0,
+                    f"setting '{term}' ({source}) consumer document not found: {consumer_rel}",
+                    ""))
+            else:
+                consumer_lines = consumer.read_text(encoding="utf-8").splitlines()
+                if not any(term in line for line in consumer_lines):
+                    violations.append((
+                        consumer, 0,
+                        f"setting '{term}' ({source}) not mentioned in its consumer {consumer_rel}",
+                        ""))
+
+    return violations
+
+
 def main() -> int:
     if not DOCS_ROOT.exists():
         print(f"ERROR: docs/ not found at {DOCS_ROOT}. Run this script from the repository root.")
@@ -205,8 +458,17 @@ def main() -> int:
     defined_labels = collect_defined_labels()
     violations.extend(scan_decision_labels(defined_labels))
 
+    violations.extend(scan_amendment_register_terms())
+
     if not violations:
         print("\u2713 No stale references found. Repository is consistent.")
+        print()
+        print(f"Amendment register: {len(AMENDMENT_REGISTER_UNVERIFIABLE)} register row(s) require human verification.")
+        for section, description in AMENDMENT_REGISTER_UNVERIFIABLE:
+            print(f"  {section}  {description}")
+        print()
+        print("The amendment-register term table is hand-maintained from the")
+        print("specification's §15.1-§15.4 and §15.8. See the module docstring.")
         return 0
 
     print(f"\u2717 {len(violations)} stale reference(s) found:\n")
