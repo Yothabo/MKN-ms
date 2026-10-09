@@ -42,7 +42,7 @@ The specification was frozen after three amendment sets were applied:
 - The initial schema and amendment set (§15.1 through §15.7).
 - The A–G amendment set (§15.8.1 through §15.8.18). Member Status, attributes, event restructuring, the two-flag lifecycle, the configuration audit log, the deletion policy, notification subscriptions, the Capability vocabulary.
 - The attendance amendment set (§15.8.19 through §15.8.26). The register scope, the Attendance Rule entity, the Readmission entity, and the thirteenth process.
-- Amendments applied after the freeze, recorded in the specification's §15.8 register: §15.8.27 (Member and Admin lifecycle) and any subsequent amendment.
+- Amendments applied after the freeze, recorded in the specification's §15.8 register: §15.8.27 (Member and Admin lifecycle), §15.8.28 (Member Status criterion), §15.8.29 (Member register scope and event scope fallback), §15.8.30 (13.0 data footprint), §15.8.31 (13.0 process contract) and any subsequent amendment.
 
 Earlier corrections — the invocation-versus-triggering distinction, the past-occurrence guard, the slot-capacity property statement, the eligibility rule alignment — were folded into the specification before the freeze and are recorded in the git history.
 

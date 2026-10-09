@@ -239,6 +239,7 @@ The matrix does not prescribe the mechanism. Concurrency rows state the property
 | 13.0 | A rule that fires on run 1 and whose trigger still holds on run 2 | The second scheduled run executes | The outcome is applied again; the engine is not idempotent with respect to external outcomes, per B10 |
 | 13.0 | A rule with `TriggerType = Manual` | A scheduled run executes | The rule is not evaluated |
 | 13.0 | A rule with `TriggerType = Manual` and a specific rule ID | The rule is invoked administratively | Only the named rule is evaluated; its scope is resolved against the population; every matching member receives the outcome, per B11 |
+| 13.0 | A rule with `TriggerType = Manual` and no valid `ActingAdminID` | The rule is invoked administratively | The invocation is rejected with `NotFound`; no outcome is applied |
 | 13.0 | A rule with `TriggerType = Manual` and `TriggerValue` set | The rule is invoked | `TriggerValue` is ignored; the Manual trigger fires unconditionally |
 | 13.0 | Two invocations of the same Manual rule on the same day | Both invocations complete | The outcome is applied twice; the engine does not maintain per-rule execution history |
 | 13.0 | A rule whose outcome is `SetStatus`, and the target status is already the member's current status | The scheduled run executes | The write is applied; the member's state is unchanged; the persistence layer's optimisation of identical writes is not part of the contract |

@@ -1814,7 +1814,7 @@ A subsequent tap for an existing pair is a no-op. The uniqueness constraint is t
 
 The Attendance Rule engine is the process that reads Attendance Rules, evaluates each against the member population, and applies the configured outcomes. It is the thirteenth process in the system.
 
-**Trigger.** Scheduled run. It also runs on demand when an admin invokes it. A scheduled run does not evaluate rules whose `TriggerType` is `Manual`; those rules fire only through the explicit administrative invocation.
+**Trigger.** Scheduled run. It also runs on demand when an admin invokes a single rule. A scheduled run does not evaluate rules whose `TriggerType` is `Manual`; those rules fire only through the explicit administrative invocation. The manual invocation carries the `ActingAdminID` of the administrator performing it, which resolves to an `Admin` row whose `IsActive = true`.
 
 **Reads:** `AttendanceRule`, `AttendanceRuleScope`, `Member`, `AttendanceRecord`, `Readmission`, `MemberStatus`, `SystemSetting` (`AttendanceRegisterEnabled`), `Branch.UsesAttendanceRegister`.
 
@@ -1845,7 +1845,7 @@ The engine does not arbitrate between rules. The administrator is responsible fo
 
 **Idempotency.** The engine is not idempotent with respect to its external outcomes. Repeating a run while a trigger remains true may produce another notification or another outcome application, even when the member's resulting state is unchanged. The engine does not maintain per-rule execution history. Whether the persistence layer optimises an identical status write away is an implementation detail and is not part of the behavioural contract. The administrator controls repetition by ensuring the trigger condition ceases to hold once the outcome has been applied — for example, by placing a `SetStatus` rule earlier in the ordering so that a later notifying rule's scope no longer matches.
 
-**Manual invocation.** An administrator may invoke an Attendance Rule whose `TriggerType` is `Manual`. The invocation names exactly one rule. The engine resolves that rule's scope against the member population and applies the rule's outcome to every matching member. The `Manual` trigger fires unconditionally: there is no threshold and `TriggerValue` is unused. The invocation evaluates exactly the named rule and no other rule; the B8 evaluation ordering does not apply to it, because it evaluates one rule in isolation. Repeat invocation applies the outcome again, consistent with the idempotency contract above. An administrator who needs to act on one specific member edits `Member.MemberStatusID` directly through the member-management process; the `Manual` trigger is not that operation.
+**Manual invocation.** An administrator may invoke an Attendance Rule whose `TriggerType` is `Manual`. The invocation names exactly one rule and carries the `ActingAdminID` of the administrator performing it. The engine resolves that rule's scope against the member population and applies the rule's outcome to every matching member. The `Manual` trigger fires unconditionally: there is no threshold and `TriggerValue` is unused. The invocation evaluates exactly the named rule and no other rule; the B8 evaluation ordering does not apply to it, because it evaluates one rule in isolation. Repeat invocation applies the outcome again, consistent with the idempotency contract above. An administrator who needs to act on one specific member edits `Member.MemberStatusID` directly through the member-management process; the `Manual` trigger is not that operation.
 
 **Source:** System Design Specification §9.6, §13.
 
@@ -2317,6 +2317,7 @@ The following amendments were added after the original fifteen.
 | 15.8.27 | Member and Admin lifecycle: Member has no flags — state is MemberStatusID only; Admin gains IsActive | Amendment | §4, §9.1.1, §9.1.7, §9.7, §14.1.9 |
 | 15.8.28 | Member Status criterion | Amendment | §5, §10.1.5 |
 | 15.8.29 | Member register scope and event scope fallback | Amendment | §4, §9.6, §13.6 |
+| 15.8.31 | 13.0 process contract: NoOp distinction, ascending rule order, single-rule manual invocation, ActingAdminID on manual invocation | Amendment | §13.6 |
 
 ---
 

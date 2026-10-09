@@ -497,8 +497,9 @@ Two commands.
 | Field | Type | Required |
 | --- | --- | --- |
 | RuleId | integer | Yes |
+| ActingAdminID | integer | Yes |
 
-**Identity:** None on the scheduled run. On the manual invocation, the ActingAdmin is not required by the entity shape; the invocation itself is the identity. If a future revision requires an admin identity for the manual invocation, it is an amendment.
+**Identity:** None on the scheduled run. On the manual invocation, the `ActingAdminID` resolves to an `Admin` row whose `IsActive = true`. The process validates that the Admin exists; authorization is upstream.
 
 **Result on Success:**
 
