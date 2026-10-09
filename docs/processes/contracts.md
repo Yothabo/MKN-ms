@@ -16,7 +16,7 @@ The HTTP layer is an adapter. Its shape is not fixed by this document. The docum
 
 **Command.** The set of values the process requires or accepts. Every command carries a field-name, a type, and whether the value is required.
 
-**Identity.** The `Admin` record the process receives when it acts on behalf of a caller. Every process that writes configuration or operational records receives an Admin. The system does not authenticate the caller; authorisation is upstream, per the specification's stated boundary. The identity contract here is only about the shape: the process receives an `AdminID` that resolves to a non-deleted `Admin` row.
+**Identity.** The `Admin` record the process receives when it acts on behalf of a caller. Every process that writes configuration or operational records receives an Admin. The system does not authenticate the caller; authorisation is upstream, per the specification's stated boundary. The identity contract here is only about the shape: the process receives an `AdminID` that resolves to an `Admin` row whose `IsActive = true`.
 
 **Result.** The set of values the process returns. Every process returns a `Status` field whose value is one of `Success` or `Failure`. Failed results carry an `ErrorDetail` or a structured error.
 
@@ -595,9 +595,9 @@ An external process invocation is never part of a database atomic unit. This fol
 
 ## C6 — Identity and context
 
-Every process that acts on behalf of an administrator receives the identity of that administrator. The identity is an `AdminID` that the process resolves to a non-deleted `Admin` row.
+Every process that acts on behalf of an administrator receives the identity of that administrator. The identity is an `AdminID` that the process resolves to an `Admin` row whose `IsActive = true`.
 
-The process does not authenticate the caller. The process does not check whether the caller is permitted to perform the operation. Both are upstream. What the process checks is that the `AdminID` resolves — the row exists and is not soft-deleted. If it does not resolve, the process returns `NotFound`.
+The process does not authenticate the caller. The process does not check whether the caller is permitted to perform the operation. Both are upstream. What the process checks is that the `AdminID` resolves — the row exists and has `IsActive = true`. If it does not resolve, the process returns `NotFound`.
 
 ### Processes that receive an identity
 
