@@ -615,7 +615,7 @@ A newly created schedule is picked up automatically on the next run. When a sche
 
 ### Occurrence creation contract
 
-For each active schedule, the process generates candidate dates from today through today + horizon, inclusive, using the configured system/application timezone. For each date, it checks whether a Service Occurrence already exists for that (ScheduleID, Date) pair; if one does, nothing happens; if not, it creates one, inheriting the schedule's service type and start time, with FillStatusID null, ChangedBy null, GeneratedBy set to System, and CreatedBy null. It does not create Service Occurrence Duty rows. An occurrence is created even if its Service Definition currently has zero configured duties. Each occurrence commits in its own transaction. The process is fully re-entrant with no checkpoint state.
+For each active schedule, the process generates candidate dates from today through today + horizon, inclusive, using the configured system/application timezone. The timezone is resolved from `ApplicationTimeZone`; if the setting is absent the materializer surfaces `ConfigurationMissing` and refuses to run; if the value is unrecognised it surfaces `ConfigurationInvalid` and refuses to run. No silent fallback to UTC occurs. For each date, it checks whether a Service Occurrence already exists for that (ScheduleID, Date) pair; if one does, nothing happens; if not, it creates one, inheriting the schedule's service type and start time, with FillStatusID null, ChangedBy null, GeneratedBy set to System, and CreatedBy null. It does not create Service Occurrence Duty rows. An occurrence is created even if its Service Definition currently has zero configured duties. Each occurrence commits in its own transaction. The process is fully re-entrant with no checkpoint state.
 
 A schedule is eligible for materialization only when the schedule, its Service Definition, and its Branch Time Slot are all active.
 
@@ -2255,7 +2255,9 @@ Event-sourced occurrences are excluded. Their uniqueness is governed by the 8.0 
 | Behavior if unrecognised | The consuming process refuses to run and surfaces a configuration error |
 | Source | §7, §9.6, §13.6 |
 
-`ApplicationTimeZone` is used for one purpose: converting an instant to the calendar date it falls on in that zone. Date and time values are never converted through UTC. The resolver that converts an instant to a date returns the zone's calendar date; when the setting is absent or unrecognised the resolver surfaces a configuration error rather than silently falling back. The Quartz scheduler resolves the setting once at application startup; the processes resolve it on every run.
+`ApplicationTimeZone` is used for one purpose: converting an instant to the calendar date it falls on in that zone. Date and time values are never converted through UTC. The resolver that converts an instant to a date returns the zone's calendar date.
+
+There is no silent fallback. When the setting is absent, the process surfaces `ConfigurationMissing`. When the setting is present but its value is not a recognised IANA timezone ID, the process surfaces `ConfigurationInvalid`. In both cases the process refuses to run. The Quartz scheduler resolves the setting once at application startup and refuses to start if the setting is absent or invalid; the processes resolve it on every run.
 
 #### 15.3.12 AttendanceRegisterEnabled
 
@@ -2368,6 +2370,7 @@ The following amendments were added after the original fifteen.
 | 15.8.29 | Member register scope and event scope fallback | Amendment | §4, §9.6, §13.6 |
 | 15.8.31 | 13.0 process contract: NoOp distinction, ascending rule order, single-rule manual invocation, ActingAdminID on manual invocation | Amendment | §13.6 |
 | 15.8.32 | Settings inventory: DeclinedStatusID, TimedOutStatusID, ApplicationTimeZone, AttendanceRegisterEnabled | Amendment | §15.3 |
+| 15.8.33 | ApplicationTimeZone is required; absent or unrecognised produces ConfigurationMissing or ConfigurationInvalid, no silent fallback | Amendment | §7, §15.3.11 |
 
 ---
 

@@ -208,7 +208,8 @@ The matrix does not prescribe the mechanism. Concurrency rows state the property
 | 11.0 | A MaterializerRun record from a prior successful run | 11.0 runs again | A new MaterializerRun record is written for the new run |
 | 11.0 | A failed run partway through | 11.0 runs again | The partial rows from the failed run are counted; remaining candidate dates are filled; no checkpoint is required |
 | 11.0 | An instant near midnight UTC and a configured non-UTC `ApplicationTimeZone` | 11.0 derives "today" | "Today" resolves to the calendar date in the configured zone, not the UTC date, per C7 |
-| 11.0 | `ApplicationTimeZone` set to an unrecognised value | 11.0 derives "today" | The resolver falls back to UTC; the run proceeds |
+| 11.0 | `ApplicationTimeZone` set to an unrecognised value | 11.0 derives "today" | The run is refused with `ConfigurationInvalid`; no occurrences are created |
+| 11.0 | `ApplicationTimeZone` absent | 11.0 derives "today" | The run is refused with `ConfigurationMissing`; no occurrences are created |
 
 ### 12.0 Create Manual Assignment
 
