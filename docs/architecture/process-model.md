@@ -103,7 +103,7 @@ Records the raw fact of a member's presence at an occurrence.
 
 **Trigger:** Manual register marking; NFC tap (defined but not yet produced by any implemented path).
 
-**Reads:** D4, D3, D11 (the effective register scope).
+**Reads:** D4, D3 (occurrence; branch register scope for schedule-sourced), D9 (event register scope for event-sourced), D11 (global `AttendanceRegisterEnabled`).
 
 **Writes:** D8.
 
@@ -223,14 +223,14 @@ Each process reads from and writes to a defined set of stores. No process writes
 | 3.0 | — | D4, D5, D13 |
 | 4.0 | — | D6 |
 | 5.0 | D2, D3, D4, D6, D7, D8 (conditional) | D7 |
-| 6.0 | D4, D3, D11 (scope) | D8 |
+| 6.0 | D4, D3 (occurrence; Branch.UsesAttendanceRegister for schedule-sourced), D9 (Event.UsesAttendanceRegister for event-sourced), D11 (AttendanceRegisterEnabled) | D8 |
 | 7.0 | D2 (re-resolution), D3 (re-resolution), D4, D6 (re-resolution), D7, D8 (re-resolution), D10, D11 | D7 |
 | 8.0 | D3, D4, D9, D10 | D9, D3 (event-sourced occurrences) |
 | 9.0 | Path 1: D3, D4, D7, D11. Path 2: ConfigurationAuditLog, NotificationSubscription, Admin, PermissionTier, D11. | ConfigurationAuditLog (NotifiedAt, Path 2) |
 | 10.0 | D3, D7, D10, D11 | D3 |
 | 11.0 | D3, D11 | D3, D12 |
 | 12.0 | D2, D3, D4, D6, D7 | D7 |
-| 13.0 | D2, D3, D4, D8, D10, D11, D13 | D4 (MemberStatusID) |
+| 13.0 | D2, D3 (home-branch register scope), D4, D8, D10, D11 (AttendanceRegisterEnabled), D13 | D4 (MemberStatusID) |
 
 A configuration-audit store and an attendance store are also present. The configuration-audit store holds Configuration Audit Log, Entity Deletion Policy, and Notification Subscription. The attendance store is D13, holding Attendance Rule, Attendance Rule Scope, and Readmission.
 

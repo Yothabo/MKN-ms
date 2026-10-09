@@ -376,7 +376,7 @@ Unique on (MemberID, OccurrenceID). Operational fact. No `IsActive` and no `IsDe
 | EndDate |  |
 | Type | Free text |
 | HostBranchID | Foreign key → Branch. The branch at which the event is held. |
-| UsesAttendanceRegister | Boolean, nullable. Null means no override at this scope; the effective register state follows the next scope in the resolution order. Set means the event overrides the other scopes for its own occurrences. |
+| UsesAttendanceRegister | Boolean, nullable. Null means no override. Set means the event's own occurrences use this value, overriding the global setting. Branch does not participate in scope resolution for event-sourced occurrences. |
 | IsActive | Boolean. True at creation. |
 | IsDeleted | Boolean. False at creation. |
 
@@ -1041,15 +1041,22 @@ The only write to an operational store is 8.0's insertion of event-sourced Servi
 
 The attendance register has two independent purposes. It is a record of presence, and it is a signal that attendance-driven rules may read. The two purposes are decoupled: the register may be on for record-keeping while being off for rostering, or the reverse.
 
-The register's on/off state is configured at three scopes:
+The register's on/off state is configured at two scopes, with a global default:
 
-- **Global.** A System Setting names the default state.
-- **Per-event.** `Event.UsesAttendanceRegister`. Null means no override.
-- **Per-branch.** `Branch.UsesAttendanceRegister`. Null means no override.
+- **Global.** `AttendanceRegisterEnabled`. The default state, applied wherever no override exists.
+- **Per-event.** `Event.UsesAttendanceRegister`. Null means no override. Set means the event's own occurrences use this value.
+- **Per-branch.** `Branch.UsesAttendanceRegister`. Null means no override. Set means schedule-sourced occurrences at this branch use this value.
 
-The resolution order is: event override, then branch override, then global. The most specific scope in effect wins. An occurrence belongs to either an event or a branch and time slot. If the occurrence is event-sourced, the event's override applies first. If the occurrence is schedule-sourced, the branch's override applies first. In each case the global setting is the fallback when no override exists.
+The resolution order depends on the occurrence's source. The two cases do not mix.
 
-When the effective scope is off, the attendance register is not consulted. The `Attendance Rule` engine does not apply absence-based rules to members whose effective scope is off. Manual register marking is disabled for that scope. The `Branch-Attendance Recency` Duty Rule criterion is skipped for occurrences at that scope, as stated in §10.1.5. Readmission-based rules may still apply, because readmissions are recorded independently of the register.
+- **Schedule-sourced occurrence.** Branch override of the branch in the occurrence's time slot, then the global `AttendanceRegisterEnabled`. Event does not participate.
+- **Event-sourced occurrence.** Event override, then the global `AttendanceRegisterEnabled`. Branch does not participate.
+
+The event override is consulted by 6.0 Record Attendance when marking a manual register entry and by 5.0 Generate Assignment when a Branch-Attendance Recency criterion is being evaluated. The event override is not consulted by 13.0 Attendance Rule Engine, which resolves scope per member, not per occurrence.
+
+When the effective scope is off, the attendance register is not consulted. The `Attendance Rule` engine does not apply absence-based rules to members whose effective scope is off. Manual register marking is disabled for that scope. The `Branch-Attendance Recency` Duty Rule criterion is skipped for occurrences at that scope, as stated in §10.1.5. Readmission-based rules are not scoped by register state and apply regardless of the register's effective value for a member.
+
+The attendance register's eligibility rule — a member is tracked only if they hold a `ReceiptNumber` or a `CardNumber` — is a member-level property and does not depend on occurrence source or scope resolution.
 
 The register state may be changed at any time. A change takes effect on the next process run. It does not rewrite history.
 
@@ -1809,7 +1816,7 @@ The Attendance Rule engine is the process that reads Attendance Rules, evaluates
 
 **Trigger.** Scheduled run. It also runs on demand when an admin invokes it. A scheduled run does not evaluate rules whose `TriggerType` is `Manual`; those rules fire only through the explicit administrative invocation.
 
-**Reads:** `AttendanceRule`, `AttendanceRuleScope`, `Member`, `AttendanceRecord`, `Readmission`, `MemberStatus`, `SystemSetting` (the global register scope), `Branch.UsesAttendanceRegister`, `Event.UsesAttendanceRegister`.
+**Reads:** `AttendanceRule`, `AttendanceRuleScope`, `Member`, `AttendanceRecord`, `Readmission`, `MemberStatus`, `SystemSetting` (`AttendanceRegisterEnabled`), `Branch.UsesAttendanceRegister`.
 
 **Writes:** `Member.MemberStatusID` when a `SetStatus` outcome fires. Notification dispatches when a `Notify` outcome fires. `ConfigurationAuditLog` is not written by this process; it is a configuration-lifecycle record. The engine does not write `Readmission`; readmissions are recorded by administrative action through the member-management process. A `Manual` rule is applied through a distinct administrative invocation that names exactly one rule and applies its outcome to every member matching its scope.
 
@@ -1818,7 +1825,7 @@ The Attendance Rule engine is the process that reads Attendance Rules, evaluates
 For each enabled Attendance Rule, the process:
 
 1. Resolves the rule's scope. The scope rows are ANDed, using the same criterion evaluation as Duty Rule.
-2. Resolves the effective attendance register scope for each member under consideration.
+2. Resolves the effective attendance register scope for the member. A member's effective register scope is resolved by the member's home branch, then the global `AttendanceRegisterEnabled`; event overrides are not consulted by 13.0. Attendance records from any branch count toward the absence window; the member's home branch only determines whether the register is consulted at all for that member.
 3. If the register is off at the effective scope, skips the member for absence-based triggers.
 4. Evaluates the trigger. `AbsenceDays` measures calendar days in the configured ApplicationTimeZone. The window is `[today - N, today]`, inclusive at both boundaries. The trigger fires when the member has no AttendanceRecord whose related ServiceOccurrence.Date falls within the window. The window is not measured in elapsed hours. The attendance timestamp is not used for the absence-window calculation; the occurrence's Date is. `ReadmissionCount` compares the member's readmission count against the configured value. `Manual` fires only when the admin invokes the rule explicitly.
 5. Applies the outcome. The outcome vocabulary is `Notify`, `SetStatus`, and `NoOp`. `Notify` composes and sends a notification through the configured channel. `SetStatus` sets `Member.MemberStatusID` to the status named by the rule. `NoOp` does nothing. The engine does not create, modify, or delete `Readmission` rows. A member's readmission count is derived: it is the number of `Readmission` rows recorded for that member. The count is not stored, and the rule engine does not increment it. The engine reads `Readmission` and never writes it. Process 3.0 owns Readmission creation.
@@ -2309,6 +2316,7 @@ The following amendments were added after the original fifteen.
 | 15.8.26 | Branch-Attendance Recency skips when register off | Rule | §10.1.5 |
 | 15.8.27 | Member and Admin lifecycle: Member has no flags — state is MemberStatusID only; Admin gains IsActive | Amendment | §4, §9.1.1, §9.1.7, §9.7, §14.1.9 |
 | 15.8.28 | Member Status criterion | Amendment | §5, §10.1.5 |
+| 15.8.29 | Member register scope and event scope fallback | Amendment | §4, §9.6, §13.6 |
 
 ---
 
