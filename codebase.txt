@@ -21373,7 +21373,7 @@ For a reader new to the system:
 
 ==============================================================================
 FILE: docs/architecture/components.md
-LINES: 134
+LINES: 138
 ==============================================================================
 
 # Components
@@ -21456,7 +21456,7 @@ Each component has a defined boundary — what it does and does not do. These bo
 
 - **Does:** evaluate the outcome of an occurrence against configured states.
 - **Does not:** assign or modify assignments. It reads them.
-- **Does not:** trigger downstream processes. It writes `FillStatusID` and stops.
+- **Does not:** trigger downstream processes. It writes FillStatusID and stops.
 
 ### Confirmation
 
@@ -21486,9 +21486,13 @@ Each component has a defined boundary — what it does and does not do. These bo
 ### Notification Dispatcher
 
 - **Does:** send messages through whichever channel is configured.
-- **Does not:** track delivery, retry, or log.
+- **Does:** on Path 1 (member-facing), dispatch an assignment notice when directly invoked by 5.0, 7.0, 12.0, or 13.0 under their defined conditions.
+- **Does:** on Path 2 (authority-facing), dispatch authority notifications from its scheduled sweep, reading ConfigurationAuditLog entries and resolving recipients through NotificationSubscription.
+- **Does not:** track delivery or maintain a notification log. Neither path records whether a message was sent, when, through which channel, or whether it was received.
+- **Does not:** retry on Path 1. If the member-facing dispatch fails, the notification is lost from the system's perspective.
+- **Retries implicitly on Path 2.** A ConfigurationAuditLog row whose NotifiedAt remains null is eligible for a subsequent sweep. There is no bounded retry counter and no attempt limit; a persistently failing dispatch can leave a row indefinitely unnotified.
 - **Does not:** invoke any other process.
-- **Is invoked by:** Assignment (5.0) and Confirmation (7.0) on every new assignment they create; and by Create Manual Assignment (12.0), only when the manual assignment is created with no status (AssignmentStatusID = NULL).
+- **Is invoked by:** Assignment (5.0) on every new automatic assignment; Confirmation (7.0) on every replacement assignment; Create Manual Assignment (12.0), only when the created manual assignment has no status (AssignmentStatusID = NULL); and Attendance Rule Engine (13.0), only when an Attendance Rule's OutcomeType is Notify. Its authority-notification sweep additionally carries an independent scheduled trigger, which is a trigger and not an invocation.
 
 ### Program
 
