@@ -10,7 +10,7 @@ Each entity is presented as a table with columns, types, and notes. Nullable col
 
 Types are stated generically — integer, string, boolean, timestamp, date, time. Physical types are an implementation choice.
 
-Configuration entities carry both `IsActive` and `IsDeleted`. Operational entities carry neither. The two-flag lifecycle is stated in Specification §9.6.
+Configuration entities carry both `IsActive` and `IsDeleted`. Operational entities carry neither. The two-flag lifecycle is stated in Specification §9.7.
 
 ---
 

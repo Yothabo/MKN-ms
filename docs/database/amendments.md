@@ -261,7 +261,7 @@ The amendments below were added after the original fifteen. They are the changes
 | MemberAttributeValue | One value per member per attribute set | §4 |
 | EventBranch | Set of branches attending an event | §4 |
 | Capability | Vocabulary of named actions the system can perform | §4 |
-| ConfigurationAuditLog | Permanent record of every deactivation and every soft delete | §4, §9.6 |
+| ConfigurationAuditLog | Permanent record of every deactivation and every soft delete | §4, §9.7 |
 | EntityDeletionPolicy | Per-entity-type configuration of the deletion model | §4, §9.6 |
 | NotificationSubscription | Recipient configuration for authority notifications | §4, §14.1.3 |
 
@@ -347,7 +347,7 @@ The count of invoking processes is now four: 5.0, 7.0, 12.0, 13.0.
 | Member carries no `IsActive` and no `IsDeleted`; state is `MemberStatusID` only | Member | Clarification | §4, §15.8.27 |
 | Admin gains `IsActive` boolean; revocation sets false, row remains | Admin | New column | §4, §15.8.27 |
 
-The two-flag lifecycle of §9.6 does not apply to Member (no flags) or to Admin (single flag). The reference-fallback rules for Member Status are extended: on soft-delete of a Member Status, Attendance Rules whose `OutcomeStatusID` names it are removed, and Attendance Rule Scope rows whose criteria name it are removed.
+The two-flag lifecycle of §9.7 does not apply to Member (no flags) or to Admin (single flag). The reference-fallback rules for Member Status are extended: on soft-delete of a Member Status, Attendance Rules whose `OutcomeStatusID` names it are removed, and Attendance Rule Scope rows whose criteria name it are removed.
 
 ### 5.6 — Removed columns
 

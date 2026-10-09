@@ -12,7 +12,7 @@ This document describes the shape of the data the system stores — the entities
 
 ## The stores
 
-The system groups its data into twelve conceptual stores. Each holds a distinct set of entities.
+The system groups its data into thirteen conceptual stores. Each holds a distinct set of entities.
 
 | Store | Contents |
 | --- | --- |
