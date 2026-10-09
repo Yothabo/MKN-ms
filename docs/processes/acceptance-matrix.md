@@ -75,7 +75,7 @@ The matrix does not prescribe the mechanism. Concurrency rows state the property
 | 8.0 | A ProgramItem whose ServiceDefID is removed after an occurrence was created | The ProgramItem is updated | The event-sourced ServiceOccurrence is not removed |
 | 8.0 | A second Program for the same Event | The Program is created | The operation is rejected with `Conflict`; one Program per Event |
 | 8.0 | An EventDuty referencing a Duty | The EventDuty is created | The duty's Eligibility and DutyRule are consulted for candidate resolution on the event |
-| 8.0 | A Member soft-deleted while referenced by an EventDuty | The EventDuty is retained | The reference remains; no cascade; the EventDuty.AssignedMemberID continues to point at the soft-deleted Member |
+| 8.0 | A Member whose `MemberStatusID` is a non-rosterable status, referenced by an EventDuty | The EventDuty is retained | The reference remains; no cascade; the EventDuty.AssignedMemberID continues to point at the Member |
 
 ## Operations layer
 

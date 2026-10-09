@@ -181,7 +181,7 @@ Operational entity. No `IsActive` and no `IsDeleted`.
 | RoleID | integer | No | Foreign key → Role |
 | MemberStatusID | integer | No | Foreign key → Member Status |
 
-Member carries no boolean `IsActive`. A member's operational status is expressed by `MemberStatusID`.
+Member carries no `IsActive` and no `IsDeleted`. A member's operational state is expressed by `MemberStatusID` only. A member row is never removed through normal operations.
 
 ### AttributeType
 
@@ -213,8 +213,9 @@ Unique on (MemberID, AttributeTypeID). Operational fact, no lifecycle flags.
 | AdminID | integer | No | Primary key |
 | MemberID | integer | No | Foreign key → Member |
 | PermissionTierID | integer | No | Foreign key → Permission Tier |
+| IsActive | boolean | No | True at creation. Revocation sets false; the row remains. |
 
-Records that a member has been granted admin status.
+Records that a member has been granted admin status. An Admin row is deactivated, not soft-deleted. Acting identities must resolve to an Admin row whose `IsActive = true`; historical attribution resolves regardless of the admin's current `IsActive`.
 
 ---
 
