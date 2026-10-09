@@ -242,21 +242,31 @@ AMENDMENT_REGISTER_UNVERIFIABLE = [
 # For a "setting" term, the process document that consumes it. The scan
 # confirms the setting appears in both settings.md and in this document.
 SETTING_CONSUMERS = {
-    "OccurrenceHorizonDays":           "docs/processes/operations/11.0-materialize-occurrences.md",
-    "InitialAssignmentStatusID":       "docs/processes/operations/7.0-manage-confirmation.md",
-    "ConfirmationTimeoutHours":        "docs/processes/operations/7.0-manage-confirmation.md",
-    "OutcomeStateUnfilledID":          "docs/processes/operations/10.0-evaluate-fill-status.md",
-    "OutcomeStatePartiallyFilledID":   "docs/processes/operations/10.0-evaluate-fill-status.md",
-    "OutcomeStateFilledID":            "docs/processes/operations/10.0-evaluate-fill-status.md",
-    "OutcomeStateCancelledID":         "docs/processes/operations/10.0-evaluate-fill-status.md",
-    "NotificationChannel":             "docs/processes/operations/9.0-dispatch-notification.md",
-    "DeclinedStatusID":                "docs/processes/operations/7.0-manage-confirmation.md",
-    "TimedOutStatusID":                "docs/processes/operations/7.0-manage-confirmation.md",
-    "ApplicationTimeZone":             "docs/processes/operations/11.0-materialize-occurrences.md",
-    "AttendanceRegisterEnabled":       "docs/processes/operations/13.0-attendance-rule-engine.md",
-    "ReceiptToCardDurationDays":       "docs/processes/configuration/3.0-manage-membership.md",
-    "YouthAgeMin":                     "docs/processes/operations/5.0-generate-assignment.md",
-    "YouthAgeMax":                     "docs/processes/operations/5.0-generate-assignment.md",
+    # A setting may be consumed by more than one process. The scan
+    # confirms the setting appears in settings.md and in at least one of
+    # the documents listed here. The list is not exhaustive; it names the
+    # process documents that should mention the key.
+    "OccurrenceHorizonDays":           ["docs/processes/operations/11.0-materialize-occurrences.md"],
+    "InitialAssignmentStatusID":       ["docs/processes/operations/7.0-manage-confirmation.md"],
+    "ConfirmationTimeoutHours":        ["docs/processes/operations/7.0-manage-confirmation.md"],
+    "OutcomeStateUnfilledID":          ["docs/processes/operations/10.0-evaluate-fill-status.md"],
+    "OutcomeStatePartiallyFilledID":   ["docs/processes/operations/10.0-evaluate-fill-status.md"],
+    "OutcomeStateFilledID":            ["docs/processes/operations/10.0-evaluate-fill-status.md"],
+    "OutcomeStateCancelledID":         ["docs/processes/operations/10.0-evaluate-fill-status.md"],
+    "NotificationChannel":             ["docs/processes/operations/9.0-dispatch-notification.md"],
+    "DeclinedStatusID":                ["docs/processes/operations/7.0-manage-confirmation.md"],
+    "TimedOutStatusID":                ["docs/processes/operations/7.0-manage-confirmation.md"],
+    "ApplicationTimeZone":             [
+        "docs/processes/operations/11.0-materialize-occurrences.md",
+        "docs/processes/operations/5.0-generate-assignment.md",
+        "docs/processes/operations/7.0-manage-confirmation.md",
+        "docs/processes/operations/12.0-create-manual-assignment.md",
+        "docs/processes/operations/13.0-attendance-rule-engine.md",
+    ],
+    "AttendanceRegisterEnabled":       ["docs/processes/operations/13.0-attendance-rule-engine.md"],
+    "ReceiptToCardDurationDays":       ["docs/processes/configuration/3.0-manage-membership.md"],
+    "YouthAgeMin":                     ["docs/processes/operations/5.0-generate-assignment.md"],
+    "YouthAgeMax":                     ["docs/processes/operations/5.0-generate-assignment.md"],
 }
 
 # A "removed" term is not a defect when it appears within this many lines
@@ -393,6 +403,11 @@ def scan_amendment_register_terms() -> list:
             # name removed terms when they describe the removal.
             if md.name == "system-design-spec.md":
                 continue
+            # The migration-ordering document describes the transition from
+            # a pre-amendment schema. It names removed columns as part of
+            # that description, by design.
+            if md.name == "migration-ordering.md":
+                continue
             for i, line in enumerate(lines):
                 if term in line and not _removal_context(lines, i):
                     violations.append((
@@ -429,21 +444,24 @@ def scan_amendment_register_terms() -> list:
                 settings_md, 0,
                 f"setting '{term}' ({source}) missing from docs/database/settings.md",
                 ""))
-        consumer_rel = SETTING_CONSUMERS.get(term)
-        if consumer_rel is not None:
-            consumer = Path.home().joinpath("MKN-ms", consumer_rel)
-            if not consumer.exists():
-                violations.append((
-                    consumer, 0,
-                    f"setting '{term}' ({source}) consumer document not found: {consumer_rel}",
-                    ""))
-            else:
+        consumer_rels = SETTING_CONSUMERS.get(term)
+        if consumer_rels:
+            matched = False
+            missing = []
+            for consumer_rel in consumer_rels:
+                consumer = Path.home().joinpath("MKN-ms", consumer_rel)
+                if not consumer.exists():
+                    missing.append(consumer_rel + " (file not found)")
+                    continue
                 consumer_lines = consumer.read_text(encoding="utf-8").splitlines()
-                if not any(term in line for line in consumer_lines):
-                    violations.append((
-                        consumer, 0,
-                        f"setting '{term}' ({source}) not mentioned in its consumer {consumer_rel}",
-                        ""))
+                if any(term in line for line in consumer_lines):
+                    matched = True
+                    break
+            if not matched:
+                violations.append((
+                    Path("<tree>"), 0,
+                    f"setting '{term}' ({source}) not mentioned in any of its consumer documents",
+                    "; ".join(missing) if missing else "; ".join(consumer_rels)))
 
     return violations
 
