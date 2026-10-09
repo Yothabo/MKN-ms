@@ -18,7 +18,7 @@ Authoritative for:
 - The configuration language and criteria vocabulary (§5).
 - What remains fixed and why (§6).
 - The resolved occurrence materialization design (§7).
-- The derived consequences of every locked contract (§8–§14).
+- The derived consequences of every locked contract (§8–§17).
 - The consolidated schema amendments (§15).
 - The process invocation topology (§16).
 
