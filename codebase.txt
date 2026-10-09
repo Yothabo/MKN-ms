@@ -42,12 +42,12 @@ coverage/
 
 ==============================================================================
 FILE: FREEZE.md
-LINES: 66
+LINES: 67
 ==============================================================================
 
 # Specification Freeze
 
-**Frozen at commit:** `a69226c`
+**Frozen at commit:** `5601ed5` (tag `spec-v1.0-freeze`)
 **Frozen on:** 2026-10-08
 
 ---
@@ -89,6 +89,7 @@ The specification was frozen after three amendment sets were applied:
 - The initial schema and amendment set (§15.1 through §15.7).
 - The A–G amendment set (§15.8.1 through §15.8.18). Member Status, attributes, event restructuring, the two-flag lifecycle, the configuration audit log, the deletion policy, notification subscriptions, the Capability vocabulary.
 - The attendance amendment set (§15.8.19 through §15.8.26). The register scope, the Attendance Rule entity, the Readmission entity, and the thirteenth process.
+- Amendments applied after the freeze, recorded in the specification's §15.8 register: §15.8.27 (Member and Admin lifecycle), §15.8.28 (Member Status criterion), §15.8.29 (Member register scope and event scope fallback), §15.8.30 (13.0 data footprint), §15.8.31 (13.0 process contract) and any subsequent amendment.
 
 Earlier corrections — the invocation-versus-triggering distinction, the past-occurrence guard, the slot-capacity property statement, the eligibility rule alignment — were folded into the specification before the freeze and are recorded in the git history.
 
@@ -20598,7 +20599,7 @@ LINES: 28
 
 ==============================================================================
 FILE: docs/README.md
-LINES: 164
+LINES: 166
 ==============================================================================
 
 # Documentation
@@ -20718,11 +20719,13 @@ The implementation-facing reference for the data model:
 
 ### api/
 
-A placeholder. Will be populated once the technology stack is chosen. Contains:
+The HTTP surface. The stack is chosen (ASP.NET Core Web API, .NET 8). Contains:
 
-- **endpoints.md** — the eventual endpoint list.
-- **request-response.md** — request/response conventions.
+- **adapter-contract.md** — the authoritative application-level contract between the HTTP surface and the processes.
+- **endpoints.md** — the endpoint list, grouped by the process each endpoint serves.
+- **request-response.md** — request/response conventions, derived from the adapter contract.
 - **process-mapping.md** — how endpoints map to processes.
+- **README.md** — this directory's entry point.
 
 ---
 
@@ -20768,7 +20771,7 @@ Full details in **processes/configuration/8.0-manage-events-and-programs.md** an
 
 ==============================================================================
 FILE: docs/api/README.md
-LINES: 54
+LINES: 56
 ==============================================================================
 
 # API
@@ -20779,9 +20782,11 @@ LINES: 54
 
 ## Status
 
-This directory is a scaffold. Its files exist to reserve the structure; none of them contains an API contract yet.
+The technology stack is chosen: ASP.NET Core Web API with Minimal API endpoints, on .NET 8, backed by EF Core 8 and PostgreSQL.
 
-The API surface depends on the technology stack, which has not yet been selected. Until then, no endpoints, request/response shapes, or protocol choices exist to document.
+`adapter-contract.md` is the authoritative application-level contract between the HTTP surface and the processes. It states the request shape, the response shape, the error-category-to-HTTP mapping, and what the adapter does and does not do.
+
+`endpoints.md`, `request-response.md`, and `process-mapping.md` are derived from that contract and from `../processes/contracts.md`. They are being brought into line with it. Where any of them conflicts with `adapter-contract.md`, the adapter contract wins; where `adapter-contract.md` conflicts with the specification, the specification wins.
 
 ---
 
@@ -21008,26 +21013,24 @@ The OpenAPI document is a byproduct of the adapter's implementation. It is not a
 
 ==============================================================================
 FILE: docs/api/endpoints.md
-LINES: 95
+LINES: 94
 ==============================================================================
 
 # Endpoints
 
-*Placeholder for the endpoint list. To be populated once the API contract exists.*
+*The endpoint list, grouped by the process each endpoint serves. Derived from `adapter-contract.md` and `../processes/contracts.md`; where this document conflicts with the adapter contract or the specification, they win.*
 
 ---
 
 ## Status
 
-Not yet defined. The endpoint list depends on the technology stack and the API style (REST, RPC, GraphQL, or other), which have not yet been chosen.
+The technology stack is chosen: ASP.NET Core Web API, JSON request and response bodies. The authoritative adapter contract is `adapter-contract.md`. The endpoint list below reflects the process exposure the system defines.
 
 ---
 
 ## What will live here
 
-When the API contract is defined, this file will list every endpoint the system exposes. Each endpoint will be organised by the process it serves.
-
-The anticipated groups, mirroring `../processes/`:
+This file lists the endpoints the system exposes, grouped by the process each endpoint serves.
 
 ### Configuration endpoints
 
@@ -21045,8 +21048,9 @@ The anticipated groups, mirroring `../processes/`:
 - Evaluate Fill Status (10.0)
 - Materialize Occurrences (11.0)
 - Create Manual Assignment (12.0)
+- Attendance Rule Engine (13.0) — manual single-rule invocation. Specified, not yet implemented.
 
-The Notification Dispatcher (9.0) is invoked internally by 5.0 and 7.0; it does not require an externally exposed endpoint.
+The Dispatch Notification process (9.0) is invoked internally by 5.0, 7.0, 12.0, and 13.0, and carries its own scheduled authority-notification sweep. It has no externally exposed endpoint.
 
 ---
 
@@ -21234,7 +21238,7 @@ These constraints come from the process model, not from any API design choice:
 
 ==============================================================================
 FILE: docs/api/request-response.md
-LINES: 51
+LINES: 53
 ==============================================================================
 
 # Request / Response Conventions
@@ -21245,7 +21249,9 @@ LINES: 51
 
 ## Status
 
-Not yet defined. The conventions depend on the technology stack and API style, which have not yet been chosen.
+The technology stack is chosen: ASP.NET Core Web API, JSON request and response bodies.
+
+The authoritative conventions are in `adapter-contract.md`. This file states the derived conventions that follow from it and from `../processes/contracts.md`: how request bodies are shaped, how responses are shaped, how errors are surfaced, and how the caller distinguishes an operation failure from a notification failure.
 
 ---
 
@@ -21688,7 +21694,7 @@ This document describes the shape of the data the system stores — the entities
 
 ## The stores
 
-The system groups its data into twelve conceptual stores. Each holds a distinct set of entities.
+The system groups its data into thirteen conceptual stores. Each holds a distinct set of entities.
 
 | Store | Contents |
 | --- | --- |
@@ -21944,7 +21950,7 @@ Each of these is a deliberate decision, not an oversight.
 
 ==============================================================================
 FILE: docs/architecture/entity-reference.md
-LINES: 613
+LINES: 614
 ==============================================================================
 
 # Entity Reference
@@ -21959,7 +21965,7 @@ Each entity is presented as a table with columns, types, and notes. Nullable col
 
 Types are stated generically — integer, string, boolean, timestamp, date, time. Physical types are an implementation choice.
 
-Configuration entities carry both `IsActive` and `IsDeleted`. Operational entities carry neither. The two-flag lifecycle is stated in Specification §9.6.
+Configuration entities carry both `IsActive` and `IsDeleted`. Operational entities carry neither. The two-flag lifecycle is stated in Specification §9.7.
 
 ---
 
@@ -22130,7 +22136,7 @@ Operational entity. No `IsActive` and no `IsDeleted`.
 | RoleID | integer | No | Foreign key → Role |
 | MemberStatusID | integer | No | Foreign key → Member Status |
 
-Member carries no boolean `IsActive`. A member's operational status is expressed by `MemberStatusID`.
+Member carries no `IsActive` and no `IsDeleted`. A member's operational state is expressed by `MemberStatusID` only. A member row is never removed through normal operations.
 
 ### AttributeType
 
@@ -22162,8 +22168,9 @@ Unique on (MemberID, AttributeTypeID). Operational fact, no lifecycle flags.
 | AdminID | integer | No | Primary key |
 | MemberID | integer | No | Foreign key → Member |
 | PermissionTierID | integer | No | Foreign key → Permission Tier |
+| IsActive | boolean | No | True at creation. Revocation sets false; the row remains. |
 
-Records that a member has been granted admin status.
+Records that a member has been granted admin status. An Admin row is deactivated, not soft-deleted. Acting identities must resolve to an Admin row whose `IsActive = true`; historical attribution resolves regardless of the admin's current `IsActive`.
 
 ---
 
@@ -22563,7 +22570,7 @@ One row per readmission event. A Readmission is a historical fact. It carries no
 
 ==============================================================================
 FILE: docs/architecture/fixed-vs-configurable.md
-LINES: 157
+LINES: 158
 ==============================================================================
 
 # Fixed vs Configurable
@@ -22601,7 +22608,7 @@ DutyRule has a DutyID foreign key. That means the schema knows a Duty Rule *can*
 
 ### The criteria-type vocabulary
 
-CriteriaType is constrained to one of a fixed set. Nine supported types are evaluated by the engine:
+CriteriaType is constrained to one of a fixed set. Ten supported types are evaluated by the engine:
 
 - Role
 - Gender
@@ -22611,6 +22618,7 @@ CriteriaType is constrained to one of a fixed set. Nine supported types are eval
 - Branch-Attendance Recency
 - Eligibility Flag
 - Member Attribute
+- Member Status
 - Youth
 
 Three additional types are reserved for future activation and are not evaluated: Acceptance Rate, Duties Carried, Days Since Last Assignment.
@@ -22666,7 +22674,7 @@ Which Outcome States exist. Which Assignment Statuses exist. Which Permission Ti
 | **Entities** | Table structure, columns, types | Rows |
 | **Relationships** | Which FKs exist, what they can connect | Which specific connections exist |
 | **Cardinality** | One Member → one BranchID | Whether any specific Branch is populated |
-| **Criteria vocabulary** | The nine supported criteria types, plus three reserved | Which criteria apply to which duty, in what tier order |
+| **Criteria vocabulary** | The ten supported criteria types, plus three reserved | Which criteria apply to which duty, in what tier order |
 | **Role-Duty link** | That a DutyRule can express Role as a criterion | Whether any Duty uses Role as a criterion, and to what value |
 | **Mechanical operations** | How to project a recurring schedule forward N days | What N is |
 | **Provenance** | GeneratedBy is permanent | Whether a specific occurrence was system- or admin-generated |
@@ -23201,7 +23209,7 @@ Records the raw fact of a member's presence at an occurrence.
 
 **Trigger:** Manual register marking; NFC tap (defined but not yet produced by any implemented path).
 
-**Reads:** D4, D3, D11 (the effective register scope).
+**Reads:** D4, D3 (occurrence; branch register scope for schedule-sourced), D9 (event register scope for event-sourced), D11 (global `AttendanceRegisterEnabled`).
 
 **Writes:** D8.
 
@@ -23269,7 +23277,7 @@ Reads Attendance Rules, evaluates each against the member population, and applie
 
 **Trigger:** Scheduled run; manual administrator invocation of a single rule.
 
-**Reads:** D2 (AttendanceRule, AttendanceRuleScope), D3 (register scope), D4 (Member, MemberStatus), D8 (AttendanceRecord), D10 (MemberStatus lookup), D11 (global register scope), D13 (Readmission).
+**Reads:** D13 (AttendanceRule, AttendanceRuleScope, Readmission), D3 (Branch.UsesAttendanceRegister — the member's home-branch scope), D4 (Member, MemberStatus), D8 (AttendanceRecord), D10 (MemberStatus lookup), D11 (SystemSetting — `AttendanceRegisterEnabled`).
 
 **Writes:** D4 (MemberStatusID when a SetStatus outcome fires).
 
@@ -23321,14 +23329,14 @@ Each process reads from and writes to a defined set of stores. No process writes
 | 3.0 | — | D4, D5, D13 |
 | 4.0 | — | D6 |
 | 5.0 | D2, D3, D4, D6, D7, D8 (conditional) | D7 |
-| 6.0 | D4, D3, D11 (scope) | D8 |
+| 6.0 | D4, D3 (occurrence; Branch.UsesAttendanceRegister for schedule-sourced), D9 (Event.UsesAttendanceRegister for event-sourced), D11 (AttendanceRegisterEnabled) | D8 |
 | 7.0 | D2 (re-resolution), D3 (re-resolution), D4, D6 (re-resolution), D7, D8 (re-resolution), D10, D11 | D7 |
 | 8.0 | D3, D4, D9, D10 | D9, D3 (event-sourced occurrences) |
 | 9.0 | Path 1: D3, D4, D7, D11. Path 2: ConfigurationAuditLog, NotificationSubscription, Admin, PermissionTier, D11. | ConfigurationAuditLog (NotifiedAt, Path 2) |
 | 10.0 | D3, D7, D10, D11 | D3 |
 | 11.0 | D3, D11 | D3, D12 |
 | 12.0 | D2, D3, D4, D6, D7 | D7 |
-| 13.0 | D2, D3, D4, D8, D10, D11, D13 | D4 (MemberStatusID) |
+| 13.0 | D2, D3 (home-branch register scope), D4, D8, D10, D11 (AttendanceRegisterEnabled), D13 | D4 (MemberStatusID) |
 
 A configuration-audit store and an attendance store are also present. The configuration-audit store holds Configuration Audit Log, Entity Deletion Policy, and Notification Subscription. The attendance store is D13, holding Attendance Rule, Attendance Rule Scope, and Readmission.
 
@@ -23601,7 +23609,7 @@ The original set introduced fifteen amendments. Two later sets have been added: 
 
 ==============================================================================
 FILE: docs/database/amendments.md
-LINES: 372
+LINES: 381
 ==============================================================================
 
 # Amendments
@@ -23867,7 +23875,7 @@ The amendments below were added after the original fifteen. They are the changes
 | MemberAttributeValue | One value per member per attribute set | §4 |
 | EventBranch | Set of branches attending an event | §4 |
 | Capability | Vocabulary of named actions the system can perform | §4 |
-| ConfigurationAuditLog | Permanent record of every deactivation and every soft delete | §4, §9.6 |
+| ConfigurationAuditLog | Permanent record of every deactivation and every soft delete | §4, §9.7 |
 | EntityDeletionPolicy | Per-entity-type configuration of the deletion model | §4, §9.6 |
 | NotificationSubscription | Recipient configuration for authority notifications | §4, §14.1.3 |
 
@@ -23888,7 +23896,7 @@ The amendments below were added after the original fifteen. They are the changes
 | EventDuty | DutyID | integer | No | §4 |
 | EventDuty | ServiceDefID | integer | Yes | §4 |
 | EventDuty | (Label removed) | — | — | §4 |
-| Every configuration entity | IsDeleted | boolean | No | §4, §9.6 |
+| Every two-flag configuration entity (not Admin, not Member) | IsDeleted | boolean | No | §4, §9.7 |
 
 ### 5.3 — Extended criteria vocabulary
 
@@ -23945,6 +23953,15 @@ The count of invoking processes is now four: 5.0, 7.0, 12.0, 13.0.
 | Attendance register scope resolution | Most specific scope wins: event, then branch, then global | §9.6 |
 | Branch-Attendance Recency skip | The criterion is skipped when the effective register scope is off | §10.1.5 |
 | Attendance register eligibility | A member is eligible only if they hold a ReceiptNumber or CardNumber | §4, §9.1.7 |
+
+### 5.7 — Member and Admin lifecycle (§15.8.27)
+
+| Change | Table | Nature | Source |
+| --- | --- | --- | --- |
+| Member carries no `IsActive` and no `IsDeleted`; state is `MemberStatusID` only | Member | Clarification | §4, §15.8.27 |
+| Admin gains `IsActive` boolean; revocation sets false, row remains | Admin | New column | §4, §15.8.27 |
+
+The two-flag lifecycle of §9.7 does not apply to Member (no flags) or to Admin (single flag). The reference-fallback rules for Member Status are extended: on soft-delete of a Member Status, Attendance Rules whose `OutcomeStatusID` names it are removed, and Attendance Rule Scope rows whose criteria name it are removed.
 
 ### 5.6 — Removed columns
 
@@ -24519,7 +24536,7 @@ The specification does not prescribe physical indexes. It names the access patte
 
 ==============================================================================
 FILE: docs/database/migration-ordering.md
-LINES: 153
+LINES: 154
 ==============================================================================
 
 # Migration Ordering
@@ -24607,6 +24624,7 @@ The additions that do not affect existing constraints:
 - `Event.HostBranchID` (as nullable at this stage; Step 7 makes it non-null)
 - `EventDuty.DutyID` (as nullable at this stage; Step 7 makes it non-null)
 - `EventDuty.ServiceDefID`
+- `Admin.IsActive` (boolean, default true for existing rows)
 - `IsDeleted` on every configuration entity that gained the two-flag lifecycle
 
 **Step 6 — data migration for the columns that replace others.**
@@ -24678,7 +24696,7 @@ The order eliminates each.
 
 ==============================================================================
 FILE: docs/database/schema.md
-LINES: 503
+LINES: 506
 ==============================================================================
 
 # Schema
@@ -24693,7 +24711,7 @@ Each entity is presented as a table with columns, types, and notes. Nullable col
 
 Types are stated generically — integer, string, boolean, timestamp, date, time. Physical types are an implementation choice.
 
-Configuration entities carry both `IsActive` and `IsDeleted`. Operational entities carry neither. The two-flag lifecycle is stated in Specification §9.6.
+Configuration entities carry both `IsActive` and `IsDeleted`. Operational entities carry neither. The two-flag lifecycle is stated in Specification §9.7.
 
 ---
 
@@ -24942,6 +24960,9 @@ Unique on (MemberID, DutyID, OccurrenceID). Operational entity; no lifecycle fla
 | AdminID | integer | No | Primary key |
 | MemberID | integer | No | Foreign key → Member |
 | PermissionTierID | integer | No | Foreign key → PermissionTier |
+| IsActive | boolean | No | True at creation. Revocation sets false; the row remains. |
+
+An Admin row is deactivated, not soft-deleted. A revoked admin's row remains, preserving attribution on historical records. Acting identities must resolve to an Admin row whose `IsActive = true`.
 
 ## AttendanceRecord
 
@@ -25187,7 +25208,7 @@ A configuration-lifecycle store holds ConfigurationAuditLog, EntityDeletionPolic
 
 ==============================================================================
 FILE: docs/database/seed-migration.md
-LINES: 119
+LINES: 123
 ==============================================================================
 
 # Seed Migration
@@ -25232,7 +25253,11 @@ The rewrite produces three seed scripts, split by concern.
 - Lookup rows: `TimeOfDay`, `ServiceType`, `OutcomeState`, `AssignmentStatus`, `PermissionTier`, `MemberStatus`, `Capability`, `AttributeType`.
 - Vocabulary rows: `Role`, `Duty`.
 - Structural rows: `Branch`, `BranchTimeSlot`, `ServiceDefinition`, `ServiceDefinitionDuty`, `ServiceSchedule`.
-- The `SystemSetting` rows with their production defaults: `OccurrenceHorizonDays`, `InitialAssignmentStatusID`, `DeclinedStatusID`, `TimedOutStatusID`, `ConfirmationTimeoutHours`, the four `OutcomeState*ID` keys, `NotificationChannel`, `ReceiptToCardDurationDays`, `YouthAgeMin`, `YouthAgeMax`, and the global attendance register scope.
+- The `SystemSetting` rows with their production defaults: `OccurrenceHorizonDays`, `InitialAssignmentStatusID`, `DeclinedStatusID`, `TimedOutStatusID`, `ConfirmationTimeoutHours`, the four `OutcomeState*ID` keys, `NotificationChannel`, `ReceiptToCardDurationDays`, `YouthAgeMin`, `YouthAgeMax`, and the following:
+  - `ApplicationTimeZone = 'Africa/Johannesburg'` (or the deployment's IANA zone)
+  - `AttendanceRegisterEnabled = 'true'`
+  - `DeclinedStatusID` populated from the seeded AssignmentStatus row whose `Name = 'Declined'`
+  - `TimedOutStatusID` populated from the seeded AssignmentStatus row whose `Name = 'Timed Out'`
 - One default `Role`, one default `MemberStatus`, one default `PermissionTier`. The defaults are the rows the amendment fallback rules use.
 
 **`seed-membership.sql`** — member register and eligibility.
@@ -25312,7 +25337,7 @@ The scripts are treated as tested only when all five checks pass.
 
 ==============================================================================
 FILE: docs/database/settings.md
-LINES: 210
+LINES: 267
 ==============================================================================
 
 # Settings
@@ -25434,6 +25459,59 @@ Maps the Filled mechanical condition.
 | Validation | If no valid channel is configured, 9.0 does not send. No channel-specific fallback is defined by the 9.0 contract. Whether the setting is configured as required is a deployment choice, not fixed by the specification. |
 | Source | §14, §15.3.8 |
 
+### DeclinedStatusID
+
+| Property | Value |
+| --- | --- |
+| Key | DeclinedStatusID |
+| Type | integer — an AssignmentStatusID |
+| Required | true |
+| Consumed by | 7.0 Manage Confirmation, on the decline path |
+| Behavior if absent | 7.0 refuses the decline operation and surfaces a configuration error |
+| Source | §11.1.7, §15.3.9 |
+
+The AssignmentStatus to which a declined assignment transitions. Points at an administrator-created row; the system does not name or interpret any status.
+
+### TimedOutStatusID
+
+| Property | Value |
+| --- | --- |
+| Key | TimedOutStatusID |
+| Type | integer — an AssignmentStatusID |
+| Required | true |
+| Consumed by | 7.0 Manage Confirmation, on the timeout sweep path |
+| Behavior if absent | 7.0 refuses the sweep operation and surfaces a configuration error |
+| Source | §11.1.7, §15.3.10 |
+
+The AssignmentStatus to which a timed-out assignment transitions.
+
+### ApplicationTimeZone
+
+| Property | Value |
+| --- | --- |
+| Key | ApplicationTimeZone |
+| Type | string — an IANA timezone ID |
+| Required | true |
+| Consumed by | 5.0, 7.0, 11.0, 12.0, 13.0, the Quartz job classes, and the Quartz scheduler registration |
+| Behavior if absent | The consuming process refuses to run and surfaces a configuration error |
+| Behavior if unrecognised | The consuming process refuses to run and surfaces a configuration error |
+| Source | §7, §9.6, §13.6, §15.3.11 |
+
+Used for one purpose: converting an instant to the calendar date it falls on in that zone. No silent fallback. The Quartz scheduler resolves the value once at application startup; the processes resolve it on every run.
+
+### AttendanceRegisterEnabled
+
+| Property | Value |
+| --- | --- |
+| Key | AttendanceRegisterEnabled |
+| Type | string — the boolean as text, `"true"` or `"false"` |
+| Required | true |
+| Consumed by | 6.0, 13.0, and 5.0's Branch-Attendance Recency criterion |
+| Behavior if absent | The consuming process refuses to run and surfaces a configuration error |
+| Source | §9.6, §15.3.12 |
+
+The global default for the attendance register. Per-branch and per-event overrides apply first.
+
 ---
 
 ## Existing settings referenced but not new
@@ -25490,6 +25568,10 @@ The maximum age at which a member counts as a youth, for the computed youth pseu
 | OutcomeStateFilledID | integer | true | 10.0 |
 | OutcomeStateCancelledID | integer | false | 10.0 |
 | NotificationChannel | string | deployment choice | 9.0 |
+| DeclinedStatusID | integer | true | 7.0 |
+| TimedOutStatusID | integer | true | 7.0 |
+| ApplicationTimeZone | string | true | 5.0, 7.0, 11.0, 12.0, 13.0, Quartz |
+| AttendanceRegisterEnabled | string | true | 6.0, 13.0, 5.0 |
 | ReceiptToCardDurationDays | integer | not fixed | Administrative |
 | Age-range bounds | integer | not fixed | 5.0 (Age Range criterion) |
 
@@ -25525,6 +25607,70 @@ For all processes in the current specification, a required setting that is missi
 ---
 
 *Source: System Design Specification §4, §7, §11, §12, §14, §15; MKN Configuration Reference.*
+
+==============================================================================
+FILE: docs/decisions.md
+LINES: 58
+==============================================================================
+
+# Decisions
+
+*The closed Class B and Class C decisions, as one-line pointers. Each entry names the decision, states it in one sentence, and points at the section of the tree that carries it. This file adds no rules; it is an index.*
+
+---
+
+## Class B decisions
+
+Class B decisions were made during the documentation-hardening pass. Each closes a question the specification left open. The decision is stated in the specification or in a derived document; this table is a pointer. B9 is a corollary of B8, not a separate decision.
+
+**Note on label collisions.** The specification's §17.1 carries its own local lettered sub-decisions (A through H, with numeric suffixes such as §17.1 B1 through B5 and §17.1 C1 through C4). These are local to §17.1 and are distinct from the Class B decisions B1–B20 and Class C decisions C1–C11 in this file. A reference to §17.1 B1 is not a reference to B1 in the table below. Every reference to §17.1's letters is spelled with the §17.1 prefix; every reference to a Class B or Class C decision uses the bare label.
+
+| Label | Decision | Where it lives |
+| --- | --- | --- |
+| B1 | A `CriteriaValue` that does not match its criterion's grammar produces no candidates and does not fail the run. | Specification §10.1.5 (criteria value grammars); acceptance-matrix.md (2.0 rows) |
+| B2 | Youth age bounds are inclusive; `YouthAgeMin <= age <= YouthAgeMax`. | Specification §10.1.5 (age calculation); acceptance-matrix.md (B2 boundary) |
+| B3 | A terminal-to-non-terminal transition is permitted only if the slot does not exceed its effective required count. | Specification §11.1.3, §11.3; acceptance-matrix.md (7.0 rows) |
+| B4 | `DeclinedStatusID` and `TimedOutStatusID` are required settings; absence refuses the operation. | Specification §11.1.5, §11.1.7, §15.3.9, §15.3.10; acceptance-matrix.md (7.0 rows) |
+| B5 | When a tier produces more candidates than slots, selection is by ascending `MemberID`. Fixed; not configurable. | Specification §10.1.6; acceptance-matrix.md (5.0 rows) |
+| B6 | The slot-capacity invariant is preserved by some mechanism; the specification requires the property, not the mechanism. | Specification §10.3, §11.3, §10.5; errors.md (ConcurrencyConflict) |
+| B7 | A 9.0 invocation failure does not roll back the assignment and does not mark the run failed. | Specification §10.1.8; acceptance-matrix.md (5.0 rows) |
+| B8 | Applicable rules are evaluated sequentially in ascending ID order; earlier outcomes are visible to later ones. | Specification §13.6 (rule evaluation order); acceptance-matrix.md (13.0 rows) |
+| B9 | B9 is a corollary of B8, not a separate decision. | Specification §13.6 |
+| B10 | The Attendance Rule Engine is deterministic but not idempotent with respect to external outcomes. | Specification §13.6 (idempotency); acceptance-matrix.md (13.0 rows) |
+| B11 | A Manual rule invocation names exactly one rule and evaluates only that rule. | Specification §13.6 (manual invocation); contracts.md (13.0 command) |
+| B12 | There is no `IncrementReadmissionCount` outcome. Readmission counts are derived. | Specification §13.6; acceptance-matrix.md (B12 boundary) |
+| B13 | The absence window is `[today - N, today]`, inclusive at both boundaries, measured in calendar days. | Specification §13.6; acceptance-matrix.md (B13 boundary) |
+| B14 | Readmission carries no lifecycle flags; a Readmission row is never soft-deleted. | Specification §4 (Readmission); acceptance-matrix.md (B14 boundary) |
+| B15 | Authority notifications are at-least-once; the member-facing path is fire-and-forget. | Specification §14.1.4, §14.1.5; acceptance-matrix.md (9.0 rows) |
+| B16 | Zero recipients is a valid outcome; `NotifiedAt` is set and no error is raised. | Specification §14.1.9; acceptance-matrix.md (B16 boundary) |
+| B17 | An external process invocation is never part of a database atomic unit. | Specification §9.8; contracts.md §C5 |
+| B18 | A `ServiceOccurrence` must carry exactly one of `ScheduleID` or `EventID`; both-null and both-non-null are forbidden. | Specification §4 (Service Occurrence); errors.md (InvariantViolation) |
+| B19 | `ServiceDefinition.OwningBranchID` is a hard invariant; a schedule whose time slot's branch differs is an integrity violation. | Specification §9.1.6; acceptance-matrix.md (1.0 rows) |
+| B20 | `HostBranchID` and `EventBranch` are independent sets; the host need not appear in the attendee set. | Specification §4 (Event, Event Branch); acceptance-matrix.md (8.0 rows) |
+
+---
+
+## Class C decisions
+
+Class C decisions are the interface and implementation contracts that were written during the same pass. Some have distinct labels in the tree; some do not, and are pointed to by content. Each entry states what the decision is and where it lives.
+
+| Label | Decision | Where it lives |
+| --- | --- | --- |
+| C1 | Three layers: the HTTP adapter translates, the process applies business rules, the persistence layer writes. No business logic in the adapter. | adapter-contract.md (division of responsibility) |
+| C2 | The adapter validates request shape before invoking the process. Required fields, types, dates, and enumerated values are checked at the boundary; a shape failure produces `ValidationFailed` and the process is not invoked. | adapter-contract.md (request shape, request field validation) |
+| C3 | Every response is JSON; every response carries a `status` field whose value is `Success` or `Failure`; failure envelopes carry `errorCode` and `errorDetail`. | adapter-contract.md (response shape) |
+| C4 | Validation occurs at three boundaries: command shape, referenced entities, outcome invariants. Each boundary validates what it is responsible for and does not duplicate the others. | contracts.md §C4 — Validation rules |
+| C5 | Every operation that writes more than one row has an atomic boundary. The specification names which writes form an atomic unit; the mechanism is implementation choice. | contracts.md §C5 — Transaction boundaries; Specification §9.8 |
+| C6 | Every process that acts on behalf of an administrator receives an `AdminID` that resolves to an `Admin` row whose `IsActive = true`. The process does not authenticate the caller; authorisation is upstream. | contracts.md §C6 — Identity and context |
+| C7 | Timestamps are instants persisted in UTC. Dates are calendar dates with no timezone. Times are wall-clock times with no timezone. `ApplicationTimeZone` is used only to convert an instant to a calendar date. | Specification §4 (Temporal types); acceptance-matrix.md (Temporal rows) |
+| C8 | The order in which the frozen specification's schema changes are applied is fixed by dependency. Applying the steps in the stated order leaves the schema in the target state. | migration-ordering.md |
+| C9 | The seed scripts are rewritten against the frozen schema, not patched. They are non-authoritative; they configure a starting state for testing. | seed-migration.md |
+| C10 | Every error category maps to an HTTP status. The mapping is the adapter's choice; the specification fixes the categories, not the statuses. The line between 400 and 422 is the shape-validation boundary. | adapter-contract.md (error category to HTTP status mapping) |
+| C11 | The acceptance matrix states each testable invariant as a Given / When / Then row and names each closed decision's boundary conditions. | acceptance-matrix.md |
+
+---
+
+*Source: the closed Class B and Class C decisions, as recorded in the specification and the derived documents. This file adds nothing; it points.*
 
 ==============================================================================
 FILE: docs/modules/README.md
@@ -25722,7 +25868,7 @@ The thirteen defined processes do not depend on the content of tap ingestion. Ev
 
 ==============================================================================
 FILE: docs/processes/acceptance-matrix.md
-LINES: 308
+LINES: 310
 ==============================================================================
 
 # Acceptance Matrix
@@ -25802,7 +25948,7 @@ The matrix does not prescribe the mechanism. Concurrency rows state the property
 | 8.0 | A ProgramItem whose ServiceDefID is removed after an occurrence was created | The ProgramItem is updated | The event-sourced ServiceOccurrence is not removed |
 | 8.0 | A second Program for the same Event | The Program is created | The operation is rejected with `Conflict`; one Program per Event |
 | 8.0 | An EventDuty referencing a Duty | The EventDuty is created | The duty's Eligibility and DutyRule are consulted for candidate resolution on the event |
-| 8.0 | A Member soft-deleted while referenced by an EventDuty | The EventDuty is retained | The reference remains; no cascade; the EventDuty.AssignedMemberID continues to point at the soft-deleted Member |
+| 8.0 | A Member whose `MemberStatusID` is a non-rosterable status, referenced by an EventDuty | The EventDuty is retained | The reference remains; no cascade; the EventDuty.AssignedMemberID continues to point at the Member |
 
 ## Operations layer
 
@@ -25935,7 +26081,8 @@ The matrix does not prescribe the mechanism. Concurrency rows state the property
 | 11.0 | A MaterializerRun record from a prior successful run | 11.0 runs again | A new MaterializerRun record is written for the new run |
 | 11.0 | A failed run partway through | 11.0 runs again | The partial rows from the failed run are counted; remaining candidate dates are filled; no checkpoint is required |
 | 11.0 | An instant near midnight UTC and a configured non-UTC `ApplicationTimeZone` | 11.0 derives "today" | "Today" resolves to the calendar date in the configured zone, not the UTC date, per C7 |
-| 11.0 | `ApplicationTimeZone` set to an unrecognised value | 11.0 derives "today" | The resolver falls back to UTC; the run proceeds |
+| 11.0 | `ApplicationTimeZone` set to an unrecognised value | 11.0 derives "today" | The run is refused with `ConfigurationInvalid`; no occurrences are created |
+| 11.0 | `ApplicationTimeZone` absent | 11.0 derives "today" | The run is refused with `ConfigurationMissing`; no occurrences are created |
 
 ### 12.0 Create Manual Assignment
 
@@ -25943,7 +26090,7 @@ The matrix does not prescribe the mechanism. Concurrency rows state the property
 | --- | --- | --- | --- |
 | 12.0 | A member, duty, occurrence, and acting admin | A manual assignment is created with no target status | An assignment is created with `AssignmentStatusID = NULL`, `AssignmentSource = Manual`, `AssignedBy` set; 9.0 is invoked |
 | 12.0 | A member, duty, occurrence, and acting admin | A manual assignment is created with a target status | The row is created with that status; 9.0 is not invoked |
-| 12.0 | A manual assignment whose member does not satisfy a Role Duty Rule | The assignment is created | The assignment is permitted; Role criteria are bypassed, per B12's contract |
+| 12.0 | A manual assignment whose member does not satisfy a Role Duty Rule | The assignment is created | The assignment is permitted; Role criteria are bypassed, per §17.1 B1 |
 | 12.0 | A manual assignment whose member does not satisfy an Eligibility Flag rule | The assignment is created | The assignment is rejected with `ValidationFailed`; Eligibility Flag gates manual assignment |
 | 12.0 | A manual assignment when the duty is already at its configured slot count | The assignment is created | The assignment is permitted; slot capacity is not enforced on manual assignment |
 | 12.0 | A manual assignment when the member already holds a non-terminal assignment on the occurrence | The assignment is created | The assignment is permitted; per-occurrence availability is not enforced on manual assignment |
@@ -25966,6 +26113,7 @@ The matrix does not prescribe the mechanism. Concurrency rows state the property
 | 13.0 | A rule that fires on run 1 and whose trigger still holds on run 2 | The second scheduled run executes | The outcome is applied again; the engine is not idempotent with respect to external outcomes, per B10 |
 | 13.0 | A rule with `TriggerType = Manual` | A scheduled run executes | The rule is not evaluated |
 | 13.0 | A rule with `TriggerType = Manual` and a specific rule ID | The rule is invoked administratively | Only the named rule is evaluated; its scope is resolved against the population; every matching member receives the outcome, per B11 |
+| 13.0 | A rule with `TriggerType = Manual` and no valid `ActingAdminID` | The rule is invoked administratively | The invocation is rejected with `NotFound`; no outcome is applied |
 | 13.0 | A rule with `TriggerType = Manual` and `TriggerValue` set | The rule is invoked | `TriggerValue` is ignored; the Manual trigger fires unconditionally |
 | 13.0 | Two invocations of the same Manual rule on the same day | Both invocations complete | The outcome is applied twice; the engine does not maintain per-rule execution history |
 | 13.0 | A rule whose outcome is `SetStatus`, and the target status is already the member's current status | The scheduled run executes | The write is applied; the member's state is unchanged; the persistence layer's optimisation of identical writes is not part of the contract |
@@ -26000,7 +26148,7 @@ The matrix tests each closed decision's boundaries explicitly. The list below na
 
 | Decision | Boundary tested |
 | --- | --- |
-| B1 | A `CriteriaValue` at the edge of its grammar (e.g., `13-35`, `13 - 35`, `Purity=Pure`, `Purity = Pure`) |
+| B1 | A `CriteriaValue` at the edge of its grammar (e.g., `13-35`, `13 - 35`, `Purity=Pure`, `Purity = Pure`, `2,3,4`, `2, 3, 4`) |
 | B2 | YouthAgeMin and YouthAgeMax exactly inclusive |
 | B3 | terminal → non-terminal at and around the slot-capacity threshold |
 | B4 | Each of the three target settings absent |
@@ -26098,7 +26246,7 @@ Administrator action, through the six subprocesses.
 
 ## Entity lifecycle
 
-Every entity created by 1.0 carries the two-flag lifecycle: `IsActive` and `IsDeleted`. Both flags are set at creation, and their meaning is stated in Specification §9.6. The rules are:
+Every entity created by 1.0 carries the two-flag lifecycle: `IsActive` and `IsDeleted`. Both flags are set at creation, and their meaning is stated in Specification §9.7. The rules are:
 
 - **Creation is immediate.** The entity is active from the moment it is created.
 - **No draft state.** No publish step, no approval gate.
@@ -26213,7 +26361,7 @@ TimeOfDayID is a coarse administrator-defined classification. The actual clock t
 
 ==============================================================================
 FILE: docs/processes/configuration/2.0-configure-duty-rules.md
-LINES: 198
+LINES: 199
 ==============================================================================
 
 # 2.0 Configure Duty Rules
@@ -26284,6 +26432,7 @@ The CriteriaType field is constrained to the fixed vocabulary defined in §5 of 
 - Branch-Attendance Recency
 - Eligibility Flag
 - Member Attribute (references an admin-defined Attribute Type and a required value)
+- Member Status (references the Member Status lookup; the value is a comma-separated list of integer MemberStatusIDs, no whitespace)
 - Youth (computed from DateOfBirth against the configured YouthAgeMin and YouthAgeMax settings)
 
 Plus three reserved types, which may be written but are not evaluated:
@@ -26417,7 +26566,7 @@ A Duty with two tiers, where Tier 2 is "any eligible member," is expressed as a 
 
 ==============================================================================
 FILE: docs/processes/configuration/3.0-manage-membership.md
-LINES: 224
+LINES: 265
 ==============================================================================
 
 # 3.0 Manage Membership
@@ -26513,9 +26662,11 @@ The RA and preRA statuses are defined in the vocabulary but no automated transit
 
 ### Lifecycle
 
-A Member is created with the default Member Status. Deactivation and soft delete exclude the member from new roster generation without touching any existing operational record. A Member is never physically removed. The two-flag lifecycle is stated in Specification §9.6.
+A Member is created with the default Member Status. A member is not deactivated and not soft-deleted: a member's state is set by assigning a `MemberStatusID` whose `IsRosterable = false`, which excludes the member from new roster generation without touching any operational record. A Member row is never physically removed. Member is not part of the two-flag lifecycle; its single lifecycle mechanism is `MemberStatusID`.
 
-**Source:** System Design Specification §9.1.1, §9.6.
+There is no member status history table. Member status changes are not audited by any log.
+
+**Source:** System Design Specification §9.1.1, §9.1.7, §15.8.27.
 
 ### Edits
 
@@ -26548,6 +26699,45 @@ The administrator issues a receipt at joining. When the configured duration has 
 The system does not detect the threshold or issue identifiers automatically. The administrator issues.
 
 **Source:** System Design Specification §4 (Member), §9.1.7.
+
+---
+
+## Attendance Rule management
+
+3.0 owns the Attendance Rule entity introduced by the attendance amendment set. The five commands below are the process's configuration surface for it. 13.0 Attendance Rule Engine reads the rows; 3.0 writes them.
+
+### Create Attendance Rule
+
+| Field | Required |
+| --- | --- |
+| Name | Yes |
+| TriggerType | Yes — `AbsenceDays`, `ReadmissionCount`, or `Manual` |
+| TriggerValue | Yes for `AbsenceDays` and `ReadmissionCount`; unused for `Manual` |
+| OutcomeType | Yes — `Notify`, `SetStatus`, or `NoOp` |
+| OutcomeStatusID | Required only when `OutcomeType = SetStatus` |
+| Enabled | Yes |
+| ScopeCriteria | No — array of `(CriteriaType, CriteriaValue)` |
+| ActingAdminID | Yes |
+
+The `TriggerType` and `OutcomeType` values are constrained to their vocabularies. The `OutcomeStatusID`, when supplied, must reference an existing Member Status. Each `ScopeCriteria` entry's `CriteriaType` must be in the Duty Rule criteria vocabulary. A rule with no scope rows applies to every member.
+
+### Update Attendance Rule
+
+Same field set as Create, plus the `AttendanceRuleID` of the row to update. Changing `TriggerType` or `OutcomeType` is permitted; changing `OutcomeType` from `SetStatus` to another value clears the effective `OutcomeStatusID`.
+
+### Disable Attendance Rule
+
+Sets `Enabled = false`. The rule is not evaluated by 13.0. `IsActive` is unchanged; scope rows are unchanged; the rule remains visible in the enabled-rules view. Re-enabling sets `Enabled = true`.
+
+### Deactivate Attendance Rule
+
+Sets `IsActive = false`. The rule is not evaluated; scope rows remain. Reversible.
+
+### Soft-delete Attendance Rule
+
+Sets `IsDeleted = true` and implicitly `IsActive = false`. The rule's `AttendanceRuleScope` rows are removed. The rule row itself is retained for history.
+
+**Source:** System Design Specification §4 (Attendance Rule), §9.7, §13.6, §15.8.34.
 
 ---
 
@@ -26611,7 +26801,7 @@ Reassignment to a different member is permitted if the administrator chooses. Th
 - A Member references an existing Branch and Role.
 - Identifier History references an existing Member.
 - Identifier numbers are administrator-supplied, not system-generated.
-- Deactivating a Member does not touch operational records.
+- Setting a Member's `MemberStatusID` to a status whose `IsRosterable = false` does not touch operational records.
 - Editing a Member does not rewrite operational records.
 - Multiple active identifiers of the same type are permitted by the system.
 - 3.0 never invokes any other process.
@@ -27149,7 +27339,7 @@ For a reader new to the configuration layer:
 
 ==============================================================================
 FILE: docs/processes/contracts.md
-LINES: 642
+LINES: 681
 ==============================================================================
 
 # Process Contracts
@@ -27170,7 +27360,7 @@ The HTTP layer is an adapter. Its shape is not fixed by this document. The docum
 
 **Command.** The set of values the process requires or accepts. Every command carries a field-name, a type, and whether the value is required.
 
-**Identity.** The `Admin` record the process receives when it acts on behalf of a caller. Every process that writes configuration or operational records receives an Admin. The system does not authenticate the caller; authorisation is upstream, per the specification's stated boundary. The identity contract here is only about the shape: the process receives an `AdminID` that resolves to a non-deleted `Admin` row.
+**Identity.** The `Admin` record the process receives when it acts on behalf of a caller. Every process that writes configuration or operational records receives an Admin. The system does not authenticate the caller; authorisation is upstream, per the specification's stated boundary. The identity contract here is only about the shape: the process receives an `AdminID` that resolves to an `Admin` row whose `IsActive = true`.
 
 **Result.** The set of values the process returns. Every process returns a `Status` field whose value is one of `Success` or `Failure`. Failed results carry an `ErrorDetail` or a structured error.
 
@@ -27290,7 +27480,7 @@ Two commands.
 
 **Result on Success:** The created or updated `DutyRule` record.
 
-**Errors:** `ValidationFailed` (including a `CriteriaType` outside the fixed vocabulary, or a `CriteriaValue` that does not match its grammar — the value is accepted at write time but the rule is inert if malformed; validation refuses the write if the type is invalid), `NotFound`.
+**Errors:** `ValidationFailed` (including a `CriteriaType` outside the fixed vocabulary, or a `CriteriaValue` that does not match its grammar — the value is accepted at write time but the rule is inert if malformed; validation refuses the write if the type is invalid). The full criteria vocabulary and value grammars are stated in §5 and §10.1.5 of the specification. The `MemberStatus` criterion's value is a comma-separated list of integer MemberStatusIDs with no whitespace; it accepts IDs, not names. `NotFound`.
 
 ### 3.0 Manage Membership
 
@@ -27360,6 +27550,42 @@ These three sit within 3.0's ownership boundary as established by B12 and B14.
 | OutcomeStatusID | integer | Required only when OutcomeType = SetStatus |
 | Enabled | boolean | Yes |
 | ScopeCriteria | array of (CriteriaType, CriteriaValue) | No |
+| ActingAdminID | integer | Yes |
+
+**Update Attendance Rule command:**
+
+| Field | Type | Required |
+| --- | --- | --- |
+| AttendanceRuleID | integer | Yes |
+| Name | string | Yes |
+| TriggerType | string | Yes |
+| TriggerValue | string | Yes for AbsenceDays and ReadmissionCount; unused for Manual |
+| OutcomeType | string | Yes |
+| OutcomeStatusID | integer | Required only when OutcomeType = SetStatus |
+| Enabled | boolean | Yes |
+| ScopeCriteria | array of (CriteriaType, CriteriaValue) | No |
+| ActingAdminID | integer | Yes |
+
+**Disable Attendance Rule command:**
+
+| Field | Type | Required |
+| --- | --- | --- |
+| AttendanceRuleID | integer | Yes |
+| ActingAdminID | integer | Yes |
+
+**Deactivate Attendance Rule command:**
+
+| Field | Type | Required |
+| --- | --- | --- |
+| AttendanceRuleID | integer | Yes |
+| ActingAdminID | integer | Yes |
+
+**Soft-delete Attendance Rule command:**
+
+| Field | Type | Required |
+| --- | --- | --- |
+| AttendanceRuleID | integer | Yes |
+| Reason | string | Yes |
 | ActingAdminID | integer | Yes |
 
 **Record Readmission command:**
@@ -27651,8 +27877,9 @@ Two commands.
 | Field | Type | Required |
 | --- | --- | --- |
 | RuleId | integer | Yes |
+| ActingAdminID | integer | Yes |
 
-**Identity:** None on the scheduled run. On the manual invocation, the ActingAdmin is not required by the entity shape; the invocation itself is the identity. If a future revision requires an admin identity for the manual invocation, it is an amendment.
+**Identity:** None on the scheduled run. On the manual invocation, the `ActingAdminID` resolves to an `Admin` row whose `IsActive = true`. The process validates that the Admin exists; authorization is upstream.
 
 **Result on Success:**
 
@@ -27663,6 +27890,8 @@ Two commands.
 | MembersEvaluated | integer |
 | StatusChangesApplied | integer |
 | NotificationsDispatched | integer |
+
+**Evaluation order.** A scheduled run evaluates every enabled rule whose `TriggerType` is not `Manual`, sequentially in ascending `AttendanceRuleID` order. Each rule's outcome is persisted before the next rule is evaluated. A `SetStatus` outcome applied by an earlier rule is visible to a later rule's trigger and scope evaluation on the same run.
 
 **Errors:** `ValidationFailed` (the named rule does not exist, is not enabled, or is not a Manual rule), `ConfigurationMissing` (a required setting referenced by an active rule is absent).
 
@@ -27749,9 +27978,9 @@ An external process invocation is never part of a database atomic unit. This fol
 
 ## C6 — Identity and context
 
-Every process that acts on behalf of an administrator receives the identity of that administrator. The identity is an `AdminID` that the process resolves to a non-deleted `Admin` row.
+Every process that acts on behalf of an administrator receives the identity of that administrator. The identity is an `AdminID` that the process resolves to an `Admin` row whose `IsActive = true`.
 
-The process does not authenticate the caller. The process does not check whether the caller is permitted to perform the operation. Both are upstream. What the process checks is that the `AdminID` resolves — the row exists and is not soft-deleted. If it does not resolve, the process returns `NotFound`.
+The process does not authenticate the caller. The process does not check whether the caller is permitted to perform the operation. Both are upstream. What the process checks is that the `AdminID` resolves — the row exists and has `IsActive = true`. If it does not resolve, the process returns `NotFound`.
 
 ### Processes that receive an identity
 
@@ -27968,7 +28197,7 @@ Physical forms are implementation-dependent.
 - **Specification §12** — the full derivation.
 - **`5.0-generate-assignment.md`** — produces the assignments 10.0 counts.
 - **`7.0-manage-confirmation.md`** — transitions the statuses that determine terminality.
-- **`../database/settings.md`** — the four OutcomeState mapping settings.
+- **`../../database/settings.md`** — the four OutcomeState mapping settings.
 
 ---
 
@@ -28125,7 +28354,7 @@ An existing occurrence is never updated or deleted by 11.0. No exception. Cancel
 ## Time handling
 
 - `Date` is date-only. Start time is represented separately on the occurrence and is unaffected by this process.
-- The process uses the configured system/application timezone. Not a per-branch timezone; "today" must have one deterministic calendar meaning.
+- The process uses the configured system/application timezone, named by the `ApplicationTimeZone` System Setting. The setting holds an IANA timezone ID. It is required; if absent or unrecognised, the process refuses to run and surfaces a configuration error. Not a per-branch timezone; "today" must have one deterministic calendar meaning.
 - No daylight-saving-specific logic exists in this process. The existing schedule start time is treated as a plain wall-clock value.
 - No holiday or blackout exclusions are built in.
 
@@ -28236,8 +28465,8 @@ Both are candidate indexes; the physical form is implementation-dependent.
 - **Specification §7** — the materialization contract.
 - **Specification §8** — the derived consequences.
 - **`5.0-generate-assignment.md`** — consumes the occurrences 11.0 produces.
-- **`../database/constraints.md`** — the (ScheduleID, Date) uniqueness constraint.
-- **`../database/settings.md`** — the OccurrenceHorizonDays setting.
+- **`../../database/constraints.md`** — the (ScheduleID, Date) uniqueness constraint.
+- **`../../database/settings.md`** — the OccurrenceHorizonDays setting.
 
 ---
 
@@ -28463,7 +28692,7 @@ No new index is required. The uniqueness check is served by the existing `Roster
 
 ==============================================================================
 FILE: docs/processes/operations/13.0-attendance-rule-engine.md
-LINES: 166
+LINES: 186
 ==============================================================================
 
 # 13.0 Attendance Rule Engine
@@ -28499,13 +28728,24 @@ The engine does not depend on any other process running first. It reads current 
 
 | Direction | Store |
 | --- | --- |
-| Reads | D2 (AttendanceRule, AttendanceRuleScope), D3 (Branch.UsesAttendanceRegister, Event.UsesAttendanceRegister — effective scope), D4 (Member, MemberStatus), D8 (AttendanceRecord), D10 (MemberStatus lookup), D11 (SystemSetting — the global register scope), D13 (Readmission) |
+| Reads | D13 (AttendanceRule, AttendanceRuleScope, Readmission), D3 (Branch.UsesAttendanceRegister — the member's home-branch scope), D4 (Member, MemberStatus), D8 (AttendanceRecord), D10 (MemberStatus lookup), D11 (SystemSetting — `AttendanceRegisterEnabled`) |
 | Writes | D4 (MemberStatusID when a SetStatus outcome fires). The engine reads Readmission and never writes it; process 3.0 owns Readmission creation. |
 | Invokes | 9.0 Dispatch Notification, and only when an Attendance Rule's OutcomeType is Notify and its trigger fires. This is the process's only invocation edge. |
 
 **Never reads or writes:** D1, D6, D9, D12. Never modifies AttendanceRecord. Never modifies any assignment. Never modifies fill status. Never invokes any process other than 9.0.
 
-**Source:** System Design Specification §13.6, §16.
+### Scope resolution (summary)
+
+The engine resolves the effective attendance register scope per member, not per occurrence:
+
+- The member's home branch's `Branch.UsesAttendanceRegister` override, when set.
+- Otherwise, the global `AttendanceRegisterEnabled`.
+
+Event overrides are not consulted by 13.0. An event's `Event.UsesAttendanceRegister` applies to 6.0's manual marking and to 5.0's Branch-Attendance Recency evaluation; it does not apply to the rule engine.
+
+`AttendanceRegisterEnabled` is a required setting. If it is absent, the engine refuses to run and surfaces a configuration error. There is no silent fallback.
+
+**Source:** System Design Specification §9.6, §13.6, §15.3.12, §16.
 
 ---
 
@@ -28543,7 +28783,7 @@ The rule's scope is expressed through the Attendance Rule Scope join table. Mult
 
 - **Notify.** A notification is composed and sent through the configured channel. No status change.
 - **SetStatus.** The member's MemberStatusID is set to the status named by OutcomeStatusID.
-- **NoOp.** The rule does nothing. Used to define a rule that is disabled without deleting it.
+- **NoOp.** The rule does nothing when it fires. It is a legitimate outcome: a rule configured with `OutcomeType = NoOp` is fully evaluated (its trigger is checked, its scope resolved), and no observable effect results. Disabling a rule is expressed separately by `Enabled = false`, which prevents the rule from being evaluated at all.
 
 **Source:** System Design Specification §13.6.
 
@@ -28551,13 +28791,17 @@ The rule's scope is expressed through the Attendance Rule Scope join table. Mult
 
 ## Evaluation order
 
-For each enabled rule:
+A scheduled run evaluates every enabled rule whose `TriggerType` is not `Manual`, in ascending `AttendanceRuleID` order. A rule whose `TriggerType` is `Manual` is skipped by the scheduled run and fires only through the explicit administrative invocation. For each enabled rule the scheduled run evaluates:
 
 1. Resolve the rule's scope criteria. A member matches the rule only if every scope criterion matches.
-2. Resolve the effective attendance register scope for the member's occurrences.
+2. Resolve the effective attendance register scope for the member. The member's effective scope is resolved by the member's home branch, then the global `AttendanceRegisterEnabled`. Event overrides are not consulted by 13.0.
 3. If the effective scope is off, skip the member for AbsenceDays triggers.
 4. Evaluate the trigger. AbsenceDays compares the member's last attendance against the current date, against TriggerValue. ReadmissionCount compares the member's readmission count against TriggerValue. Manual fires only when the admin invokes the rule explicitly.
 5. Apply the outcome.
+
+Rules are evaluated sequentially. Each rule's outcomes take effect before the next rule is evaluated. A rule is not re-evaluated after a later rule changes member state. Earlier rule outcomes are visible to later rules.
+
+**Manual invocation.** An administrator may invoke a single Attendance Rule whose `TriggerType` is `Manual`. The invocation names exactly one rule and carries the `ActingAdminID` of the administrator performing it. The engine resolves that rule's scope against the member population and applies the rule's outcome to every matching member. The `Manual` trigger fires unconditionally; `TriggerValue` is unused. The invocation evaluates exactly the named rule and no other rule; the ascending-order evaluation does not apply to it.
 
 The engine is not idempotent with respect to its external outcomes. Repeating a run while a trigger remains true may produce another notification or another outcome application, even when the member's resulting state is unchanged. Determinism is not idempotency: for a given state the same inputs produce the same outcomes, but running twice may apply the same SetStatus outcome twice if the trigger still holds.
 
@@ -28567,11 +28811,16 @@ The engine is not idempotent with respect to its external outcomes. Repeating a 
 
 ## The scope resolution
 
-A member's effective attendance register scope is the most specific of the three scopes that applies:
+A member's effective attendance register scope is resolved per member, not per occurrence:
 
-- Event override, when the member's occurrence is event-sourced and the event carries an override.
-- Branch override, when the member's occurrence is schedule-sourced at a branch that carries an override.
-- Global default, when no override exists.
+- Branch override of the member's home branch, when set.
+- Global `AttendanceRegisterEnabled`, otherwise.
+
+Event overrides are not consulted by 13.0. Event overrides are consulted by 6.0 Record Attendance when marking, and by 5.0 Generate Assignment when a Branch-Attendance Recency criterion is evaluated.
+
+Attendance records from any branch count toward the absence window. The member's home branch determines only whether the register is consulted for that member at all.
+
+Readmission-based triggers are not scoped by register state. They apply regardless of the member's effective register value.
 
 When the effective scope is off, the engine does not apply AbsenceDays rules to that member. This is what allows a branch that does not use the attendance register to be exempt from absence-driven status changes. A branch that does use the register is subject to them.
 
@@ -28594,7 +28843,7 @@ The two cases are expressed as separate rules. A rule scoped to one branch group
 
 ## Invariants
 
-- Idempotent per run.
+- Deterministic per run. Not idempotent with respect to external outcomes; repeated runs may repeat notifications or reapply a status outcome while the trigger holds.
 - Reads attendance facts, does not modify them.
 - Writes only MemberStatusID. The engine reads Readmission and never writes it; process 3.0 owns Readmission creation.
 - Invokes 9.0 Dispatch Notification, and only when a Notify outcome fires. This is the process's only invocation edge.
@@ -28627,7 +28876,7 @@ Physical forms are implementation-dependent.
 - **`6.0-record-attendance.md`** — writes the facts this process evaluates.
 - **`../configuration/3.0-manage-membership.md`** — produces the Member records and statuses this process reads and writes.
 - **`9.0-dispatch-notification.md`** — invoked when a Notify outcome fires.
-- **`../database/constraints.md`** — the uniqueness constraints.
+- **`../../database/constraints.md`** — the uniqueness constraints.
 
 ---
 
@@ -28635,7 +28884,7 @@ Physical forms are implementation-dependent.
 
 ==============================================================================
 FILE: docs/processes/operations/5.0-generate-assignment.md
-LINES: 281
+LINES: 284
 ==============================================================================
 
 # 5.0 Generate Assignment
@@ -28671,7 +28920,7 @@ Two triggers, sharing identical logic:
 
 | Direction | Store |
 | --- | --- |
-| Reads | D2 (DutyRule), D3 (ServiceOccurrence, ServiceDefinitionDuty, ServiceOccurrenceDuty, BranchTimeSlot), D4 (Member), D6 (Eligibility), D7 (RosterAssignment — capacity count and availability check), D8 (AttendanceRecord — only when a Branch-Attendance Recency criterion is present) |
+| Reads | D2 (DutyRule), D3 (ServiceOccurrence, ServiceDefinitionDuty, ServiceOccurrenceDuty, BranchTimeSlot, Branch.UsesAttendanceRegister — the effective scope for a Recency criterion), D4 (Member), D6 (Eligibility), D7 (RosterAssignment — capacity count and availability check), D8 (AttendanceRecord — only when a Branch-Attendance Recency criterion is present), D9 (Event.UsesAttendanceRegister — for event-sourced occurrences, when a Recency criterion is present), D11 (SystemSetting — `AttendanceRegisterEnabled`) |
 | Writes | D7 (RosterAssignment inserts only) |
 | Invokes | 9.0 Dispatch Notification, on each new automatic assignment |
 
@@ -28736,8 +28985,11 @@ If a tier consists entirely of rules whose criteria types are reserved (Acceptan
 | Membership Stage | Member's MembershipStage matches |
 | Branch-Attendance Recency | Member has an AttendanceRecord at the specified branch within the configured window |
 | Eligibility Flag | Member has a current Eligibility grant for the referenced duty |
+| Youth | Member's age, computed from DateOfBirth against the required settings `YouthAgeMin` and `YouthAgeMax`, falls within the configured inclusive range. Both settings are required; if either is absent, the criterion cannot be evaluated and matches no candidate. |
 
 Each criterion is a mechanical evaluation against the member's stored data. The system does not interpret the criterion beyond what its type defines.
+
+The Youth criterion reads two required System Settings: `YouthAgeMin` and `YouthAgeMax`. Both hold integers and are configured by the administrator. If either is absent, the Youth criterion cannot be evaluated and matches no candidate.
 
 **Source:** System Design Specification §10.1.5.
 
@@ -28914,7 +29166,7 @@ Physical forms are implementation-dependent.
 - **`7.0-manage-confirmation.md`** — owns the assignment lifecycle from where 5.0 leaves off.
 - **`9.0-dispatch-notification.md`** — invoked by 5.0 on each new assignment.
 - **`10.0-evaluate-fill-status.md`** — reads the assignments 5.0 produces.
-- **`../database/constraints.md`** — the (MemberID, DutyID, OccurrenceID) uniqueness constraint.
+- **`../../database/constraints.md`** — the (MemberID, DutyID, OccurrenceID) uniqueness constraint.
 
 ---
 
@@ -28922,7 +29174,7 @@ Physical forms are implementation-dependent.
 
 ==============================================================================
 FILE: docs/processes/operations/6.0-record-attendance.md
-LINES: 195
+LINES: 198
 ==============================================================================
 
 # 6.0 Record Attendance
@@ -28956,7 +29208,7 @@ Two triggers:
 
 | Direction | Store |
 | --- | --- |
-| Reads | D4 (Member — to validate the member identity and to check attendance register eligibility), D3 (ServiceOccurrence — to identify which occurrence the record applies to), D11 (SystemSetting — the global attendance register scope), D3 (Branch.UsesAttendanceRegister, Event.UsesAttendanceRegister — the effective scope) |
+| Reads | D4 (Member — to validate the member identity and to check attendance register eligibility), D3 (ServiceOccurrence — to identify which occurrence the record applies to; D3 also holds Branch.UsesAttendanceRegister for schedule-sourced occurrences), D9 (Event.UsesAttendanceRegister, for event-sourced occurrences), D11 (SystemSetting — `AttendanceRegisterEnabled`) |
 | Writes | D8 (AttendanceRecord — one row per (MemberID, OccurrenceID) pair) |
 
 **Never reads or writes:** D1, D2, D5, D6, D7, D9, D10, D12. Never modifies ServiceOccurrence in any field. Never writes FillStatusID. Never touches any assignment.
@@ -28989,7 +29241,10 @@ The attendance register's on/off state is configured at three scopes. The most s
 - **Per-event.** `Event.UsesAttendanceRegister`. Null means no override.
 - **Per-branch.** `Branch.UsesAttendanceRegister`. Null means no override.
 
-The resolution order is event override, then branch override, then global. For a schedule-sourced occurrence, the branch's override applies first. For an event-sourced occurrence, the event's override applies first.
+The resolution order depends on the occurrence's source:
+
+- Schedule-sourced occurrence: branch override of the branch in the occurrence's time slot, then the global `AttendanceRegisterEnabled`.
+- Event-sourced occurrence: event override, then the global `AttendanceRegisterEnabled`.
 
 When the register is off at the effective scope:
 
@@ -29115,7 +29370,7 @@ Physical forms are implementation-dependent.
 - **`11.0-materialize-occurrences.md`** — produces the occurrences 6.0 records attendance for.
 - **`5.0-generate-assignment.md`** — reads AttendanceRecord only when a Branch-Attendance Recency criterion is present and the effective register scope is on.
 - **`13.0-attendance-rule-engine.md`** — the process that evaluates attendance and applies status changes.
-- **`../database/constraints.md`** — the (MemberID, OccurrenceID) uniqueness constraint.
+- **`../../database/constraints.md`** — the (MemberID, OccurrenceID) uniqueness constraint.
 
 ---
 
@@ -29123,7 +29378,7 @@ Physical forms are implementation-dependent.
 
 ==============================================================================
 FILE: docs/processes/operations/7.0-manage-confirmation.md
-LINES: 205
+LINES: 222
 ==============================================================================
 
 # 7.0 Manage Confirmation
@@ -29164,6 +29419,23 @@ Two triggers, within the same process:
 **Never reads or writes:** D1, D5, D9, D12. Never modifies ServiceOccurrence. Never writes FillStatusID. Never writes ServiceOccurrenceDuty.
 
 **Source:** System Design Specification §11.2.
+
+---
+
+## Required settings
+
+7.0 consumes four settings. Each is stated here so the process document is self-contained; the full definitions are in `../database/settings.md`.
+
+| Setting | Consumed at | If absent |
+| --- | --- | --- |
+| `InitialAssignmentStatusID` | Confirm — the status a NULL assignment transitions to | 7.0 refuses the Confirm operation and surfaces a configuration error |
+| `DeclinedStatusID` | Decline — the status a declined assignment transitions to | 7.0 refuses the Decline operation and surfaces a configuration error |
+| `TimedOutStatusID` | Sweep — the status a timed-out assignment transitions to | 7.0 refuses the Sweep operation and surfaces a configuration error |
+| `ConfirmationTimeoutHours` | Sweep — the elapsed-age threshold | If `Required = false`, no timeout occurs. If `Required = true`, 7.0 refuses the sweep and surfaces a configuration error |
+
+`ConfirmationTimeoutHours` is the only one of the four whose requiredness is configurable. The other three are required.
+
+**Source:** System Design Specification §11.1.5, §11.1.6, §11.1.7, §15.3.
 
 ---
 
@@ -29325,8 +29597,8 @@ Physical forms are implementation-dependent.
 - **`5.0-generate-assignment.md`** — creates the assignments 7.0 manages.
 - **`9.0-dispatch-notification.md`** — invoked by 7.0 on each replacement assignment.
 - **`10.0-evaluate-fill-status.md`** — reads the terminal/non-terminal state 7.0 manages.
-- **`../database/constraints.md`** — the uniqueness constraints.
-- **`../database/settings.md`** — InitialAssignmentStatusID, ConfirmationTimeoutHours.
+- **`../../database/constraints.md`** — the uniqueness constraints.
+- **`../../database/settings.md`** — InitialAssignmentStatusID, ConfirmationTimeoutHours.
 
 ---
 
@@ -29544,7 +29816,7 @@ No index is prescribed at specification level for 9.0.
 - **`5.0-generate-assignment.md`** — invokes 9.0 on each new automatic assignment.
 - **`7.0-manage-confirmation.md`** — invokes 9.0 on each replacement assignment.
 - **`13.0-attendance-rule-engine.md`** — invokes 9.0 on each Notify outcome.
-- **`../database/settings.md`** — the NotificationChannel setting.
+- **`../../database/settings.md`** — the NotificationChannel setting.
 
 ---
 
@@ -29637,7 +29909,7 @@ Every other relationship between processes is data-mediated. 9.0 is the sole pro
 | 10.0 | D3, D7, D10, D11 | D3 |
 | 11.0 | D3, D11 | D3, D12 |
 | 12.0 | D2, D3, D4, D6, D7 | D7 |
-| 13.0 | D2 (AttendanceRule), D3, D4, D8 (AttendanceRecord), D10 (MemberStatus), D11 (scope), D13 (Readmission) | D4 (MemberStatusID) |
+| 13.0 | D13 (AttendanceRule, AttendanceRuleScope, Readmission), D3, D4, D8 (AttendanceRecord), D10 (MemberStatus), D11 (AttendanceRegisterEnabled) | D4 (MemberStatusID) |
 
 ---
 
@@ -29694,7 +29966,7 @@ Authoritative for:
 - The configuration language and criteria vocabulary (§5).
 - What remains fixed and why (§6).
 - The resolved occurrence materialization design (§7).
-- The derived consequences of every locked contract (§8–§14).
+- The derived consequences of every locked contract (§8–§17).
 - The consolidated schema amendments (§15).
 - The process invocation topology (§16).
 
@@ -29752,7 +30024,7 @@ Any change to the system's architecture begins here, not in the derived document
 
 ==============================================================================
 FILE: docs/spec/config-reference.md
-LINES: 74
+LINES: 72
 ==============================================================================
 
 # MKN Configuration Reference
@@ -29805,8 +30077,6 @@ Short/Healing service type requires only Chair, Messenger duty, and Announcement
 Wednesday's Branch Time Slot start time changes between school term and school holidays. **(default — confirm with MKN)** Configured as a manual edit to that Time Slot's StartTime, performed by an administrator each time the term changes — roughly twice a year. No automated school-calendar logic is configured, since school holiday timing varies by country and building that logic is disproportionate to a twice-yearly manual edit.
 
 ## Membership and branch context
-
-**(default — confirm with MKN) Tenure threshold:** described as roughly three months from joining before a member becomes generally duty-eligible. Configured as `System Setting: TenureThresholdDays = 90`. A specific, round, defensible default consistent with "roughly three months" — adjustable in one place the moment MKN confirms an exact figure.
 
 **(default — confirm with MKN) Receipt-to-card issuance duration:** described as roughly three months. Configured as `System Setting: ReceiptToCardDurationDays = 90`, same reasoning as above.
 
@@ -30141,7 +30411,7 @@ Authentication, session management, authorization/RBAC, privilege escalation pro
 
 ==============================================================================
 FILE: docs/spec/system-design-spec.md
-LINES: 2618
+LINES: 2701
 ==============================================================================
 
 # System Design Specification
@@ -30357,7 +30627,7 @@ The system does not interpret any status name. The `IsRosterable` flag is the me
 | RoleID | Foreign key → Role |
 | MemberStatusID | Foreign key → Member Status |
 
-Member carries no `IsActive` and no `IsDeleted` as boolean columns. A soft-deleted member is marked via `IsDeleted` on this table; a member's operational status is expressed by `MemberStatusID`.
+Member carries no `IsActive` and no `IsDeleted` as boolean columns. A member's operational state is expressed by `MemberStatusID` only. A member row is never removed through normal operations; setting a member's status to a status whose `IsRosterable = false` excludes the member from new roster generation without touching any operational record.
 
 ### Identifier History
 
@@ -30494,8 +30764,11 @@ Unique on (MemberID, AttributeTypeID). Absence of a row means the attribute is n
 | AdminID | Primary key |
 | MemberID | Foreign key → Member |
 | PermissionTierID | Foreign key → Permission Tier |
+| IsActive | Boolean. Required. True at creation. |
 
 An Admin row records that a member has been granted admin status by another admin. No member is inherently an admin.
+
+Revoking admin status sets `IsActive = false`; the row remains, preserving attribution on any historical record that names the admin. Acting identities must resolve to an Admin row whose `IsActive = true`. Historical attribution resolves regardless of the admin's current `IsActive` value.
 
 ### Attendance Record
 
@@ -30519,7 +30792,7 @@ Unique on (MemberID, OccurrenceID). Operational fact. No `IsActive` and no `IsDe
 | EndDate |  |
 | Type | Free text |
 | HostBranchID | Foreign key → Branch. The branch at which the event is held. |
-| UsesAttendanceRegister | Boolean, nullable. Null means no override at this scope; the effective register state follows the next scope in the resolution order. Set means the event overrides the other scopes for its own occurrences. |
+| UsesAttendanceRegister | Boolean, nullable. Null means no override. Set means the event's own occurrences use this value, overriding the global setting. Branch does not participate in scope resolution for event-sourced occurrences. |
 | IsActive | Boolean. True at creation. |
 | IsDeleted | Boolean. False at creation. |
 
@@ -30715,6 +30988,7 @@ The schema uses three temporal types. Each has one meaning.
 - Branch-Attendance Recency
 - Eligibility Flag (references the Eligibility table)
 - Member Attribute (references an admin-defined Attribute Type and a required value)
+- Member Status (references the Member Status lookup; the value is a comma-separated list of integer MemberStatusIDs, no whitespace)
 - Youth (computed from DateOfBirth against the configured YouthAgeMin and YouthAgeMax settings; carries no value)
 - (Reserved for future use once historical data exists) Acceptance Rate, Duties Carried, Days Since Last Assignment
 
@@ -30757,7 +31031,7 @@ A newly created schedule is picked up automatically on the next run. When a sche
 
 ### Occurrence creation contract
 
-For each active schedule, the process generates candidate dates from today through today + horizon, inclusive, using the configured system/application timezone. For each date, it checks whether a Service Occurrence already exists for that (ScheduleID, Date) pair; if one does, nothing happens; if not, it creates one, inheriting the schedule's service type and start time, with FillStatusID null, ChangedBy null, GeneratedBy set to System, and CreatedBy null. It does not create Service Occurrence Duty rows. An occurrence is created even if its Service Definition currently has zero configured duties. Each occurrence commits in its own transaction. The process is fully re-entrant with no checkpoint state.
+For each active schedule, the process generates candidate dates from today through today + horizon, inclusive, using the configured system/application timezone. The timezone is resolved from `ApplicationTimeZone`; if the setting is absent the materializer surfaces `ConfigurationMissing` and refuses to run; if the value is unrecognised it surfaces `ConfigurationInvalid` and refuses to run. No silent fallback to UTC occurs. For each date, it checks whether a Service Occurrence already exists for that (ScheduleID, Date) pair; if one does, nothing happens; if not, it creates one, inheriting the schedule's service type and start time, with FillStatusID null, ChangedBy null, GeneratedBy set to System, and CreatedBy null. It does not create Service Occurrence Duty rows. An occurrence is created even if its Service Definition currently has zero configured duties. Each occurrence commits in its own transaction. The process is fully re-entrant with no checkpoint state.
 
 A schedule is eligible for materialization only when the schedule, its Service Definition, and its Branch Time Slot are all active.
 
@@ -30982,9 +31256,11 @@ For entities that do carry lifecycle state, the rules are uniform:
 - **Every field is editable, always.** Edits take effect for future use.
 - **No deletion, ever.** Configuration entities are historical facts.
 
-Entities with lifecycle state: Role, Duty, Branch, BranchTimeSlot, ServiceDefinition, ServiceDefinitionDuty, ServiceSchedule, Member, DutyRule, Event, Program, ProgramItem, EventDuty.
+Entities with the two-flag lifecycle (`IsActive` and `IsDeleted`): Role, Duty, Branch, BranchTimeSlot, ServiceDefinition, ServiceDefinitionDuty, ServiceSchedule, DutyRule, Event, Program, ProgramItem, EventDuty.
 
-Entities without lifecycle state: IdentifierHistory, Eligibility, SystemSetting, Admin, D10 lookup values.
+Entities with a single lifecycle flag or a non-flag lifecycle mechanism: Admin (`IsActive` only), Member (no flag — state is `MemberStatusID`).
+
+Entities without lifecycle state: IdentifierHistory, Eligibility, SystemSetting, D10 lookup values.
 
 #### 9.1.2 Role and Duty
 
@@ -31038,7 +31314,7 @@ IdentifierHistory is a per-member log of identifier assignments. Type is free-te
 
 Readmission is a per-member historical fact recorded when a member is readmitted. Process 3.0 owns its creation. The administrator performing the readmission is recorded in `PerformedByAdminID`; the date is recorded in `ReadmissionDate`; an optional `Reason` may be supplied. A Readmission carries no lifecycle flags and is never removed through normal operations. Creating a Readmission does not modify `Member.MemberStatusID`; the status change, if any, is a separate administrative action or a separate Attendance Rule outcome. The system does not require the member to have held any particular status or to have been absent before a readmission can be recorded. No correction or deletion mechanism for Readmission is currently defined; if one becomes necessary, it is a specification amendment.
 
-Deactivating a Member excludes them from new roster generation. It does not touch operational records. Changing a Member's BranchID or RoleID affects only future use.
+A member is not deactivated and not soft-deleted. A member's state is set by assigning a `MemberStatusID` whose `IsRosterable = false`, which excludes the member from new roster generation without touching any operational record. Changing a Member's BranchID or RoleID affects only future use. There is no member status history table; member status changes are not audited by any log.
 
 #### 9.1.8 Admin and Permission Tier
 
@@ -31181,15 +31457,22 @@ The only write to an operational store is 8.0's insertion of event-sourced Servi
 
 The attendance register has two independent purposes. It is a record of presence, and it is a signal that attendance-driven rules may read. The two purposes are decoupled: the register may be on for record-keeping while being off for rostering, or the reverse.
 
-The register's on/off state is configured at three scopes:
+The register's on/off state is configured at two scopes, with a global default:
 
-- **Global.** A System Setting names the default state.
-- **Per-event.** `Event.UsesAttendanceRegister`. Null means no override.
-- **Per-branch.** `Branch.UsesAttendanceRegister`. Null means no override.
+- **Global.** `AttendanceRegisterEnabled`. The default state, applied wherever no override exists.
+- **Per-event.** `Event.UsesAttendanceRegister`. Null means no override. Set means the event's own occurrences use this value.
+- **Per-branch.** `Branch.UsesAttendanceRegister`. Null means no override. Set means schedule-sourced occurrences at this branch use this value.
 
-The resolution order is: event override, then branch override, then global. The most specific scope in effect wins. An occurrence belongs to either an event or a branch and time slot. If the occurrence is event-sourced, the event's override applies first. If the occurrence is schedule-sourced, the branch's override applies first. In each case the global setting is the fallback when no override exists.
+The resolution order depends on the occurrence's source. The two cases do not mix.
 
-When the effective scope is off, the attendance register is not consulted. The `Attendance Rule` engine does not apply absence-based rules to members whose effective scope is off. Manual register marking is disabled for that scope. The `Branch-Attendance Recency` Duty Rule criterion is skipped for occurrences at that scope, as stated in §10.1.5. Readmission-based rules may still apply, because readmissions are recorded independently of the register.
+- **Schedule-sourced occurrence.** Branch override of the branch in the occurrence's time slot, then the global `AttendanceRegisterEnabled`. Event does not participate.
+- **Event-sourced occurrence.** Event override, then the global `AttendanceRegisterEnabled`. Branch does not participate.
+
+The event override is consulted by 6.0 Record Attendance when marking a manual register entry and by 5.0 Generate Assignment when a Branch-Attendance Recency criterion is being evaluated. The event override is not consulted by 13.0 Attendance Rule Engine, which resolves scope per member, not per occurrence.
+
+When the effective scope is off, the attendance register is not consulted. The `Attendance Rule` engine does not apply absence-based rules to members whose effective scope is off. Manual register marking is disabled for that scope. The `Branch-Attendance Recency` Duty Rule criterion is skipped for occurrences at that scope, as stated in §10.1.5. Readmission-based rules are not scoped by register state and apply regardless of the register's effective value for a member.
+
+The attendance register's eligibility rule — a member is tracked only if they hold a `ReceiptNumber` or a `CardNumber` — is a member-level property and does not depend on occurrence source or scope resolution.
 
 The register state may be changed at any time. A change takes effect on the next process run. It does not rewrite history.
 
@@ -31218,7 +31501,7 @@ On soft delete, the following reference handling applies:
 | --- | --- |
 | Role | Blocked if this is the default Role. Otherwise, members holding the Role fall back to the default Role. Duty Rules whose CriteriaType = Role and whose CriteriaValue names this Role are deleted. |
 | Duty | Blocked if any Service Definition Duty or Event Duty row references the Duty. Otherwise the referencing rows are removed. Existing Roster Assignment rows referencing the Duty are preserved as historical records. |
-| Member Status | Blocked if this is the default Member Status. Otherwise, members with this status fall back to the default. |
+| Member Status | Blocked if this is the default Member Status. Otherwise, members with this status fall back to the default status. Attendance Rules whose `OutcomeStatusID` names this status are removed. Attendance Rule Scope rows whose criteria name this status are removed. |
 | Branch | Blocked if any Member is assigned to the Branch. Otherwise the referencing Branch Time Slot rows are removed. Existing Event HostBranchID and Event Branch rows referencing the Branch are preserved. |
 | Branch Time Slot | Blocked if any Service Schedule references the Time Slot. Otherwise the referencing Service Schedule rows are removed if they were already inactive. |
 | Service Definition | Blocked if any Service Schedule, Program Item, Event Duty, or Duty Rule references the Service Definition. |
@@ -31237,6 +31520,9 @@ On soft delete, the following reference handling applies:
 | Capability | Removed; not soft-deleted independently, because nothing references it. |
 | Entity Deletion Policy | Removed; not soft-deleted independently. |
 | Notification Subscription | Removed; not soft-deleted independently. |
+| Attendance Rule | Soft-delete removes the rule's AttendanceRuleScope rows. Deactivate (`IsActive = false`) leaves scope rows in place. Disable (`Enabled = false`) leaves scope rows in place and does not change `IsActive`. The rule row itself is retained. |
+| Member | No soft-delete operation. A member's state is `MemberStatusID` only. The row is never removed through normal operations. |
+| Admin | No soft-delete operation. Revocation sets `IsActive = false`; the row remains. |
 
 Configuration changes — including deactivation and soft delete — take effect on the next process run. They do not rewrite history. A Roster Assignment, once created, is not re-evaluated because a configuration row it was generated under was later changed or deleted. An Attendance Record names a member, not a role; deleting a role does not touch it.
 
@@ -31376,7 +31662,12 @@ Before evaluation, the value is trimmed of leading and trailing whitespace. Whit
 | Branch-Attendance Recency | A non-negative integer, days, no whitespace | The member has an AttendanceRecord at the occurrence's branch within the last N days |
 | Eligibility Flag | A positive integer, the DutyID, no whitespace | The member has a current Eligibility grant for the referenced Duty |
 | Member Attribute | `AttributeTypeName=RequiredValue` | The AttributeType is resolved by exact case-sensitive name. The member must hold a MemberAttributeValue for that type whose Value equals RequiredValue exactly. The RequiredValue may contain spaces; the syntax around the `=` does not permit spaces. |
+| Member Status | A comma-separated list of positive integers, the MemberStatusIDs, no whitespace | The member's current `MemberStatusID` is one of the listed IDs |
 | Youth | Empty | Computed from Member.DateOfBirth against YouthAgeMin and YouthAgeMax |
+
+**Member Status names IDs, not names.** The Member Status criterion departs from the name-based convention used by Role, Membership Stage, and Member Attribute. Role, Membership Stage, and Attribute Type names are administrator-defined and renameable; a rename silently makes every rule that named the old value inert. MemberStatusID is a stable system identifier that survives renaming. The criterion therefore accepts integer IDs and rejects names.
+
+**Multiple statuses in one value, not multiple rows.** A tier's rows are ANDed (see Tier composition). Naming several acceptable statuses within a single Member Status rule expresses OR across statuses; expressing that as several rows would AND them, which is the opposite of what the administrator intends. The comma-separated value is therefore the correct form for a status set.
 
 **Malformed values.** A rule whose `CriteriaValue` does not match its grammar produces no candidates. It is not an error and does not fail the run. Evaluation continues. If a tier contains no candidate because of a malformed rule, the engine falls through to the next tier as it would for any tier producing no candidate.
 
@@ -31874,7 +32165,7 @@ The branch-agnostic attendance default is realized here: a member attending at a
 
 #### 13.1.4 Admin manual entry
 
-An admin may add an attendance record directly. The row is identical to a tap-initiated one: same columns, same uniqueness rule. The schema has no field distinguishing manual entry from tap entry.
+An admin may add an attendance record directly. The row is identical to a tap-initiated one in every column except `Source`. `AttendanceRecord.Source` names the channel: `Manual` for an administrator's direct entry, `Tap` for the tap path. The currently implemented path produces `Manual`; `Tap` is defined in the vocabulary but is not produced by any implemented path.
 
 #### 13.1.5 No interpretation layer
 
@@ -31886,8 +32177,11 @@ An admin may add an attendance record directly. The row is identical to a tap-in
 
 | # | Source | Purpose |
 | --- | --- | --- |
-| R1 | D4 Member | Validate the member identity |
+| R1 | D4 Member | Validate the member identity; confirm the member holds a `ReceiptNumber` or a `CardNumber` (the attendance-register eligibility rule) |
 | R2 | D3 ServiceOccurrence | Identify which occurrence the record applies to |
+| R3 | D3 Branch.UsesAttendanceRegister | Resolve the effective register scope for a schedule-sourced occurrence |
+| R4 | D9 Event.UsesAttendanceRegister | Resolve the effective register scope for an event-sourced occurrence |
+| R5 | D11 SystemSetting (`AttendanceRegisterEnabled`) | Resolve the global register scope when no override applies |
 
 **Writes:**
 
@@ -31899,7 +32193,7 @@ A subsequent tap for an existing pair is a no-op. The uniqueness constraint is t
 
 **Invocations:** None. 6.0 does not invoke any process.
 
-**Stores never touched:** D1, D2, D5, D6, D7, D9, D10, D11, D12. Never modifies ServiceOccurrence, FillStatusID, or any assignment.
+**Stores never touched (write):** D1, D2, D5, D6, D7, D9, D10, D11, D12. 6.0 reads D9 (Event.UsesAttendanceRegister) and D11 (AttendanceRegisterEnabled) but writes neither. Never modifies ServiceOccurrence, FillStatusID, or any assignment.
 
 ### 13.3 Invariants
 
@@ -31931,7 +32225,6 @@ A subsequent tap for an existing pair is a no-op. The uniqueness constraint is t
 
 ### 13.5 Explicitly Open Implementation Choices
 
-- Whether manual admin entry is distinguished from tap entry.
 - Attendance window enforcement — not performed by 6.0 or the schema.
 - Whether attendance records are retained indefinitely.
 - Physical shape of the (MemberID, Timestamp) index.
@@ -31940,9 +32233,9 @@ A subsequent tap for an existing pair is a no-op. The uniqueness constraint is t
 
 The Attendance Rule engine is the process that reads Attendance Rules, evaluates each against the member population, and applies the configured outcomes. It is the thirteenth process in the system.
 
-**Trigger.** Scheduled run. It also runs on demand when an admin invokes it. A scheduled run does not evaluate rules whose `TriggerType` is `Manual`; those rules fire only through the explicit administrative invocation.
+**Trigger.** Scheduled run. It also runs on demand when an admin invokes a single rule. A scheduled run does not evaluate rules whose `TriggerType` is `Manual`; those rules fire only through the explicit administrative invocation. The manual invocation carries the `ActingAdminID` of the administrator performing it, which resolves to an `Admin` row whose `IsActive = true`.
 
-**Reads:** `AttendanceRule`, `AttendanceRuleScope`, `Member`, `AttendanceRecord`, `Readmission`, `MemberStatus`, `SystemSetting` (the global register scope), `Branch.UsesAttendanceRegister`, `Event.UsesAttendanceRegister`.
+**Reads:** `AttendanceRule`, `AttendanceRuleScope`, `Member`, `AttendanceRecord`, `Readmission`, `MemberStatus`, `SystemSetting` (`AttendanceRegisterEnabled`), `Branch.UsesAttendanceRegister`.
 
 **Writes:** `Member.MemberStatusID` when a `SetStatus` outcome fires. Notification dispatches when a `Notify` outcome fires. `ConfigurationAuditLog` is not written by this process; it is a configuration-lifecycle record. The engine does not write `Readmission`; readmissions are recorded by administrative action through the member-management process. A `Manual` rule is applied through a distinct administrative invocation that names exactly one rule and applies its outcome to every member matching its scope.
 
@@ -31951,7 +32244,7 @@ The Attendance Rule engine is the process that reads Attendance Rules, evaluates
 For each enabled Attendance Rule, the process:
 
 1. Resolves the rule's scope. The scope rows are ANDed, using the same criterion evaluation as Duty Rule.
-2. Resolves the effective attendance register scope for each member under consideration.
+2. Resolves the effective attendance register scope for the member. A member's effective register scope is resolved by the member's home branch, then the global `AttendanceRegisterEnabled`; event overrides are not consulted by 13.0. Attendance records from any branch count toward the absence window; the member's home branch only determines whether the register is consulted at all for that member.
 3. If the register is off at the effective scope, skips the member for absence-based triggers.
 4. Evaluates the trigger. `AbsenceDays` measures calendar days in the configured ApplicationTimeZone. The window is `[today - N, today]`, inclusive at both boundaries. The trigger fires when the member has no AttendanceRecord whose related ServiceOccurrence.Date falls within the window. The window is not measured in elapsed hours. The attendance timestamp is not used for the absence-window calculation; the occurrence's Date is. `ReadmissionCount` compares the member's readmission count against the configured value. `Manual` fires only when the admin invokes the rule explicitly.
 5. Applies the outcome. The outcome vocabulary is `Notify`, `SetStatus`, and `NoOp`. `Notify` composes and sends a notification through the configured channel. `SetStatus` sets `Member.MemberStatusID` to the status named by the rule. `NoOp` does nothing. The engine does not create, modify, or delete `Readmission` rows. A member's readmission count is derived: it is the number of `Readmission` rows recorded for that member. The count is not stored, and the rule engine does not increment it. The engine reads `Readmission` and never writes it. Process 3.0 owns Readmission creation.
@@ -31971,7 +32264,7 @@ The engine does not arbitrate between rules. The administrator is responsible fo
 
 **Idempotency.** The engine is not idempotent with respect to its external outcomes. Repeating a run while a trigger remains true may produce another notification or another outcome application, even when the member's resulting state is unchanged. The engine does not maintain per-rule execution history. Whether the persistence layer optimises an identical status write away is an implementation detail and is not part of the behavioural contract. The administrator controls repetition by ensuring the trigger condition ceases to hold once the outcome has been applied — for example, by placing a `SetStatus` rule earlier in the ordering so that a later notifying rule's scope no longer matches.
 
-**Manual invocation.** An administrator may invoke an Attendance Rule whose `TriggerType` is `Manual`. The invocation names exactly one rule. The engine resolves that rule's scope against the member population and applies the rule's outcome to every matching member. The `Manual` trigger fires unconditionally: there is no threshold and `TriggerValue` is unused. The invocation evaluates exactly the named rule and no other rule; the B8 evaluation ordering does not apply to it, because it evaluates one rule in isolation. Repeat invocation applies the outcome again, consistent with the idempotency contract above. An administrator who needs to act on one specific member edits `Member.MemberStatusID` directly through the member-management process; the `Manual` trigger is not that operation.
+**Manual invocation.** An administrator may invoke an Attendance Rule whose `TriggerType` is `Manual`. The invocation names exactly one rule and carries the `ActingAdminID` of the administrator performing it. The engine resolves that rule's scope against the member population and applies the rule's outcome to every matching member. The `Manual` trigger fires unconditionally: there is no threshold and `TriggerValue` is unused. The invocation evaluates exactly the named rule and no other rule; the B8 evaluation ordering does not apply to it, because it evaluates one rule in isolation. Repeat invocation applies the outcome again, consistent with the idempotency contract above. An administrator who needs to act on one specific member edits `Member.MemberStatusID` directly through the member-management process; the `Manual` trigger is not that operation.
 
 **Source:** System Design Specification §9.6, §13.
 
@@ -32078,8 +32371,8 @@ The notification does not contain a confirmation token or other schema-defined r
 Recipient resolution produces zero or more admins from the matching `NotificationSubscription` rows. The following rules apply:
 
 - An inactive or soft-deleted subscription is not consulted.
-- A subscription by tier resolves to all admins at that tier whose `Admin` row is not soft-deleted. Admins whose member is soft-deleted are skipped. If the referenced `PermissionTier` is soft-deleted, the subscription resolves to zero recipients.
-- A subscription by specific admin resolves to that admin if the `Admin` row is not soft-deleted. Otherwise it resolves to zero recipients.
+- A subscription by tier resolves to all admins at that tier whose `Admin` row has `IsActive = true`. If the referenced `PermissionTier` is soft-deleted, the subscription resolves to zero recipients.
+- A subscription by specific admin resolves to that admin if the `Admin` row has `IsActive = true`. Otherwise it resolves to zero recipients.
 - Zero recipients is a valid outcome, not a failure. The sweep sets `NotifiedAt` on the audit row anyway.
 - No fallback recipient is invented. If the configured recipients cannot be resolved, no notification is sent and none is sought elsewhere.
 
@@ -32350,6 +32643,53 @@ Event-sourced occurrences are excluded. Their uniqueness is governed by the 8.0 
 | Validation | If no valid channel is configured, 9.0 does not send. No channel-specific fallback is defined by the 9.0 contract. |
 | Source | §14 |
 
+#### 15.3.9 DeclinedStatusID
+
+| Property | Value |
+| --- | --- |
+| Type | integer — an AssignmentStatusID |
+| Required | true |
+| Consumed by | 7.0 Manage Confirmation, on the decline path |
+| Behavior if absent | 7.0 refuses the decline operation and surfaces a configuration error |
+| Source | §11.1.7 |
+
+#### 15.3.10 TimedOutStatusID
+
+| Property | Value |
+| --- | --- |
+| Type | integer — an AssignmentStatusID |
+| Required | true |
+| Consumed by | 7.0 Manage Confirmation, on the timeout sweep path |
+| Behavior if absent | 7.0 refuses the sweep operation and surfaces a configuration error |
+| Source | §11.1.7 |
+
+#### 15.3.11 ApplicationTimeZone
+
+| Property | Value |
+| --- | --- |
+| Type | string — an IANA timezone ID |
+| Required | true |
+| Consumed by | 5.0, 7.0, 11.0, 12.0, 13.0, the Quartz job classes, and the Quartz scheduler registration |
+| Behavior if absent | The consuming process refuses to run and surfaces a configuration error |
+| Behavior if unrecognised | The consuming process refuses to run and surfaces a configuration error |
+| Source | §7, §9.6, §13.6 |
+
+`ApplicationTimeZone` is used for one purpose: converting an instant to the calendar date it falls on in that zone. Date and time values are never converted through UTC. The resolver that converts an instant to a date returns the zone's calendar date.
+
+There is no silent fallback. When the setting is absent, the process surfaces `ConfigurationMissing`. When the setting is present but its value is not a recognised IANA timezone ID, the process surfaces `ConfigurationInvalid`. In both cases the process refuses to run. The Quartz scheduler resolves the setting once at application startup and refuses to start if the setting is absent or invalid; the processes resolve it on every run.
+
+#### 15.3.12 AttendanceRegisterEnabled
+
+| Property | Value |
+| --- | --- |
+| Type | string — the boolean as text, `"true"` or `"false"` |
+| Required | true |
+| Consumed by | 6.0 Record Attendance, 13.0 Attendance Rule Engine, and 5.0 Generate Assignment's Branch-Attendance Recency criterion |
+| Behavior if absent | The consuming process refuses to run and surfaces a configuration error |
+| Source | §9.6 |
+
+`AttendanceRegisterEnabled` is the global default for the attendance register. The per-branch override (`Branch.UsesAttendanceRegister`) and the per-event override (`Event.UsesAttendanceRegister`) apply first; the global setting is the fallback. No implicit default is assumed.
+
 ### 15.4 Nullability Clarifications
 
 #### 15.4.1 RosterAssignment.AssignmentStatusID — nullable
@@ -32404,9 +32744,13 @@ Event-sourced occurrences are excluded. Their uniqueness is governed by the 8.0 
 | 15.3.6 | OutcomeStateFilledID | New setting | §12 |
 | 15.3.7 | OutcomeStateCancelledID | New setting | §12 |
 | 15.3.8 | NotificationChannel | New setting | §14 |
+| 15.3.9 | DeclinedStatusID | New setting | §11.1.7 |
+| 15.3.10 | TimedOutStatusID | New setting | §11.1.7 |
+| 15.3.11 | ApplicationTimeZone | New setting | §7, §9.6, §13.6 |
+| 15.3.12 | AttendanceRegisterEnabled | New setting | §9.6 |
 | 15.4.1 | RosterAssignment.AssignmentStatusID nullable | Nullability clarification | §10 |
 
-Fifteen amendments from the original set. Two new columns, four new constraints, eight new settings, one nullability clarification.
+Nineteen amendments from the original set. Two new columns, four new constraints, twelve new settings, one nullability clarification.
 
 ### 15.8 Later Amendments
 
@@ -32440,6 +32784,15 @@ The following amendments were added after the original fifteen.
 | 15.8.24 | 13.0 Attendance Rule Engine | New process | §13.6, §16 |
 | 15.8.25 | Attendance register scope resolution | Rule | §9.6 |
 | 15.8.26 | Branch-Attendance Recency skips when register off | Rule | §10.1.5 |
+| 15.8.27 | Member and Admin lifecycle: Member has no flags — state is MemberStatusID only; Admin gains IsActive | Amendment | §4, §9.1.1, §9.1.7, §9.7, §14.1.9 |
+| 15.8.28 | Member Status criterion | Amendment | §5, §10.1.5 |
+| 15.8.29 | Member register scope and event scope fallback | Amendment | §4, §9.6, §13.6 |
+| 15.8.31 | 13.0 process contract: NoOp distinction, ascending rule order, single-rule manual invocation, ActingAdminID on manual invocation | Amendment | §13.6 |
+| 15.8.32 | Settings inventory: DeclinedStatusID, TimedOutStatusID, ApplicationTimeZone, AttendanceRegisterEnabled | Amendment | §15.3 |
+| 15.8.33 | ApplicationTimeZone is required; absent or unrecognised produces ConfigurationMissing or ConfigurationInvalid, no silent fallback | Amendment | §7, §15.3.11 |
+| 15.8.34 | Attendance Rule ownership: Create, Update, Disable, Deactivate, Soft-delete commands formalized under 3.0 | Amendment | §9.7, §13.6 |
+| 15.8.35 | Specification stale text: AttendanceRecord.Source distinguishes Manual from Tap; 6.0 register-scope reads named | Amendment | §13.1.4, §13.2, §13.5 |
+| 15.8.36 | API reconciliation: adapter contract is authoritative; endpoint list gains 13.0 manual; 9.0 invoker list corrected to four | Amendment | §14, §16 |
 
 ---
 
@@ -32765,7 +33118,7 @@ No new index is required. The uniqueness check (R5) is served by the existing Ro
 
 ==============================================================================
 FILE: scripts/consistency_check.py
-LINES: 106
+LINES: 502
 ==============================================================================
 
 #!/usr/bin/env python3
@@ -32773,16 +33126,33 @@ LINES: 106
 
 Scans every markdown file under docs/ for stale references to counts and
 invocation-edge descriptions that have drifted since the last architectural
-change. Exits 0 if clean, 1 if any violation is found.
+change, for decision labels that are used but not defined, and for the seven
+categories of drift the manual contradiction scan covers. Exits 0 if clean,
+1 if any violation is found.
 
 Run from the repository root:
 
     python3 scripts/consistency_check.py
 
-The check is deliberately pattern-based. It catches the actual forms that
-have drifted historically — process counts, edge counts, section ranges —
-regardless of surrounding context. New patterns are added to STALE_PATTERNS
-as new drift risks are identified.
+The check runs in two parts.
+
+First, a pattern-based scan. It catches the actual forms that have drifted
+historically — process counts, edge counts, section ranges, decision-label
+usage, store-footprint letters — regardless of surrounding context. New
+patterns are added as new drift risks are identified.
+
+Second, an amendment-register scan. It checks the tree against the terms
+the specification's amendment register names. The term table is
+hand-maintained from §15.1-§15.4 and §15.8 of the specification. When the
+register gains a row, the table gains a row; when the register amends a
+row, the table is amended. The scan is checked against the table, not
+against the register text; the table is checked against the register by a
+human at the time of the amendment.
+
+Rows in the register that describe a rule or a relationship rather than a
+term cannot be checked by keyword. They are listed in
+AMENDMENT_REGISTER_UNVERIFIABLE and printed by the check so that a human
+verifies them when the register changes.
 """
 
 import re
@@ -32795,22 +33165,31 @@ from pathlib import Path
 # file, line number, and matched text.
 STALE_PATTERNS = [
     # Process counts
-    (re.compile(r"\beleven processes\b", re.IGNORECASE), "eleven processes (should be twelve)"),
-    (re.compile(r"\bsix processes\b", re.IGNORECASE), "six processes (operations should be seven)"),
+    (re.compile(r"\beleven processes\b", re.IGNORECASE), "eleven processes (should be thirteen)"),
+    (re.compile(r"\btwelve processes\b", re.IGNORECASE), "twelve processes (should be thirteen)"),
+    (re.compile(r"\bsix processes\b", re.IGNORECASE), "six processes (operations should be eight)"),
+    (re.compile(r"\bseven processes\b", re.IGNORECASE), "seven processes (operations should be eight)"),
 
     # Invocation edge counts and descriptions
-    (re.compile(r"\btwo direct invocation edges\b", re.IGNORECASE), "two direct invocation edges (should be three)"),
-    (re.compile(r"\btwo invocation edges\b", re.IGNORECASE), "two invocation edges (should be three)"),
-    (re.compile(r"\btwo locked edges\b", re.IGNORECASE), "two locked edges (should be three)"),
-    (re.compile(r"\btwo locked invocation edges\b", re.IGNORECASE), "two locked invocation edges (should be three)"),
-    (re.compile(r"\btwo process-to-process invocation edges\b", re.IGNORECASE), "two process-to-process invocation edges (should be three)"),
-    (re.compile(r"\btwo process-dependency edges\b", re.IGNORECASE), "two process-dependency edges (should be three)"),
-    (re.compile(r"\bThe two invocation edges\b"), "The two invocation edges (should be three)"),
-    (re.compile(r"\bthe two internal invocation edges\b", re.IGNORECASE), "the two internal invocation edges (should be three)"),
-    (re.compile(r"\bIt states the two — and only two — direct process-invocation edges\b"), "two-and-only-two direct edges (should be three)"),
+    (re.compile(r"\btwo direct invocation edges\b", re.IGNORECASE), "two direct invocation edges (should be four)"),
+    (re.compile(r"\btwo invocation edges\b", re.IGNORECASE), "two invocation edges (should be four)"),
+    (re.compile(r"\btwo locked edges\b", re.IGNORECASE), "two locked edges (should be four)"),
+    (re.compile(r"\btwo locked invocation edges\b", re.IGNORECASE), "two locked invocation edges (should be four)"),
+    (re.compile(r"\btwo process-to-process invocation edges\b", re.IGNORECASE), "two process-to-process invocation edges (should be four)"),
+    (re.compile(r"\btwo process-dependency edges\b", re.IGNORECASE), "two process-dependency edges (should be four)"),
+    (re.compile(r"\bThe two invocation edges\b"), "The two invocation edges (should be four)"),
+    (re.compile(r"\bthe two internal invocation edges\b", re.IGNORECASE), "the two internal invocation edges (should be four)"),
+    (re.compile(r"\bIt states the two \u2014 and only two \u2014 direct process-invocation edges\b"), "two-and-only-two direct edges (should be four)"),
+    (re.compile(r"\bthree invocation\b", re.IGNORECASE), "three invocation (should be four)"),
+    (re.compile(r"\bthree direct\b", re.IGNORECASE), "three direct (should be four)"),
+    (re.compile(r"\bthree edges\b", re.IGNORECASE), "three edges (should be four)"),
+    (re.compile(r"\bthree locked\b", re.IGNORECASE), "three locked (should be four)"),
+    (re.compile(r"\bthree process-to-process\b", re.IGNORECASE), "three process-to-process (should be four)"),
+    (re.compile(r"\bthree solid\b", re.IGNORECASE), "three solid (should be four)"),
+    (re.compile(r"\bAll three invoke\b"), "All three invoke (should be four)"),
 
     # Specific 9.0 invocation descriptions
-    (re.compile(r"Only 9\.0 has no independent trigger — it exists solely to be invoked by 5\.0 and 7\.0"), "trigger summary lists 5.0 and 7.0 only"),
+    (re.compile(r"Only 9\.0 has no independent trigger \u2014 it exists solely to be invoked by 5\.0 and 7\.0"), "trigger summary lists 5.0 and 7.0 only"),
     (re.compile(r"\bInvocation by 5\.0 or 7\.0\b"), "trigger table lists 5.0 and 7.0 only"),
     (re.compile(r"\bInvoked by exactly two processes\b"), "invoked by exactly two processes"),
     (re.compile(r"\bInvoked only by 5\.0 and 7\.0\b"), "invoked only by 5.0 and 7.0"),
@@ -32823,32 +33202,390 @@ STALE_PATTERNS = [
     # Section ranges
     (re.compile(r"Only two solid arrows"), "Mermaid legend says 'Only two solid arrows'"),
     (re.compile(r"Confirmation of the two-edge claim"), "confirmation block says 'two-edge claim'"),
-    (re.compile(r"\b§1 through §16\b"), "§1 through §16 (spec now reaches §17)"),
-    (re.compile(r"\b§8–§14 derive\b"), "§8–§14 derive (spec now reaches §17)"),
-    (re.compile(r"\b§8–§14\b"), "§8–§14 (spec now reaches §17)"),
+    (re.compile(r"\u00a71 through \u00a716\b"), "\u00a71 through \u00a716 (spec now reaches \u00a717)"),
+    (re.compile(r"\u00a78\u2013\u00a714 derive\b"), "\u00a78\u2013\u00a714 derive (spec now reaches \u00a717)"),
+    (re.compile(r"\u00a78\u2013\u00a714\b"), "\u00a78\u2013\u00a714 (spec now reaches \u00a717)"),
 ]
+
+# Additional patterns with per-line exclusions. Each entry is
+# (pattern, label, exclusion_regex_or_None). If exclusion matches the same
+# line, the pattern is not considered a violation for that line.
+STALE_PATTERNS_WITH_EXCLUSIONS = [
+    # Store-footprint phrasing that has drifted on 9.0 and 10.0
+    (re.compile(r"does not write to any store"),
+     "9.0 'does not write to any store' (Path 2 writes NotifiedAt)",
+     re.compile(r"on this path")),
+    (re.compile(r"Read-only on all stores"),
+     "9.0 'Read-only on all stores' (Path 2 writes NotifiedAt)",
+     None),
+    (re.compile(r"only product is a message sent to a member"),
+     "9.0 'only product is a message sent to a member' (two-path model)",
+     None),
+
+    # Readmission-write drift
+    (re.compile(r"13\.0.*writes Readmission"),
+     "13.0 writes Readmission (it reads; 3.0 owns creation)",
+     re.compile(r"does not write|never writes")),
+    (re.compile(r"engine writes Readmission"),
+     "engine writes Readmission (it reads; 3.0 owns creation)",
+     re.compile(r"does not write|never writes")),
+    (re.compile(r"IncrementReadmissionCount"),
+     "IncrementReadmissionCount (removed by B12)",
+     re.compile(r"absent|removed|no such|There is no|never|does not")),
+
+    # Authority-notification marked-state drift
+    (re.compile(r"audit row is still marked"),
+     "audit row is still marked (NotifiedAt is the marker)",
+     None),
+    (re.compile(r"still marked as notified"),
+     "still marked as notified (NotifiedAt is the marker)",
+     None),
+
+    # Removed-column references
+    (re.compile(r"EventDuty\.Label"),
+     "EventDuty.Label (removed in the A\u2013G amendment set)",
+     re.compile(r"no longer exists|pre-amendment|removed|dropped|15\.8|Drop|Migrate")),
+    (re.compile(r"Event\.Location"),
+     "Event.Location (removed in the A\u2013G amendment set)",
+     re.compile(r"no longer exists|pre-amendment|removed|dropped|15\.8|Drop|Migrate")),
+    (re.compile(r"Member\.IsActive"),
+     "Member.IsActive (removed in the A\u2013G amendment set)",
+     re.compile(r"no longer exists|pre-amendment|removed|dropped|15\.8|Drop|Migrate")),
+]
+
+# --------------------------------------------------------------------------
+# The amendment register — hand-maintained term table
+# --------------------------------------------------------------------------
+#
+# Source of truth: system-design-spec.md §15.1-§15.4 and §15.8.
+#
+# The register stores sentences about terms, not terms themselves. This
+# table is the human reading of those sentences, reduced to (term,
+# polarity, source) triples. When the register gains a row, this table
+# gains a row; when the register amends a row, this table is amended.
+# The scan is checked against this table, not against the register text.
+#
+# Polarity:
+#   "removed" — the term must not appear in the tree except in an explicit
+#               removal context (see REMOVAL_CONTEXT_PHRASES).
+#   "added"   — the term must appear at least once in the tree.
+#   "setting" — the term must appear in docs/database/settings.md and in
+#               the process document that consumes it (SETTING_CONSUMERS).
+#
+AMENDMENT_REGISTER_TERMS = [
+    # §15.8.1
+    ("Member.IsActive", "removed", "§15.8.1"),
+    ("MemberStatus", "added", "§15.8.1"),
+    ("Member.MemberStatusID", "added", "§15.8.1"),
+    # §15.8.2
+    ("Member.ReceiptNumber", "added", "§15.8.2"),
+    ("Member.CardNumber", "added", "§15.8.2"),
+    # §15.8.3
+    ("Member.JoinReason", "added", "§15.8.3"),
+    # §15.8.4
+    ("AttributeType", "added", "§15.8.4"),
+    # §15.8.5
+    ("MemberAttributeValue", "added", "§15.8.5"),
+    # §15.8.6
+    ("DutyRule.ServiceDefID", "added", "§15.8.6"),
+    # §15.8.8
+    ("Event.Location", "removed", "§15.8.8"),
+    ("Event.HostBranchID", "added", "§15.8.8"),
+    # §15.8.9
+    ("EventBranch", "added", "§15.8.9"),
+    # §15.8.10
+    ("EventDuty.Label", "removed", "§15.8.10"),
+    ("EventDuty.DutyID", "added", "§15.8.10"),
+    ("EventDuty.ServiceDefID", "added", "§15.8.10"),
+    # §15.8.11
+    ("ProgramItem.Location", "added", "§15.8.11"),
+    # §15.8.13
+    ("Role.IsDefault", "added", "§15.8.13"),
+    # §15.8.14
+    ("ConfigurationAuditLog", "added", "§15.8.14"),
+    # §15.8.15
+    ("EntityDeletionPolicy", "added", "§15.8.15"),
+    # §15.8.16
+    ("NotificationSubscription", "added", "§15.8.16"),
+    # §15.8.17
+    ("Capability", "added", "§15.8.17"),
+    # §15.8.19
+    ("AttendanceRecord.Source", "added", "§15.8.19"),
+    # §15.8.20
+    ("Branch.UsesAttendanceRegister", "added", "§15.8.20"),
+    ("Event.UsesAttendanceRegister", "added", "§15.8.20"),
+    # §15.8.21
+    ("AttendanceRule", "added", "§15.8.21"),
+    # §15.8.22
+    ("AttendanceRuleScope", "added", "§15.8.22"),
+    # §15.8.23
+    ("Readmission", "added", "§15.8.23"),
+    # §15.8.27
+    ("Admin.IsActive", "added", "§15.8.27"),
+    ("Member.IsDeleted", "removed", "§15.8.27"),
+    # §15.3.1-§15.3.8
+    ("OccurrenceHorizonDays", "setting", "§15.3.1"),
+    ("InitialAssignmentStatusID", "setting", "§15.3.2"),
+    ("ConfirmationTimeoutHours", "setting", "§15.3.3"),
+    ("OutcomeStateUnfilledID", "setting", "§15.3.4"),
+    ("OutcomeStatePartiallyFilledID", "setting", "§15.3.5"),
+    ("OutcomeStateFilledID", "setting", "§15.3.6"),
+    ("OutcomeStateCancelledID", "setting", "§15.3.7"),
+    ("NotificationChannel", "setting", "§15.3.8"),
+    # §15.8.32
+    ("DeclinedStatusID", "setting", "§15.8.32"),
+    ("TimedOutStatusID", "setting", "§15.8.32"),
+    ("ApplicationTimeZone", "setting", "§15.8.32"),
+    ("AttendanceRegisterEnabled", "setting", "§15.8.32"),
+    # §15.8.18
+    ("ReceiptToCardDurationDays", "setting", "§15.8.18"),
+    ("YouthAgeMin", "setting", "§15.8.18"),
+    ("YouthAgeMax", "setting", "§15.8.18"),
+]
+
+# Register rows that describe a rule or a relationship rather than a term.
+# A keyword scan cannot check these. They are printed by the check so a
+# human verifies them when the register changes.
+AMENDMENT_REGISTER_UNVERIFIABLE = [
+    ("§15.8.7",  "MemberAttribute and Youth criteria types — named in the register; the criteria's documented names are 'Member Attribute' and 'Youth'"),
+    ("§15.8.12", "IsDeleted on every configuration entity — a structural property, not a term"),
+    ("§15.8.24", "13.0 Attendance Rule Engine — a process, not a term"),
+    ("§15.8.25", "Attendance register scope resolution — a rule stated in §9.6"),
+    ("§15.8.26", "Branch-Attendance Recency skips when register off — a rule stated in §10.1.5"),
+    ("§15.8.27", "Member has no flags — the term Member.IsDeleted is checked; the structural property itself is human-verified"),
+    ("§15.8.28", "Member Status criterion — a criterion type, checked against the §5 vocabulary by a human"),
+    ("§15.8.29", "Member register scope and event scope fallback — a rule stated in §9.6"),
+    ("§15.8.31", "13.0 process contract items — prose describing behaviour, not terms"),
+    ("§15.8.33", "ApplicationTimeZone required — the setting is checked; the required-ness rule is human-verified"),
+    ("§15.8.34", "Attendance Rule ownership commands — process commands, not terms"),
+    ("§15.8.35", "Specification stale text — a remediation note, not a term"),
+    ("§15.8.36", "API reconciliation — a remediation note, not a term"),
+]
+
+# For a "setting" term, the process document that consumes it. The scan
+# confirms the setting appears in both settings.md and in this document.
+SETTING_CONSUMERS = {
+    # A setting may be consumed by more than one process. The scan
+    # confirms the setting appears in settings.md and in at least one of
+    # the documents listed here. The list is not exhaustive; it names the
+    # process documents that should mention the key.
+    "OccurrenceHorizonDays":           ["docs/processes/operations/11.0-materialize-occurrences.md"],
+    "InitialAssignmentStatusID":       ["docs/processes/operations/7.0-manage-confirmation.md"],
+    "ConfirmationTimeoutHours":        ["docs/processes/operations/7.0-manage-confirmation.md"],
+    "OutcomeStateUnfilledID":          ["docs/processes/operations/10.0-evaluate-fill-status.md"],
+    "OutcomeStatePartiallyFilledID":   ["docs/processes/operations/10.0-evaluate-fill-status.md"],
+    "OutcomeStateFilledID":            ["docs/processes/operations/10.0-evaluate-fill-status.md"],
+    "OutcomeStateCancelledID":         ["docs/processes/operations/10.0-evaluate-fill-status.md"],
+    "NotificationChannel":             ["docs/processes/operations/9.0-dispatch-notification.md"],
+    "DeclinedStatusID":                ["docs/processes/operations/7.0-manage-confirmation.md"],
+    "TimedOutStatusID":                ["docs/processes/operations/7.0-manage-confirmation.md"],
+    "ApplicationTimeZone":             [
+        "docs/processes/operations/11.0-materialize-occurrences.md",
+        "docs/processes/operations/5.0-generate-assignment.md",
+        "docs/processes/operations/7.0-manage-confirmation.md",
+        "docs/processes/operations/12.0-create-manual-assignment.md",
+        "docs/processes/operations/13.0-attendance-rule-engine.md",
+    ],
+    "AttendanceRegisterEnabled":       ["docs/processes/operations/13.0-attendance-rule-engine.md"],
+    "ReceiptToCardDurationDays":       ["docs/processes/configuration/3.0-manage-membership.md"],
+    "YouthAgeMin":                     ["docs/processes/operations/5.0-generate-assignment.md"],
+    "YouthAgeMax":                     ["docs/processes/operations/5.0-generate-assignment.md"],
+}
+
+# A "removed" term is not a defect when it appears within this many lines
+# of one of these phrases. The window is symmetric: the phrase may be on
+# the same line, the previous line, or the next line.
+REMOVAL_CONTEXT_PHRASES = (
+    "removed", "no longer exists", "no longer", "pre-amendment",
+    "dropped", "replaced by", "replaced", "§15.8", "15.8",
+    "migration", "was removed", "were removed", "has been removed",
+    "have been removed", "removed in", "removed by",
+)
 
 # The root of the documentation tree, relative to the repository root.
 # The script assumes it is run from the repository root.
 DOCS_ROOT = Path("docs")
+DECISIONS_FILE = DOCS_ROOT / "decisions.md"
 
 
 def scan() -> list:
     """Return a list of (path, line_number, label, line_text) tuples for every violation."""
     violations = []
     for md in sorted(DOCS_ROOT.rglob("*.md")):
-        # Skip anything inside a .git directory (shouldn't happen, but defensive).
         if ".git" in md.parts:
             continue
         try:
             lines = md.read_text(encoding="utf-8").splitlines()
         except UnicodeDecodeError:
-            # Not UTF-8; skip silently. The docs tree is expected to be UTF-8.
             continue
         for i, line in enumerate(lines, 1):
             for pattern, label in STALE_PATTERNS:
                 if pattern.search(line):
                     violations.append((md, i, label, line.strip()[:140]))
+            # decisions.md states what the decisions are, including the
+            # names the decisions removed. It is a definition file, not a
+            # reference. Skip it for the seven-dimension patterns.
+            if md.name == "decisions.md":
+                continue
+            for pattern, label, exclusion in STALE_PATTERNS_WITH_EXCLUSIONS:
+                if pattern.search(line):
+                    if exclusion is not None and exclusion.search(line):
+                        continue
+                    violations.append((md, i, label, line.strip()[:140]))
+    return violations
+
+
+def collect_defined_labels() -> set:
+    """Read docs/decisions.md and return the set of defined labels (e.g. B1, C4)."""
+    if not DECISIONS_FILE.exists():
+        return set()
+    text = DECISIONS_FILE.read_text(encoding="utf-8")
+    labels = set()
+    for m in re.finditer(r"^\|\s*([BC]\d{1,2})\s*\|", text, re.MULTILINE):
+        labels.add(m.group(1))
+    return labels
+
+
+def scan_decision_labels(defined: set) -> list:
+    """Return (path, line, label, text) for any B<n> or C<n> reference whose
+    label is not defined in docs/decisions.md. Lines in decisions.md itself
+    and the definition headers in contracts.md are excluded."""
+    label_pattern = re.compile(r"\b([BC])(\d{1,2})\b")
+    violations = []
+    for md in sorted(DOCS_ROOT.rglob("*.md")):
+        if ".git" in md.parts:
+            continue
+        try:
+            lines = md.read_text(encoding="utf-8").splitlines()
+        except UnicodeDecodeError:
+            continue
+        for i, line in enumerate(lines, 1):
+            # Skip the decisions.md definitions themselves.
+            if md == DECISIONS_FILE:
+                continue
+            # Skip section headers of the form "## C4 — ...", which are
+            # definitions, not references.
+            stripped = line.strip()
+            if stripped.startswith("## C") or stripped.startswith("# C"):
+                continue
+            # Skip Mermaid diagram lines: node names such as C1, C2, C3,
+            # C4, C8 identify components in the diagram, not decisions.
+            if "flowchart" in stripped or stripped.startswith("C") and stripped[1:2].isdigit():
+                # Only skip when the line is clearly a Mermaid node
+                # declaration or edge, recognised by the bracket or arrow.
+                if "[" in line or "-.->" in line or "-->" in line:
+                    continue
+            for m in label_pattern.finditer(line):
+                label = m.group(0)
+                if label not in defined:
+                    violations.append((md, i, f"undefined decision label {label}", line.strip()[:140]))
+    return violations
+
+
+def _removal_context(lines, idx, window=1):
+    """True if any of the removal-context phrases appears within `window`
+    lines of `idx` (inclusive of both)."""
+    lo = max(0, idx - window)
+    hi = min(len(lines), idx + window + 1)
+    for j in range(lo, hi):
+        if any(phrase in lines[j] for phrase in REMOVAL_CONTEXT_PHRASES):
+            return True
+    return False
+
+
+def scan_amendment_register_terms() -> list:
+    """Check the tree against the amendment register's term table.
+
+    Returns a list of (path, line_number, label, text) tuples for every
+    violation, matching the shape of scan()'s output.
+    """
+    violations = []
+
+    # Preload every markdown file once, since we scan the tree several
+    # times (once per term).
+    files = []
+    for md in sorted(DOCS_ROOT.rglob("*.md")):
+        if ".git" in md.parts:
+            continue
+        try:
+            lines = md.read_text(encoding="utf-8").splitlines()
+        except UnicodeDecodeError:
+            continue
+        files.append((md, lines))
+
+    # Removed-term scan: the term must not appear outside a removal context.
+    for term, polarity, source in AMENDMENT_REGISTER_TERMS:
+        if polarity != "removed":
+            continue
+        for md, lines in files:
+            # decisions.md states what the decisions removed; it is a
+            # definition file and legitimately names removed terms.
+            if md.name == "decisions.md":
+                continue
+            # The specification is the authority; §15 and §9.7 legitimately
+            # name removed terms when they describe the removal.
+            if md.name == "system-design-spec.md":
+                continue
+            # The migration-ordering document describes the transition from
+            # a pre-amendment schema. It names removed columns as part of
+            # that description, by design.
+            if md.name == "migration-ordering.md":
+                continue
+            for i, line in enumerate(lines):
+                if term in line and not _removal_context(lines, i):
+                    violations.append((
+                        md, i + 1,
+                        f"removed term '{term}' ({source}) appears outside a removal context",
+                        line.strip()[:140]))
+
+    # Added-term scan: the term must appear at least once in the tree.
+    for term, polarity, source in AMENDMENT_REGISTER_TERMS:
+        if polarity != "added":
+            continue
+        found = False
+        for md, lines in files:
+            if md.name in ("decisions.md", "consistency_check.py"):
+                continue
+            if any(term in line for line in lines):
+                found = True
+                break
+        if not found:
+            violations.append((
+                Path("<tree>"), 0,
+                f"added term '{term}' ({source}) not found anywhere in docs/",
+                ""))
+
+    # Setting scan: the key must appear in settings.md and in the process
+    # document that consumes it.
+    settings_md = DOCS_ROOT / "database" / "settings.md"
+    settings_lines = settings_md.read_text(encoding="utf-8").splitlines() if settings_md.exists() else []
+    for term, polarity, source in AMENDMENT_REGISTER_TERMS:
+        if polarity != "setting":
+            continue
+        if not any(term in line for line in settings_lines):
+            violations.append((
+                settings_md, 0,
+                f"setting '{term}' ({source}) missing from docs/database/settings.md",
+                ""))
+        consumer_rels = SETTING_CONSUMERS.get(term)
+        if consumer_rels:
+            matched = False
+            missing = []
+            for consumer_rel in consumer_rels:
+                consumer = Path.home().joinpath("MKN-ms", consumer_rel)
+                if not consumer.exists():
+                    missing.append(consumer_rel + " (file not found)")
+                    continue
+                consumer_lines = consumer.read_text(encoding="utf-8").splitlines()
+                if any(term in line for line in consumer_lines):
+                    matched = True
+                    break
+            if not matched:
+                violations.append((
+                    Path("<tree>"), 0,
+                    f"setting '{term}' ({source}) not mentioned in any of its consumer documents",
+                    "; ".join(missing) if missing else "; ".join(consumer_rels)))
+
     return violations
 
 
@@ -32859,11 +33596,23 @@ def main() -> int:
 
     violations = scan()
 
+    defined_labels = collect_defined_labels()
+    violations.extend(scan_decision_labels(defined_labels))
+
+    violations.extend(scan_amendment_register_terms())
+
     if not violations:
-        print("✓ No stale references found. Repository is consistent.")
+        print("\u2713 No stale references found. Repository is consistent.")
+        print()
+        print(f"Amendment register: {len(AMENDMENT_REGISTER_UNVERIFIABLE)} register row(s) require human verification.")
+        for section, description in AMENDMENT_REGISTER_UNVERIFIABLE:
+            print(f"  {section}  {description}")
+        print()
+        print("The amendment-register term table is hand-maintained from the")
+        print("specification's §15.1-§15.4 and §15.8. See the module docstring.")
         return 0
 
-    print(f"✗ {len(violations)} stale reference(s) found:\n")
+    print(f"\u2717 {len(violations)} stale reference(s) found:\n")
     for path, lineno, label, snippet in violations:
         print(f"  {path}:{lineno}  [{label}]")
         print(f"    {snippet}")
