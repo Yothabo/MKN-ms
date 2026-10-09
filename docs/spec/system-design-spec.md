@@ -1749,7 +1749,7 @@ The branch-agnostic attendance default is realized here: a member attending at a
 
 #### 13.1.4 Admin manual entry
 
-An admin may add an attendance record directly. The row is identical to a tap-initiated one: same columns, same uniqueness rule. The schema has no field distinguishing manual entry from tap entry.
+An admin may add an attendance record directly. The row is identical to a tap-initiated one in every column except `Source`. `AttendanceRecord.Source` names the channel: `Manual` for an administrator's direct entry, `Tap` for the tap path. The currently implemented path produces `Manual`; `Tap` is defined in the vocabulary but is not produced by any implemented path.
 
 #### 13.1.5 No interpretation layer
 
@@ -1761,8 +1761,11 @@ An admin may add an attendance record directly. The row is identical to a tap-in
 
 | # | Source | Purpose |
 | --- | --- | --- |
-| R1 | D4 Member | Validate the member identity |
+| R1 | D4 Member | Validate the member identity; confirm the member holds a `ReceiptNumber` or a `CardNumber` (the attendance-register eligibility rule) |
 | R2 | D3 ServiceOccurrence | Identify which occurrence the record applies to |
+| R3 | D3 Branch.UsesAttendanceRegister | Resolve the effective register scope for a schedule-sourced occurrence |
+| R4 | D9 Event.UsesAttendanceRegister | Resolve the effective register scope for an event-sourced occurrence |
+| R5 | D11 SystemSetting (`AttendanceRegisterEnabled`) | Resolve the global register scope when no override applies |
 
 **Writes:**
 
@@ -1774,7 +1777,7 @@ A subsequent tap for an existing pair is a no-op. The uniqueness constraint is t
 
 **Invocations:** None. 6.0 does not invoke any process.
 
-**Stores never touched:** D1, D2, D5, D6, D7, D9, D10, D11, D12. Never modifies ServiceOccurrence, FillStatusID, or any assignment.
+**Stores never touched (write):** D1, D2, D5, D6, D7, D9, D10, D11, D12. 6.0 reads D9 (Event.UsesAttendanceRegister) and D11 (AttendanceRegisterEnabled) but writes neither. Never modifies ServiceOccurrence, FillStatusID, or any assignment.
 
 ### 13.3 Invariants
 
@@ -1806,7 +1809,6 @@ A subsequent tap for an existing pair is a no-op. The uniqueness constraint is t
 
 ### 13.5 Explicitly Open Implementation Choices
 
-- Whether manual admin entry is distinguished from tap entry.
 - Attendance window enforcement — not performed by 6.0 or the schema.
 - Whether attendance records are retained indefinitely.
 - Physical shape of the (MemberID, Timestamp) index.
@@ -2373,6 +2375,7 @@ The following amendments were added after the original fifteen.
 | 15.8.32 | Settings inventory: DeclinedStatusID, TimedOutStatusID, ApplicationTimeZone, AttendanceRegisterEnabled | Amendment | §15.3 |
 | 15.8.33 | ApplicationTimeZone is required; absent or unrecognised produces ConfigurationMissing or ConfigurationInvalid, no silent fallback | Amendment | §7, §15.3.11 |
 | 15.8.34 | Attendance Rule ownership: Create, Update, Disable, Deactivate, Soft-delete commands formalized under 3.0 | Amendment | §9.7, §13.6 |
+| 15.8.35 | Specification stale text: AttendanceRecord.Source distinguishes Manual from Tap; 6.0 register-scope reads named | Amendment | §13.1.4, §13.2, §13.5 |
 
 ---
 
