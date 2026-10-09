@@ -217,7 +217,7 @@ The matrix does not prescribe the mechanism. Concurrency rows state the property
 | --- | --- | --- | --- |
 | 12.0 | A member, duty, occurrence, and acting admin | A manual assignment is created with no target status | An assignment is created with `AssignmentStatusID = NULL`, `AssignmentSource = Manual`, `AssignedBy` set; 9.0 is invoked |
 | 12.0 | A member, duty, occurrence, and acting admin | A manual assignment is created with a target status | The row is created with that status; 9.0 is not invoked |
-| 12.0 | A manual assignment whose member does not satisfy a Role Duty Rule | The assignment is created | The assignment is permitted; Role criteria are bypassed, per B12's contract |
+| 12.0 | A manual assignment whose member does not satisfy a Role Duty Rule | The assignment is created | The assignment is permitted; Role criteria are bypassed, per §17.1 B1 |
 | 12.0 | A manual assignment whose member does not satisfy an Eligibility Flag rule | The assignment is created | The assignment is rejected with `ValidationFailed`; Eligibility Flag gates manual assignment |
 | 12.0 | A manual assignment when the duty is already at its configured slot count | The assignment is created | The assignment is permitted; slot capacity is not enforced on manual assignment |
 | 12.0 | A manual assignment when the member already holds a non-terminal assignment on the occurrence | The assignment is created | The assignment is permitted; per-occurrence availability is not enforced on manual assignment |

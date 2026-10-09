@@ -181,6 +181,13 @@ def scan_decision_labels(defined: set) -> list:
             stripped = line.strip()
             if stripped.startswith("## C") or stripped.startswith("# C"):
                 continue
+            # Skip Mermaid diagram lines: node names such as C1, C2, C3,
+            # C4, C8 identify components in the diagram, not decisions.
+            if "flowchart" in stripped or stripped.startswith("C") and stripped[1:2].isdigit():
+                # Only skip when the line is clearly a Mermaid node
+                # declaration or edge, recognised by the bracket or arrow.
+                if "[" in line or "-.->" in line or "-->" in line:
+                    continue
             for m in label_pattern.finditer(line):
                 label = m.group(0)
                 if label not in defined:

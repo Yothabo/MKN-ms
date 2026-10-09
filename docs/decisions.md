@@ -8,6 +8,8 @@
 
 Class B decisions were made during the documentation-hardening pass. Each closes a question the specification left open. The decision is stated in the specification or in a derived document; this table is a pointer. B9 is a corollary of B8, not a separate decision.
 
+**Note on label collisions.** The specification's §17.1 carries its own local lettered sub-decisions (A through H, with numeric suffixes such as §17.1 B1 through B5 and §17.1 C1 through C4). These are local to §17.1 and are distinct from the Class B decisions B1–B20 and Class C decisions C1–C11 in this file. A reference to §17.1 B1 is not a reference to B1 in the table below. Every reference to §17.1's letters is spelled with the §17.1 prefix; every reference to a Class B or Class C decision uses the bare label.
+
 | Label | Decision | Where it lives |
 | --- | --- | --- |
 | B1 | A `CriteriaValue` that does not match its criterion's grammar produces no candidates and does not fail the run. | Specification §10.1.5 (criteria value grammars); acceptance-matrix.md (2.0 rows) |
