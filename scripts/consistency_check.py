@@ -281,7 +281,11 @@ REMOVAL_CONTEXT_PHRASES = (
 
 # The root of the documentation tree, relative to the repository root.
 # The script assumes it is run from the repository root.
-DOCS_ROOT = Path("docs")
+# Resolve paths relative to the script's own location, not the process's
+# working directory. This makes the check work regardless of where it is
+# invoked from — Termux, CI, or an arbitrary shell.
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DOCS_ROOT = REPO_ROOT / "docs"
 DECISIONS_FILE = DOCS_ROOT / "decisions.md"
 
 
@@ -449,7 +453,7 @@ def scan_amendment_register_terms() -> list:
             matched = False
             missing = []
             for consumer_rel in consumer_rels:
-                consumer = Path.home().joinpath("MKN-ms", consumer_rel)
+                consumer = REPO_ROOT / consumer_rel
                 if not consumer.exists():
                     missing.append(consumer_rel + " (file not found)")
                     continue
