@@ -1104,6 +1104,7 @@ On soft delete, the following reference handling applies:
 | Capability | Removed; not soft-deleted independently, because nothing references it. |
 | Entity Deletion Policy | Removed; not soft-deleted independently. |
 | Notification Subscription | Removed; not soft-deleted independently. |
+| Attendance Rule | Soft-delete removes the rule's AttendanceRuleScope rows. Deactivate (`IsActive = false`) leaves scope rows in place. Disable (`Enabled = false`) leaves scope rows in place and does not change `IsActive`. The rule row itself is retained. |
 | Member | No soft-delete operation. A member's state is `MemberStatusID` only. The row is never removed through normal operations. |
 | Admin | No soft-delete operation. Revocation sets `IsActive = false`; the row remains. |
 
@@ -2371,6 +2372,7 @@ The following amendments were added after the original fifteen.
 | 15.8.31 | 13.0 process contract: NoOp distinction, ascending rule order, single-rule manual invocation, ActingAdminID on manual invocation | Amendment | §13.6 |
 | 15.8.32 | Settings inventory: DeclinedStatusID, TimedOutStatusID, ApplicationTimeZone, AttendanceRegisterEnabled | Amendment | §15.3 |
 | 15.8.33 | ApplicationTimeZone is required; absent or unrecognised produces ConfigurationMissing or ConfigurationInvalid, no silent fallback | Amendment | §7, §15.3.11 |
+| 15.8.34 | Attendance Rule ownership: Create, Update, Disable, Deactivate, Soft-delete commands formalized under 3.0 | Amendment | §9.7, §13.6 |
 
 ---
 

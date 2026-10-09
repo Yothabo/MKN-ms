@@ -208,6 +208,42 @@ These three sit within 3.0's ownership boundary as established by B12 and B14.
 | ScopeCriteria | array of (CriteriaType, CriteriaValue) | No |
 | ActingAdminID | integer | Yes |
 
+**Update Attendance Rule command:**
+
+| Field | Type | Required |
+| --- | --- | --- |
+| AttendanceRuleID | integer | Yes |
+| Name | string | Yes |
+| TriggerType | string | Yes |
+| TriggerValue | string | Yes for AbsenceDays and ReadmissionCount; unused for Manual |
+| OutcomeType | string | Yes |
+| OutcomeStatusID | integer | Required only when OutcomeType = SetStatus |
+| Enabled | boolean | Yes |
+| ScopeCriteria | array of (CriteriaType, CriteriaValue) | No |
+| ActingAdminID | integer | Yes |
+
+**Disable Attendance Rule command:**
+
+| Field | Type | Required |
+| --- | --- | --- |
+| AttendanceRuleID | integer | Yes |
+| ActingAdminID | integer | Yes |
+
+**Deactivate Attendance Rule command:**
+
+| Field | Type | Required |
+| --- | --- | --- |
+| AttendanceRuleID | integer | Yes |
+| ActingAdminID | integer | Yes |
+
+**Soft-delete Attendance Rule command:**
+
+| Field | Type | Required |
+| --- | --- | --- |
+| AttendanceRuleID | integer | Yes |
+| Reason | string | Yes |
+| ActingAdminID | integer | Yes |
+
 **Record Readmission command:**
 
 | Field | Type | Required |
