@@ -282,7 +282,7 @@ The amendments below were added after the original fifteen. They are the changes
 | EventDuty | DutyID | integer | No | §4 |
 | EventDuty | ServiceDefID | integer | Yes | §4 |
 | EventDuty | (Label removed) | — | — | §4 |
-| Every configuration entity | IsDeleted | boolean | No | §4, §9.6 |
+| Every two-flag configuration entity (not Admin, not Member) | IsDeleted | boolean | No | §4, §9.6 |
 
 ### 5.3 — Extended criteria vocabulary
 
@@ -339,6 +339,15 @@ The count of invoking processes is now four: 5.0, 7.0, 12.0, 13.0.
 | Attendance register scope resolution | Most specific scope wins: event, then branch, then global | §9.6 |
 | Branch-Attendance Recency skip | The criterion is skipped when the effective register scope is off | §10.1.5 |
 | Attendance register eligibility | A member is eligible only if they hold a ReceiptNumber or CardNumber | §4, §9.1.7 |
+
+### 5.7 — Member and Admin lifecycle (§15.8.27)
+
+| Change | Table | Nature | Source |
+| --- | --- | --- | --- |
+| Member carries no `IsActive` and no `IsDeleted`; state is `MemberStatusID` only | Member | Clarification | §4, §15.8.27 |
+| Admin gains `IsActive` boolean; revocation sets false, row remains | Admin | New column | §4, §15.8.27 |
+
+The two-flag lifecycle of §9.6 does not apply to Member (no flags) or to Admin (single flag). The reference-fallback rules for Member Status are extended: on soft-delete of a Member Status, Attendance Rules whose `OutcomeStatusID` names it are removed, and Attendance Rule Scope rows whose criteria name it are removed.
 
 ### 5.6 — Removed columns
 

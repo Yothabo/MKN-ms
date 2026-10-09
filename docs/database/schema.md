@@ -259,6 +259,9 @@ Unique on (MemberID, DutyID, OccurrenceID). Operational entity; no lifecycle fla
 | AdminID | integer | No | Primary key |
 | MemberID | integer | No | Foreign key → Member |
 | PermissionTierID | integer | No | Foreign key → PermissionTier |
+| IsActive | boolean | No | True at creation. Revocation sets false; the row remains. |
+
+An Admin row is deactivated, not soft-deleted. A revoked admin's row remains, preserving attribution on historical records. Acting identities must resolve to an Admin row whose `IsActive = true`.
 
 ## AttendanceRecord
 

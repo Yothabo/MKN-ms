@@ -83,6 +83,7 @@ The additions that do not affect existing constraints:
 - `Event.HostBranchID` (as nullable at this stage; Step 7 makes it non-null)
 - `EventDuty.DutyID` (as nullable at this stage; Step 7 makes it non-null)
 - `EventDuty.ServiceDefID`
+- `Admin.IsActive` (boolean, default true for existing rows)
 - `IsDeleted` on every configuration entity that gained the two-flag lifecycle
 
 **Step 6 — data migration for the columns that replace others.**
