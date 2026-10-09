@@ -22708,7 +22708,7 @@ These are deliberately excluded. They are not the absence of a decision; they ar
 
 ==============================================================================
 FILE: docs/architecture/invocation-model.md
-LINES: 319
+LINES: 361
 ==============================================================================
 
 # Invocation Model
@@ -22721,7 +22721,7 @@ LINES: 319
 
 The system's default integration mechanism is **shared data**. Processes read from and write to common data stores. When one process's output needs to reach another process, it does so through a store, not through a call.
 
-Direct process invocation is the exception. It exists only where a process has just created a new RosterAssignment row that requires a response from a member — meaning 9.0 Dispatch Notification must be invoked at that moment, rather than deferred to a polling process. No other process is ever invoked by another process.
+Direct process invocation is the exception. It exists for the processes that must immediately hand an outbound notification to 9.0: assignment-producing processes when a response-requiring assignment is created, and 13.0 when an Attendance Rule with OutcomeType = Notify fires. No other process is ever invoked by another process.
 
 Everywhere else, processes are independently executable. No process orchestrates another. The data stores are the interface.
 
@@ -22753,7 +22753,7 @@ Every other relationship between processes is expressed through shared data:
 - 7.0 writes status changes; 10.0 reads them.
 - 6.0 writes attendance; 5.0 reads it only when required by a criterion.
 
-No process depends on another process's successful completion for its own persisted business result. 5.0 and 7.0 invoke 9.0 as fire-and-forget; whether that invocation is technically synchronous or asynchronous is an implementation choice and does not create a semantic dependency.
+No process depends on another process's successful completion for its own persisted business result. The four invokers of 9.0 invoke it as fire-and-forget; whether any of those invocations is technically synchronous or asynchronous is an implementation choice and does not create a semantic dependency.
 
 ---
 
@@ -22775,7 +22775,9 @@ flowchart TB
     P10["10.0 Evaluate fill status"]
     P6["6.0 Record attendance"]
     P12["12.0 Create manual assignment"]
+    P13["13.0 Attendance Rule Engine"]
     P9["9.0 Dispatch notification"]
+    S["Scheduler"]
 
     D1[(D1 Role / Duty)]
     D2[(D2 Duty Rule)]
@@ -22789,6 +22791,7 @@ flowchart TB
     D10[(D10 Config Lookups)]
     D11[(D11 System Setting)]
     D12[(D12 Materializer Run)]
+    D13[(D13 Attendance Rule / Scope / Readmission)]
 
     C1 -.->|writes| D1
     C1 -.->|writes| D3
@@ -22836,13 +22839,25 @@ flowchart TB
     P12 -.->|writes| D7
     P12 -->|invokes, conditional| P9
 
+    D2 -.->|reads Attendance Rule and Scope| P13
+    D3 -.->|reads register scope| P13
+    D4 -.->|reads Member and Member Status| P13
+    D8 -.->|reads AttendanceRecord| P13
+    D10 -.->|reads MemberStatus lookup| P13
+    D11 -.->|reads global register scope| P13
+    D13 -.->|reads Readmission| P13
+    P13 -.->|writes MemberStatusID| D4
+    P13 -->|invokes on Notify outcome| P9
+
+    S -.->|scheduled authority-notification trigger| P9
+
     D7 -.->|reads| P9
     D4 -.->|reads| P9
     D3 -.->|reads| P9
     D11 -.->|reads| P9
 ~~~
 
-**Legend:** solid arrows (`-->`) are process invocations. Dotted arrows (`-.->`) are data reads or writes. Only four solid arrows exist.
+**Legend:** solid arrows (-->) are process invocations. Dotted arrows (-.->) are data reads or writes. Only four solid arrows exist. The Scheduler-to-9.0 arrow is dotted: it is a scheduled trigger, not a process invocation.
 
 ### Exact form
 
@@ -22857,7 +22872,7 @@ The following topology matches §16 of the System Design Specification. Only con
                             │
                             │ writes
                             ▼
-        Configuration stores: D1 D2 D3 D4 D5 D6 D9 D10 D11
+        Configuration stores: D1 D2 D3 D4 D5 D6 D9 D10 D11 D13
         (8.0 additionally creates event-sourced ServiceOccurrence
          rows when a ProgramItem is linked to a ServiceDefinition)
                             │
@@ -22908,6 +22923,29 @@ The following topology matches §16 of the System Design Specification. Only con
                    ├── AssignmentStatusID = NULL  ──►  invokes 9.0 Dispatch Notification
                    │
                    └── AssignmentStatusID set     ──►  no invocation
+
+
+        13.0 Attendance Rule Engine
+                   │
+                   │ reads: D2 (Attendance Rule, Attendance Rule Scope), D3,
+                   │        D4, D8 (AttendanceRecord), D10, D11, D13 (Readmission)
+                   │ writes: D4 (MemberStatusID when a SetStatus outcome fires)
+                   │
+                   ├── OutcomeType = Notify       ──►  invokes 9.0 Dispatch Notification
+                   │
+                   └── OutcomeType = SetStatus
+                       or NoOp                   ──►  no invocation
+
+
+        Scheduler
+                   │
+                   │ scheduled trigger (not an invocation)
+                   ▼
+        9.0 Dispatch Notification  (authority-notification sweep)
+                   │
+                   │ reads: ConfigurationAuditLog, NotificationSubscription,
+                   │        Admin, PermissionTier, D11
+                   │ writes: ConfigurationAuditLog.NotifiedAt
 ~~~
 
 ---
@@ -22935,8 +22973,8 @@ The following topology matches §16 of the System Design Specification. Only con
 - 5.0 invokes 9.0, unconditionally. Nothing invokes 5.0.
 - 7.0 invokes 9.0, on replacement only. Nothing invokes 7.0.
 - 12.0 invokes 9.0, only when the created assignment's AssignmentStatusID is NULL. Nothing invokes 12.0.
+- 13.0 invokes 9.0, only when an Attendance Rule's OutcomeType is Notify. Nothing invokes 13.0.
 - 9.0 invokes nothing. It is invoked by 5.0, 7.0, 12.0, and 13.0. It also carries its own independent scheduled trigger, which is a trigger and not an invocation. The trigger reads new Configuration Audit Log entries and dispatches authority notifications.
-- 13.0 Attendance Rule Engine is invoked by nothing. It is triggered by the scheduler or by an administrator. It invokes 9.0 only when a rule's outcome is Notify.
 - No other process invokes another, and 9.0 is the only process any process invokes.
 
 This is the entire invocation topology of the system. The invocation matrix is separate from the trigger matrix because a process may have triggers that are not invocations.
@@ -22955,6 +22993,7 @@ These are two different kinds of coupling, and the distinction matters.
 - 7.0 requires assignments (produced by 5.0).
 - 10.0 requires assignments and occurrences (produced by 5.0 and 11.0).
 - 9.0 requires assignments (produced by 5.0 or 7.0).
+- 13.0 requires attendance records (produced by 6.0), readmission records (produced by 3.0), and attendance rules (produced by 3.0).
 
 Data dependencies do not imply process dependencies. A process that requires records another process has produced simply reads them from the store when it runs. It does not call the other process.
 
@@ -22978,6 +23017,7 @@ Every process has an independent trigger mechanism except 9.0.
 | 10.0 | After assignment changes; scheduled sweep |
 | 11.0 | Scheduled run; manual admin trigger |
 | 12.0 | Administrator action |
+| 13.0 | Scheduled run; manual admin trigger |
 
 No process has a trigger that is another process's invocation, except 9.0. This preserves the independently-executable property: each process can be triggered by the administrator, the scheduler, or the member without depending on any other process running first.
 
@@ -22992,16 +23032,18 @@ Cross-process communication happens through stores, not through calls. The follo
 | 5.0 Generate Assignment | D2, D3, D4, D6, D7, D8 (conditional) | D7 |
 | 6.0 Record Attendance | D3, D4 | D8 |
 | 7.0 Manage Confirmation | D2 (re-res), D3 (re-res), D4, D6 (re-res), D7, D8 (re-res), D10, D11 | D7 |
-| 9.0 Dispatch Notification | D3, D4, D7, D11 | — |
+| 9.0 Dispatch Notification | Path 1: D3, D4, D7, D11. Path 2: ConfigurationAuditLog, NotificationSubscription, Admin, PermissionTier, D11 | ConfigurationAuditLog (NotifiedAt, Path 2 only) |
 | 10.0 Evaluate Fill Status | D3, D7, D10, D11 | D3 |
 | 11.0 Materialize Occurrences | D3, D11 | D3, D12 |
 | 12.0 Create Manual Assignment | D2, D3, D4, D6, D7 | D7 |
+| 13.0 Attendance Rule Engine | D2, D3, D4, D8, D10, D11, D13 | D4 (MemberStatusID) |
 
 The overlap pattern shows the mediation clearly:
 
 - 5.0 writes D7, which 7.0 and 10.0 read.
 - 11.0 writes D3 (occurrences), which 5.0, 7.0, and 10.0 read.
-- 6.0 writes D8, which 5.0 reads only when required.
+- 6.0 writes D8, which 5.0 and 13.0 read.
+- 3.0 writes D13 (Attendance Rule, Attendance Rule Scope, Readmission), which 13.0 reads.
 
 In every case, the reader finds what it needs by querying the store, not by being called.
 
@@ -23012,9 +23054,9 @@ In every case, the reader finds what it needs by querying the store, not by bein
 - **9.0 Dispatch Notification is the sole process any other process is permitted to invoke.** The current count of invoking processes is four (5.0, 7.0, 12.0, 13.0). This invariant is stated without a count so it survives future growth.
 - **Shared data is the default integration mechanism.** Every other relationship is expressed by one process writing to a store and another reading from it.
 - **No orchestration.** No process orchestrates another.
-- **No process depends on another process's successful completion for its own persisted business result.** 5.0 and 7.0 invoke 9.0 as fire-and-forget; whether the invocation is synchronous or asynchronous is an implementation choice and does not create a semantic dependency.
+- **No process depends on another process's successful completion for its own persisted business result.** The four invokers of 9.0 call it without making 9.0's success part of their persisted business result; whether each invocation is technically synchronous or asynchronous is an implementation choice and does not create a semantic dependency.
 - **Every process has an independent trigger except 9.0.**
-- **Fire-and-forget notification.** 9.0's success or failure does not affect the invoking process's state.
+- **Fire-and-forget on Path 1; at-least-once on Path 2.** Direct invocation of 9.0 (Path 1) does not affect the invoking process's persisted business result. The authority-notification sweep (Path 2) is independently scheduled and retries while NotifiedAt remains null.
 - **No feedback loops.** The invocation graph is acyclic and terminates at 9.0.
 
 ---
