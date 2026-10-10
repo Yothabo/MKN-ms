@@ -64,7 +64,7 @@ These have no foreign keys to anything else and can be created in any order amon
 
 These reference existing tables but are not referenced by any other new entity.
 
-**Step 4 — new entities that depend on Step 3.**
+**Step 4 — new entities that depend on Step 2.**
 
 - `AttendanceRuleScope` (references `AttendanceRule` from Step 2)
 
