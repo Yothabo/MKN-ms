@@ -1,3 +1,4 @@
+
 using Microsoft.EntityFrameworkCore;
 using MknMs.Persistence.Naming;
 
@@ -37,6 +38,9 @@ public class MknDbContext : DbContext
 
     // D4 — Member
     public DbSet<Member> Members => Set<Member>();
+    public DbSet<MemberStatus> MemberStatuses => Set<MemberStatus>();
+    public DbSet<AttributeType> AttributeTypes => Set<AttributeType>();
+    public DbSet<MemberAttributeValue> MemberAttributeValues => Set<MemberAttributeValue>();
     public DbSet<Admin> Admins => Set<Admin>();
 
     // D5 — Identifier History
@@ -53,6 +57,7 @@ public class MknDbContext : DbContext
 
     // D9 — Event / Program / Program Item / Event Duty
     public DbSet<Event> Events => Set<Event>();
+    public DbSet<EventBranch> EventBranches => Set<EventBranch>();
     public DbSet<Program> Programs => Set<Program>();
     public DbSet<ProgramItem> ProgramItems => Set<ProgramItem>();
     public DbSet<EventDuty> EventDuties => Set<EventDuty>();
@@ -63,12 +68,23 @@ public class MknDbContext : DbContext
     public DbSet<OutcomeState> OutcomeStates => Set<OutcomeState>();
     public DbSet<AssignmentStatus> AssignmentStatuses => Set<AssignmentStatus>();
     public DbSet<PermissionTier> PermissionTiers => Set<PermissionTier>();
+    public DbSet<Capability> Capabilities => Set<Capability>();
 
     // D11 — System Setting
     public DbSet<SystemSetting> SystemSettings => Set<SystemSetting>();
 
     // D12 — Materializer Run
     public DbSet<MaterializerRun> MaterializerRuns => Set<MaterializerRun>();
+
+    // D13 — Attendance Rule / Scope / Readmission
+    public DbSet<AttendanceRule> AttendanceRules => Set<AttendanceRule>();
+    public DbSet<AttendanceRuleScope> AttendanceRuleScopes => Set<AttendanceRuleScope>();
+    public DbSet<Readmission> Readmissions => Set<Readmission>();
+
+    // D14 — Configuration Audit
+    public DbSet<ConfigurationAuditLog> ConfigurationAuditLogs => Set<ConfigurationAuditLog>();
+    public DbSet<EntityDeletionPolicy> EntityDeletionPolicies => Set<EntityDeletionPolicy>();
+    public DbSet<NotificationSubscription> NotificationSubscriptions => Set<NotificationSubscription>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

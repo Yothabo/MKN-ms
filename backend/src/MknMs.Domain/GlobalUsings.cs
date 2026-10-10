@@ -1,3 +1,4 @@
+
 global using System;
 global using System.Collections.Generic;
 global using System.Linq;
@@ -16,3 +17,5 @@ global using MknMs.Domain.D9_EventProgram;
 global using MknMs.Domain.D10_ConfigLookups;
 global using MknMs.Domain.D11_SystemSetting;
 global using MknMs.Domain.D12_MaterializerRun;
+global using MknMs.Domain.D13_AttendanceRule;
+global using MknMs.Domain.D14_ConfigurationAudit;
