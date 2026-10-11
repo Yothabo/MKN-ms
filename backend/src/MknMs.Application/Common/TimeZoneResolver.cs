@@ -15,39 +15,55 @@ namespace MknMs.Application.Common;
 ///
 /// The timezone is read from SystemSetting under the key
 /// ApplicationTimeZone, holding an IANA timezone ID (for example,
-/// Africa/Johannesburg). The setting is not listed among the required
-/// settings in the specification's amendment set, so its absence does
-/// not cause a process to refuse to run. When it is absent, or when it
-/// holds a value that is not a recognized timezone ID, the resolver
-/// returns UTC.
+/// Africa/Johannesburg). §15.3.11: the setting is required. There is
+/// no silent fallback. When it is absent, the process surfaces
+/// ConfigurationMissing. When it holds an unrecognised value, the
+/// process surfaces ConfigurationInvalid.
 ///
 /// Two entry points:
 ///   - ResolveAsync(MknDbContext, ...) — used by processes that have a
-///     DbContext available at run time.
+///     DbContext available at run time. Returns a result carrying
+///     either the resolved zone or a configuration error code.
 ///   - ResolveFromConnectionAsync(NpgsqlConnection, ...) — used by
 ///     composition code that runs before the service provider is
-///     built, and therefore cannot resolve a scoped DbContext.
+///     built. §15.3.11 states the scheduler refuses to start when the
+///     setting is absent or invalid; this method throws
+///     InvalidOperationException to enforce that. Program.cs lets the
+///     throw propagate.
 ///
-/// Both read the same setting and apply the same fallback logic, so
-/// the process's view of "today" and the scheduler's trigger timezone
-/// are always derived from the same configuration value.
-///
-/// Specification: §7, §11.
+/// Specification: §7, §11, §15.3.11, §15.8.33.
 /// </remarks>
 public static class TimeZoneResolver
 {
     public const string ApplicationTimeZoneKey = "ApplicationTimeZone";
 
-    private static readonly TimeZoneInfo Fallback = TimeZoneInfo.Utc;
-
-    public static async Task<TimeZoneInfo> ResolveAsync(
+    public static async Task<TimeZoneResolutionResult> ResolveAsync(
         MknDbContext db,
         CancellationToken cancellationToken = default)
     {
         var setting = await db.SystemSettings
             .FirstOrDefaultAsync(s => s.Key == ApplicationTimeZoneKey, cancellationToken);
 
-        return InterpretValue(setting?.Value);
+        if (setting?.Value is null || string.IsNullOrWhiteSpace(setting.Value))
+        {
+            return TimeZoneResolutionResult.Missing();
+        }
+
+        var trimmed = setting.Value.Trim();
+
+        try
+        {
+            var zone = TimeZoneInfo.FindSystemTimeZoneById(trimmed);
+            return TimeZoneResolutionResult.Success(zone);
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            return TimeZoneResolutionResult.Invalid(trimmed);
+        }
+        catch (InvalidTimeZoneException)
+        {
+            return TimeZoneResolutionResult.Invalid(trimmed);
+        }
     }
 
     public static async Task<TimeZoneInfo> ResolveFromConnectionAsync(
@@ -72,7 +88,31 @@ public static class TimeZoneResolver
             var result = await command.ExecuteScalarAsync(cancellationToken);
             var value = result as string;
 
-            return InterpretValue(value);
+            if (value is null || string.IsNullOrWhiteSpace(value))
+            {
+                throw new InvalidOperationException(
+                    $"Required setting '{ApplicationTimeZoneKey}' is not configured. "
+                    + "The application cannot start.");
+            }
+
+            var trimmed = value.Trim();
+
+            try
+            {
+                return TimeZoneInfo.FindSystemTimeZoneById(trimmed);
+            }
+            catch (TimeZoneNotFoundException)
+            {
+                throw new InvalidOperationException(
+                    $"Setting '{ApplicationTimeZoneKey}' has unrecognised value "
+                    + $"'{trimmed}'. The application cannot start.");
+            }
+            catch (InvalidTimeZoneException)
+            {
+                throw new InvalidOperationException(
+                    $"Setting '{ApplicationTimeZoneKey}' has invalid value "
+                    + $"'{trimmed}'. The application cannot start.");
+            }
         }
         finally
         {
@@ -80,27 +120,6 @@ public static class TimeZoneResolver
             {
                 await connection.CloseAsync();
             }
-        }
-    }
-
-    private static TimeZoneInfo InterpretValue(string? rawValue)
-    {
-        if (string.IsNullOrWhiteSpace(rawValue))
-        {
-            return Fallback;
-        }
-
-        try
-        {
-            return TimeZoneInfo.FindSystemTimeZoneById(rawValue.Trim());
-        }
-        catch (TimeZoneNotFoundException)
-        {
-            return Fallback;
-        }
-        catch (InvalidTimeZoneException)
-        {
-            return Fallback;
         }
     }
 
@@ -113,4 +132,43 @@ public static class TimeZoneResolver
         var local = TimeZoneInfo.ConvertTime(instant, timeZone);
         return DateOnly.FromDateTime(local.DateTime);
     }
+}
+
+/// <summary>
+/// Outcome of a runtime timezone resolution.
+/// </summary>
+/// <remarks>
+/// Either Success and a TimeZoneInfo, or Failure and a configuration
+/// error code. The caller puts the code into its own Failure result
+/// (§15.3.11, handover §4.4).
+/// </remarks>
+public sealed class TimeZoneResolutionResult
+{
+    private TimeZoneResolutionResult(TimeZoneInfo? zone, string? errorCode, string? errorDetail)
+    {
+        Zone = zone;
+        ErrorCode = errorCode;
+        ErrorDetail = errorDetail;
+    }
+
+    public TimeZoneInfo? Zone { get; }
+
+    public string? ErrorCode { get; }
+
+    public string? ErrorDetail { get; }
+
+    public bool IsSuccess => ErrorCode is null;
+
+    public static TimeZoneResolutionResult Success(TimeZoneInfo zone) =>
+        new(zone, null, null);
+
+    public static TimeZoneResolutionResult Missing() =>
+        new(null,
+            ConfigurationErrorCodes.ConfigurationMissing,
+            $"Required setting '{TimeZoneResolver.ApplicationTimeZoneKey}' is not configured.");
+
+    public static TimeZoneResolutionResult Invalid(string value) =>
+        new(null,
+            ConfigurationErrorCodes.ConfigurationInvalid,
+            $"Setting '{TimeZoneResolver.ApplicationTimeZoneKey}' has unrecognised value '{value}'.");
 }

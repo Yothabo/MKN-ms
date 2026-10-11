@@ -52,8 +52,13 @@ public sealed class GenerateAssignmentJob : IJob
         var db = scope.ServiceProvider.GetRequiredService<MknDbContext>();
         var clock = scope.ServiceProvider.GetRequiredService<TimeProvider>();
 
-        var timeZone = await TimeZoneResolver.ResolveAsync(db, context.CancellationToken);
-        var today = TimeZoneResolver.ToDateInTimeZone(clock.GetUtcNow(), timeZone);
+        var timeZoneResult = await TimeZoneResolver.ResolveAsync(db, context.CancellationToken);
+        if (!timeZoneResult.IsSuccess)
+        {
+            throw new InvalidOperationException(timeZoneResult.ErrorDetail);
+        }
+
+        var today = TimeZoneResolver.ToDateInTimeZone(clock.GetUtcNow(), timeZoneResult.Zone!);
 
         var command = new GenerateAssignmentCommand
         {

@@ -64,8 +64,22 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
         {
             var occurrences = await ResolveTargetOccurrencesAsync(command, cancellationToken);
 
-            var timeZone = await TimeZoneResolver.ResolveAsync(_db, cancellationToken);
-            var today = TimeZoneResolver.ToDateInTimeZone(_clock.GetUtcNow(), timeZone);
+            var timeZoneResult = await TimeZoneResolver.ResolveAsync(_db, cancellationToken);
+            if (!timeZoneResult.IsSuccess)
+            {
+                return new GenerateAssignmentResult
+                {
+                    Status = "Failure",
+                    OccurrencesProcessed = 0,
+                    AssignmentsCreated = 0,
+                    DutiesFullyFilled = 0,
+                    DutiesPartiallyFilled = 0,
+                    DutiesUnfilled = 0,
+                    ErrorDetail = timeZoneResult.ErrorDetail,
+                };
+            }
+
+            var today = TimeZoneResolver.ToDateInTimeZone(_clock.GetUtcNow(), timeZoneResult.Zone!);
 
             var totalCreated = 0;
             var fullyFilled = 0;

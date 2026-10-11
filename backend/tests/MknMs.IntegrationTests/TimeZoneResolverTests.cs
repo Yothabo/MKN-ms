@@ -11,11 +11,11 @@ namespace MknMs.IntegrationTests;
 /// Tests for TimeZoneResolver.
 /// </summary>
 /// <remarks>
-/// Proves the two behaviours the resolver must have:
-///   - A configured ApplicationTimeZone is respected when it is present.
-///   - The resolver falls back to UTC when the setting is absent.
+/// §15.3.11: the resolver does not fall back. An absent setting
+/// produces ConfigurationMissing; an unrecognised value produces
+/// ConfigurationInvalid. A configured valid value is returned.
 ///
-/// Reference: §7 — "using the configured system/application timezone."
+/// Reference: §7, §15.3.11, §15.8.33.
 /// </remarks>
 public class TimeZoneResolverTests : IAsyncLifetime
 {
@@ -54,37 +54,40 @@ public class TimeZoneResolverTests : IAsyncLifetime
         {
             Key = "ApplicationTimeZone",
             Value = "Africa/Johannesburg",
-            Required = false,
+            Required = true,
         });
         await _db.SaveChangesAsync();
 
-        var tz = await TimeZoneResolver.ResolveAsync(_db);
+        var result = await TimeZoneResolver.ResolveAsync(_db);
 
-        tz.Id.Should().Be("Africa/Johannesburg");
+        result.IsSuccess.Should().BeTrue();
+        result.Zone!.Id.Should().Be("Africa/Johannesburg");
     }
 
     [Fact]
-    public async Task Resolve_WithoutConfiguredTimeZone_FallsBackToUtc()
+    public async Task Resolve_WithoutConfiguredTimeZone_ReturnsConfigurationMissing()
     {
-        var tz = await TimeZoneResolver.ResolveAsync(_db);
+        var result = await TimeZoneResolver.ResolveAsync(_db);
 
-        tz.Id.Should().Be("UTC");
+        result.IsSuccess.Should().BeFalse();
+        result.ErrorCode.Should().Be(ConfigurationErrorCodes.ConfigurationMissing);
     }
 
     [Fact]
-    public async Task Resolve_WithUnrecognisedValue_FallsBackToUtc()
+    public async Task Resolve_WithUnrecognisedValue_ReturnsConfigurationInvalid()
     {
         _db.SystemSettings.Add(new SystemSetting
         {
             Key = "ApplicationTimeZone",
             Value = "Not/ARealTimeZone",
-            Required = false,
+            Required = true,
         });
         await _db.SaveChangesAsync();
 
-        var tz = await TimeZoneResolver.ResolveAsync(_db);
+        var result = await TimeZoneResolver.ResolveAsync(_db);
 
-        tz.Id.Should().Be("UTC");
+        result.IsSuccess.Should().BeFalse();
+        result.ErrorCode.Should().Be(ConfigurationErrorCodes.ConfigurationInvalid);
     }
 
     [Fact]
@@ -98,12 +101,14 @@ public class TimeZoneResolverTests : IAsyncLifetime
         {
             Key = "ApplicationTimeZone",
             Value = "Africa/Johannesburg",
-            Required = false,
+            Required = true,
         });
         await _db.SaveChangesAsync();
 
-        var tz = await TimeZoneResolver.ResolveAsync(_db);
-        var date = TimeZoneResolver.ToDateInTimeZone(instant, tz);
+        var result = await TimeZoneResolver.ResolveAsync(_db);
+        result.IsSuccess.Should().BeTrue();
+
+        var date = TimeZoneResolver.ToDateInTimeZone(instant, result.Zone!);
 
         date.Should().Be(new DateOnly(2026, 10, 7));
     }

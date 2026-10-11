@@ -23,4 +23,8 @@ public static class ConfigurationErrorCodes
     public const string AlreadyInactive = "already_inactive";
 
     public const string AlreadyActive = "already_active";
+
+    public const string ConfigurationMissing = "configuration_missing";
+
+    public const string ConfigurationInvalid = "configuration_invalid";
 }

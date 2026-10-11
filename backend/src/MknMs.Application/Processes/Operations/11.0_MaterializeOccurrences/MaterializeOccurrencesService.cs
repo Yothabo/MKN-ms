@@ -134,8 +134,13 @@ public sealed class MaterializeOccurrencesService : IMaterializeOccurrencesServi
         try
         {
             var horizonDays = await ResolveHorizonAsync(command, cancellationToken);
-            var timeZone = await TimeZoneResolver.ResolveAsync(_db, cancellationToken);
-            var today = TimeZoneResolver.ToDateInTimeZone(_clock.GetUtcNow(), timeZone);
+            var timeZoneResult = await TimeZoneResolver.ResolveAsync(_db, cancellationToken);
+            if (!timeZoneResult.IsSuccess)
+            {
+                throw new InvalidOperationException(timeZoneResult.ErrorDetail);
+            }
+
+            var today = TimeZoneResolver.ToDateInTimeZone(_clock.GetUtcNow(), timeZoneResult.Zone!);
             var targetEnd = today.AddDays(horizonDays);
 
             var activeSchedules = await _db.ServiceSchedules

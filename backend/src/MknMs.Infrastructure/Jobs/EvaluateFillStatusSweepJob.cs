@@ -48,8 +48,13 @@ public sealed class EvaluateFillStatusSweepJob : IJob
         var db = scope.ServiceProvider.GetRequiredService<MknDbContext>();
         var clock = scope.ServiceProvider.GetRequiredService<TimeProvider>();
 
-        var timeZone = await TimeZoneResolver.ResolveAsync(db, context.CancellationToken);
-        var today = TimeZoneResolver.ToDateInTimeZone(clock.GetUtcNow(), timeZone);
+        var timeZoneResult = await TimeZoneResolver.ResolveAsync(db, context.CancellationToken);
+        if (!timeZoneResult.IsSuccess)
+        {
+            throw new InvalidOperationException(timeZoneResult.ErrorDetail);
+        }
+
+        var today = TimeZoneResolver.ToDateInTimeZone(clock.GetUtcNow(), timeZoneResult.Zone!);
 
         // Sweep the past 7 days and the next 30 days. The past window
         // covers occurrences whose assignments changed while an event

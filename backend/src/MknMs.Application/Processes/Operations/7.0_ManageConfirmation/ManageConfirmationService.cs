@@ -238,7 +238,20 @@ public sealed class ManageConfirmationService : IManageConfirmationService
 
         if (targetStatus.IsTerminal)
         {
-            var reResolved = await ReResolveAsync(assignment, cancellationToken);
+            var timeZoneResult = await TimeZoneResolver.ResolveAsync(_db, cancellationToken);
+            if (!timeZoneResult.IsSuccess)
+            {
+                return new ManageConfirmationResult
+                {
+                    Status = "Failure",
+                    AssignmentsTransitioned = 1,
+                    ReplacementsCreated = 0,
+                    SlotsLeftVacant = 0,
+                    ErrorDetail = timeZoneResult.ErrorDetail,
+                };
+            }
+
+            var reResolved = await ReResolveAsync(assignment, timeZoneResult.Zone!, cancellationToken);
             if (reResolved)
             {
                 replacements++;
@@ -348,7 +361,20 @@ public sealed class ManageConfirmationService : IManageConfirmationService
         // replacement is sought and no notice goes out — the service
         // has already happened. This compares dates only. It does not
         // add a setting and it does not assume when any service runs.
-        var timeZone = await TimeZoneResolver.ResolveAsync(_db, cancellationToken);
+        var timeZoneResult = await TimeZoneResolver.ResolveAsync(_db, cancellationToken);
+        if (!timeZoneResult.IsSuccess)
+        {
+            return new ManageConfirmationResult
+            {
+                Status = "Failure",
+                AssignmentsTransitioned = 0,
+                ReplacementsCreated = 0,
+                SlotsLeftVacant = 0,
+                ErrorDetail = timeZoneResult.ErrorDetail,
+            };
+        }
+
+        var timeZone = timeZoneResult.Zone!;
         var today = TimeZoneResolver.ToDateInTimeZone(_clock.GetUtcNow(), timeZone);
 
         var transitions = 0;
@@ -376,7 +402,7 @@ public sealed class ManageConfirmationService : IManageConfirmationService
                 continue;
             }
 
-            var reResolved = await ReResolveAsync(assignment, cancellationToken);
+            var reResolved = await ReResolveAsync(assignment, timeZone, cancellationToken);
             if (reResolved)
             {
                 replacements++;
@@ -412,6 +438,7 @@ public sealed class ManageConfirmationService : IManageConfirmationService
     /// </remarks>
     private async Task<bool> ReResolveAsync(
         RosterAssignment terminalAssignment,
+        TimeZoneInfo timeZone,
         CancellationToken cancellationToken)
     {
         var occurrenceId = terminalAssignment.OccurrenceId;
@@ -471,7 +498,6 @@ public sealed class ManageConfirmationService : IManageConfirmationService
             exclusion.Add(memberId);
         }
 
-        var timeZone = await TimeZoneResolver.ResolveAsync(_db, cancellationToken);
         var today = TimeZoneResolver.ToDateInTimeZone(_clock.GetUtcNow(), timeZone);
 
         var candidates = await FindCandidatesAsync(
