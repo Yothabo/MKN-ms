@@ -1,3 +1,4 @@
+
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -11,7 +12,7 @@ namespace MknMs.Persistence.Configurations;
 /// uniqueness constraint on that pair. Each slot is identified by its
 /// TimeSlotId.
 ///
-/// Specification: §4 (Branch Time Slot), §9.1.3.
+/// Specification: §4 (Branch Time Slot), §9.1.3, §9.7.
 /// </remarks>
 public class BranchTimeSlotConfiguration : IEntityTypeConfiguration<BranchTimeSlot>
 {
@@ -30,6 +31,9 @@ public class BranchTimeSlotConfiguration : IEntityTypeConfiguration<BranchTimeSl
             .IsRequired();
 
         builder.Property(e => e.IsActive)
+            .IsRequired();
+
+        builder.Property(e => e.IsDeleted)
             .IsRequired();
 
         builder.HasOne(e => e.Branch)

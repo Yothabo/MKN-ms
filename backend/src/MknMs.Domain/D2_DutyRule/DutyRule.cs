@@ -1,3 +1,4 @@
+
 namespace MknMs.Domain.D2_DutyRule;
 
 /// <summary>
@@ -9,7 +10,7 @@ namespace MknMs.Domain.D2_DutyRule;
 /// specification. CriteriaValue is free text in storage, interpreted per
 /// CriteriaType at evaluation time.
 ///
-/// Specification: §4 (Duty Rule), §9.1.10.
+/// Specification: §4 (Duty Rule), §9.1.10, §9.7.
 /// </remarks>
 public class DutyRule
 {
@@ -24,6 +25,8 @@ public class DutyRule
     public string CriteriaValue { get; set; } = null!;
 
     public bool IsActive { get; set; } = true;
+
+    public bool IsDeleted { get; set; }
 
     // Navigation
     public Duty Duty { get; set; } = null!;

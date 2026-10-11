@@ -1,3 +1,4 @@
+
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -10,7 +11,7 @@ namespace MknMs.Persistence.Configurations;
 /// Location is a single structured value stored as TEXT. Its internal
 /// representation is an open implementation choice (§9.5).
 ///
-/// Specification: §4 (Branch), §9.1.3.
+/// Specification: §4 (Branch), §9.1.3, §9.7.
 /// </remarks>
 public class BranchConfiguration : IEntityTypeConfiguration<Branch>
 {
@@ -26,6 +27,9 @@ public class BranchConfiguration : IEntityTypeConfiguration<Branch>
             .IsRequired();
 
         builder.Property(e => e.IsActive)
+            .IsRequired();
+
+        builder.Property(e => e.IsDeleted)
             .IsRequired();
     }
 }

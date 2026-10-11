@@ -1,3 +1,4 @@
+
 namespace MknMs.Domain.D3_BranchTimeSlotService;
 
 /// <summary>
@@ -13,7 +14,7 @@ namespace MknMs.Domain.D3_BranchTimeSlotService;
 /// Active-row uniqueness on (ServiceDefId, TimeSlotId). Deactivation
 /// stops future materialization without touching existing occurrences.
 ///
-/// Specification: §4 (Service Schedule), §9.1.5, §15.2.3.
+/// Specification: §4 (Service Schedule), §9.1.5, §15.2.3, §9.7.
 /// </remarks>
 public class ServiceSchedule
 {
@@ -26,6 +27,8 @@ public class ServiceSchedule
     public TimeOnly StartTime { get; set; }
 
     public bool IsActive { get; set; } = true;
+
+    public bool IsDeleted { get; set; }
 
     // Navigation
     public ServiceDefinition ServiceDefinition { get; set; } = null!;

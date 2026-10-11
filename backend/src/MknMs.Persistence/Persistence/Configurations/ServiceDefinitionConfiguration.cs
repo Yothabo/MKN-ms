@@ -1,3 +1,4 @@
+
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -12,7 +13,7 @@ namespace MknMs.Persistence.Configurations;
 /// to that branch — a rule enforced when a ServiceSchedule is created
 /// or edited (process 1.6), not here.
 ///
-/// Specification: §4 (Service Definition), §9.1.4, §9.1.6.
+/// Specification: §4 (Service Definition), §9.1.4, §9.1.6, §9.7.
 /// </remarks>
 public class ServiceDefinitionConfiguration : IEntityTypeConfiguration<ServiceDefinition>
 {
@@ -30,6 +31,9 @@ public class ServiceDefinitionConfiguration : IEntityTypeConfiguration<ServiceDe
         builder.Property(e => e.OwningBranchId);
 
         builder.Property(e => e.IsActive)
+            .IsRequired();
+
+        builder.Property(e => e.IsDeleted)
             .IsRequired();
 
         builder.HasOne(e => e.ServiceType)

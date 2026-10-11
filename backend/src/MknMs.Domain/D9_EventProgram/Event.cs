@@ -1,3 +1,4 @@
+
 namespace MknMs.Domain.D9_EventProgram;
 
 /// <summary>
@@ -7,7 +8,7 @@ namespace MknMs.Domain.D9_EventProgram;
 /// Type is free text. May span multiple days — StartDate and EndDate
 /// are both fields. Deactivated, never deleted.
 ///
-/// Specification: §4 (Event), §9.1.11.
+/// Specification: §4 (Event), §9.1.11, §9.7.
 /// </remarks>
 public class Event
 {
@@ -24,4 +25,6 @@ public class Event
     public string Type { get; set; } = null!;
 
     public bool IsActive { get; set; } = true;
+
+    public bool IsDeleted { get; set; }
 }

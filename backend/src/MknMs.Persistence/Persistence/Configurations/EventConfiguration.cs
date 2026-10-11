@@ -1,3 +1,4 @@
+
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -9,7 +10,7 @@ namespace MknMs.Persistence.Configurations;
 /// <remarks>
 /// Type and Location are free text. May span multiple days.
 ///
-/// Specification: §4 (Event), §9.1.11.
+/// Specification: §4 (Event), §9.1.11, §9.7.
 /// </remarks>
 public class EventConfiguration : IEntityTypeConfiguration<Event>
 {
@@ -23,5 +24,6 @@ public class EventConfiguration : IEntityTypeConfiguration<Event>
         builder.Property(e => e.Location).IsRequired().HasMaxLength(500);
         builder.Property(e => e.Type).IsRequired().HasMaxLength(100);
         builder.Property(e => e.IsActive).IsRequired();
+        builder.Property(e => e.IsDeleted).IsRequired();
     }
 }

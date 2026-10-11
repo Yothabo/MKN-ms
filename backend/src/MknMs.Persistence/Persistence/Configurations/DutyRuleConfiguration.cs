@@ -1,3 +1,4 @@
+
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -15,7 +16,7 @@ namespace MknMs.Persistence.Configurations;
 /// application, not by a CHECK constraint, so that reserved criteria
 /// types can be added without a schema migration.
 ///
-/// Specification: §4 (Duty Rule), §9.1.10, §10.1.5.
+/// Specification: §4 (Duty Rule), §9.1.10, §10.1.5, §9.7.
 /// </remarks>
 public class DutyRuleConfiguration : IEntityTypeConfiguration<DutyRule>
 {
@@ -38,6 +39,9 @@ public class DutyRuleConfiguration : IEntityTypeConfiguration<DutyRule>
             .HasMaxLength(500);
 
         builder.Property(e => e.IsActive)
+            .IsRequired();
+
+        builder.Property(e => e.IsDeleted)
             .IsRequired();
 
         builder.HasOne(e => e.Duty)

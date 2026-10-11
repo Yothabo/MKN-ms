@@ -24,5 +24,11 @@ public class RoleConfiguration : IEntityTypeConfiguration<Role>
 
         builder.Property(e => e.IsActive)
             .IsRequired();
+
+        builder.Property(e => e.IsDefault)
+            .IsRequired();
+
+        builder.Property(e => e.IsDeleted)
+            .IsRequired();
     }
 }

@@ -1,3 +1,4 @@
+
 namespace MknMs.Domain.D9_EventProgram;
 
 /// <summary>
@@ -5,7 +6,10 @@ namespace MknMs.Domain.D9_EventProgram;
 /// Event.
 /// </summary>
 /// <remarks>
-/// Specification: §4 (Program), §9.1.11.
+/// Program carries only IsDeleted; it is deactivated by deactivating
+/// its Event.
+///
+/// Specification: §4 (Program), §9.1.11, §9.7.
 /// </remarks>
 public class Program
 {
@@ -14,6 +18,8 @@ public class Program
     public int EventId { get; set; }
 
     public string Title { get; set; } = null!;
+
+    public bool IsDeleted { get; set; }
 
     // Navigation
     public Event Event { get; set; } = null!;

@@ -1,3 +1,4 @@
+
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -12,7 +13,7 @@ namespace MknMs.Persistence.Configurations;
 /// stop the duty being required on future occurrences, without
 /// affecting existing ones.
 ///
-/// Specification: §4 (Service Definition Duty), §9.1.4.
+/// Specification: §4 (Service Definition Duty), §9.1.4, §9.7.
 /// </remarks>
 public class ServiceDefinitionDutyConfiguration : IEntityTypeConfiguration<ServiceDefinitionDuty>
 {
@@ -24,6 +25,9 @@ public class ServiceDefinitionDutyConfiguration : IEntityTypeConfiguration<Servi
             .IsRequired();
 
         builder.Property(e => e.IsActive)
+            .IsRequired();
+
+        builder.Property(e => e.IsDeleted)
             .IsRequired();
 
         builder.HasOne(e => e.ServiceDefinition)

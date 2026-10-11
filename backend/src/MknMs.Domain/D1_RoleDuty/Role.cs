@@ -1,3 +1,4 @@
+
 namespace MknMs.Domain.D1_RoleDuty;
 
 /// <summary>
@@ -5,7 +6,10 @@ namespace MknMs.Domain.D1_RoleDuty;
 /// Deactivated, never deleted.
 /// </summary>
 /// <remarks>
-/// Specification: §4 (Role), §9.1.2, §9.1.1.
+/// IsDefault identifies the single default Role. The default Role
+/// cannot be soft-deleted.
+///
+/// Specification: §4 (Role), §9.1.2, §9.7, §15.8.13.
 /// </remarks>
 public class Role
 {
@@ -13,5 +17,9 @@ public class Role
 
     public string Name { get; set; } = null!;
 
+    public bool IsDefault { get; set; }
+
     public bool IsActive { get; set; } = true;
+
+    public bool IsDeleted { get; set; }
 }

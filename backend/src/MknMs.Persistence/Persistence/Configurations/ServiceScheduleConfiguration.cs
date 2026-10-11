@@ -1,3 +1,4 @@
+
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -16,7 +17,7 @@ namespace MknMs.Persistence.Configurations;
 /// (ServiceDefId, TimeSlotId). Inactive schedules are excluded from the
 /// constraint, so a deactivated schedule may be replaced.
 ///
-/// Specification: §4 (Service Schedule), §9.1.5, §15.2.3.
+/// Specification: §4 (Service Schedule), §9.1.5, §15.2.3, §9.7.
 /// </remarks>
 public class ServiceScheduleConfiguration : IEntityTypeConfiguration<ServiceSchedule>
 {
@@ -34,6 +35,9 @@ public class ServiceScheduleConfiguration : IEntityTypeConfiguration<ServiceSche
             .IsRequired();
 
         builder.Property(e => e.IsActive)
+            .IsRequired();
+
+        builder.Property(e => e.IsDeleted)
             .IsRequired();
 
         builder.HasOne(e => e.ServiceDefinition)

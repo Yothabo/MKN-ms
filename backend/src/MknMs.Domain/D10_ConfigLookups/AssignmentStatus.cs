@@ -1,3 +1,4 @@
+
 namespace MknMs.Domain.D10_ConfigLookups;
 
 /// <summary>
@@ -11,7 +12,7 @@ namespace MknMs.Domain.D10_ConfigLookups;
 /// availability rule, 7.0's re-resolution logic, and 10.0's capacity
 /// calculation.
 ///
-/// Specification: §4 (lookups), §9.1.12, §11.1.2, §15.1.2.
+/// Specification: §4 (lookups), §9.1.12, §9.7, §11.1.2, §15.1.2.
 /// </remarks>
 public class AssignmentStatus
 {
@@ -20,4 +21,8 @@ public class AssignmentStatus
     public string Name { get; set; } = null!;
 
     public bool IsTerminal { get; set; }
+
+    public bool IsActive { get; set; } = true;
+
+    public bool IsDeleted { get; set; }
 }

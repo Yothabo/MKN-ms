@@ -1,3 +1,4 @@
+
 namespace MknMs.Domain.D3_BranchTimeSlotService;
 
 /// <summary>
@@ -10,7 +11,7 @@ namespace MknMs.Domain.D3_BranchTimeSlotService;
 ///
 /// TimeOfDayId references an administrator-defined lookup in D10.
 ///
-/// Specification: §4 (Branch Time Slot), §9.1.3, §9.1.5.
+/// Specification: §4 (Branch Time Slot), §9.1.3, §9.1.5, §9.7.
 /// </remarks>
 public class BranchTimeSlot
 {
@@ -23,6 +24,8 @@ public class BranchTimeSlot
     public int TimeOfDayId { get; set; }
 
     public bool IsActive { get; set; } = true;
+
+    public bool IsDeleted { get; set; }
 
     // Navigation
     public Branch Branch { get; set; } = null!;

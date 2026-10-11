@@ -1,3 +1,4 @@
+
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -11,7 +12,9 @@ namespace MknMs.Persistence.Configurations;
 /// ScheduledStart, ScheduledEnd, and the current time. ServiceDefId is
 /// optional; when set, process 8.0 creates an event-sourced occurrence.
 ///
-/// Specification: §4 (Program Item), §9.1.11.
+/// ProgramItem carries only IsDeleted; its live state is computed.
+///
+/// Specification: §4 (Program Item), §9.1.11, §9.7.
 /// </remarks>
 public class ProgramItemConfiguration : IEntityTypeConfiguration<ProgramItem>
 {
@@ -25,6 +28,7 @@ public class ProgramItemConfiguration : IEntityTypeConfiguration<ProgramItem>
         builder.Property(e => e.ScheduledStart).IsRequired();
         builder.Property(e => e.ScheduledEnd).IsRequired();
         builder.Property(e => e.ServiceDefId);
+        builder.Property(e => e.IsDeleted).IsRequired();
 
         builder.HasOne(e => e.Program)
             .WithMany()

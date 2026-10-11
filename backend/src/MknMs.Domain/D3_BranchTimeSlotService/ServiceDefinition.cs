@@ -1,3 +1,4 @@
+
 namespace MknMs.Domain.D3_BranchTimeSlotService;
 
 /// <summary>
@@ -11,7 +12,7 @@ namespace MknMs.Domain.D3_BranchTimeSlotService;
 /// happens when a ServiceSchedule is created or edited (process 1.6),
 /// not at ServiceDefinition creation.
 ///
-/// Specification: §4 (Service Definition), §9.1.4.
+/// Specification: §4 (Service Definition), §9.1.4, §9.7.
 /// </remarks>
 public class ServiceDefinition
 {
@@ -24,6 +25,8 @@ public class ServiceDefinition
     public int? OwningBranchId { get; set; }
 
     public bool IsActive { get; set; } = true;
+
+    public bool IsDeleted { get; set; }
 
     // Navigation
     public ServiceType ServiceType { get; set; } = null!;

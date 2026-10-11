@@ -24,5 +24,8 @@ public class DutyConfiguration : IEntityTypeConfiguration<Duty>
 
         builder.Property(e => e.IsActive)
             .IsRequired();
+
+        builder.Property(e => e.IsDeleted)
+            .IsRequired();
     }
 }

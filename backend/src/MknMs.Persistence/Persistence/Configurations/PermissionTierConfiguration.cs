@@ -1,3 +1,4 @@
+
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -7,7 +8,11 @@ namespace MknMs.Persistence.Configurations;
 /// EF Core mapping for the PermissionTier lookup.
 /// </summary>
 /// <remarks>
-/// Specification: §4 (Permission Tier), §9.1.8.
+/// IsDefault identifies the single default tier, mirroring Role.
+/// IsDefault. Added by the OI-2 resolution so §9.7's "the default" is
+/// executable.
+///
+/// Specification: §4 (Permission Tier), §9.1.8, §9.7.
 /// </remarks>
 public class PermissionTierConfiguration : IEntityTypeConfiguration<PermissionTier>
 {
@@ -18,5 +23,14 @@ public class PermissionTierConfiguration : IEntityTypeConfiguration<PermissionTi
         builder.Property(e => e.Name)
             .IsRequired()
             .HasMaxLength(200);
+
+        builder.Property(e => e.IsDefault)
+            .IsRequired();
+
+        builder.Property(e => e.IsActive)
+            .IsRequired();
+
+        builder.Property(e => e.IsDeleted)
+            .IsRequired();
     }
 }

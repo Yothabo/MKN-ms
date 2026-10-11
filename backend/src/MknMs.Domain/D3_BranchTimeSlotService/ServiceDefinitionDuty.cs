@@ -1,3 +1,4 @@
+
 namespace MknMs.Domain.D3_BranchTimeSlotService;
 
 /// <summary>
@@ -10,7 +11,7 @@ namespace MknMs.Domain.D3_BranchTimeSlotService;
 /// deactivation model: a row may be deactivated to stop the duty being
 /// required on future occurrences, without affecting existing ones.
 ///
-/// Specification: §4 (Service Definition Duty), §9.1.4.
+/// Specification: §4 (Service Definition Duty), §9.1.4, §9.7.
 /// </remarks>
 public class ServiceDefinitionDuty
 {
@@ -21,6 +22,8 @@ public class ServiceDefinitionDuty
     public int RequiredSlotCount { get; set; }
 
     public bool IsActive { get; set; } = true;
+
+    public bool IsDeleted { get; set; }
 
     // Navigation
     public ServiceDefinition ServiceDefinition { get; set; } = null!;

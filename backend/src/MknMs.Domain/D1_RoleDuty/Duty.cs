@@ -1,3 +1,4 @@
+
 namespace MknMs.Domain.D1_RoleDuty;
 
 /// <summary>
@@ -8,7 +9,7 @@ namespace MknMs.Domain.D1_RoleDuty;
 /// Carries no reference to Role. The relationship — when one exists —
 /// is expressed by a DutyRule row written by process 2.0.
 ///
-/// Specification: §4 (Duty), §9.1.2, §9.1.1.
+/// Specification: §4 (Duty), §9.1.2, §9.7.
 /// </remarks>
 public class Duty
 {
@@ -17,4 +18,6 @@ public class Duty
     public string Name { get; set; } = null!;
 
     public bool IsActive { get; set; } = true;
+
+    public bool IsDeleted { get; set; }
 }

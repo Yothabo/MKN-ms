@@ -1,3 +1,4 @@
+
 namespace MknMs.Domain.D10_ConfigLookups;
 
 /// <summary>
@@ -6,11 +7,21 @@ namespace MknMs.Domain.D10_ConfigLookups;
 /// actually needed.
 /// </summary>
 /// <remarks>
-/// Specification: §4 (Permission Tier), §9.1.8.
+/// IsDefault identifies the single default PermissionTier, mirroring
+/// Role.IsDefault. The default cannot be soft-deleted. Added by the
+/// OI-2 resolution so §9.7's "the default" is executable.
+///
+/// Specification: §4 (Permission Tier), §9.1.8, §9.7.
 /// </remarks>
 public class PermissionTier
 {
     public int PermissionTierId { get; set; }
 
     public string Name { get; set; } = null!;
+
+    public bool IsDefault { get; set; }
+
+    public bool IsActive { get; set; } = true;
+
+    public bool IsDeleted { get; set; }
 }

@@ -1,3 +1,4 @@
+
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -10,7 +11,10 @@ namespace MknMs.Persistence.Configurations;
 /// Exactly one Program per Event. Enforced by a unique index on
 /// EventId.
 ///
-/// Specification: §4 (Program), §9.1.11.
+/// Program carries only IsDeleted; it is deactivated by deactivating
+/// its Event.
+///
+/// Specification: §4 (Program), §9.1.11, §9.7.
 /// </remarks>
 public class ProgramConfiguration : IEntityTypeConfiguration<Program>
 {
@@ -20,6 +24,7 @@ public class ProgramConfiguration : IEntityTypeConfiguration<Program>
 
         builder.Property(e => e.EventId).IsRequired();
         builder.Property(e => e.Title).IsRequired().HasMaxLength(200);
+        builder.Property(e => e.IsDeleted).IsRequired();
 
         builder.HasOne(e => e.Event)
             .WithMany()

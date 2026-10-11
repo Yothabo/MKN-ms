@@ -1,3 +1,4 @@
+
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -7,7 +8,7 @@ namespace MknMs.Persistence.Configurations;
 /// EF Core mapping for EventDuty.
 /// </summary>
 /// <remarks>
-/// Specification: §4 (Event Duty), §9.1.11.
+/// Specification: §4 (Event Duty), §9.1.11, §9.7.
 /// </remarks>
 public class EventDutyConfiguration : IEntityTypeConfiguration<EventDuty>
 {
@@ -19,6 +20,8 @@ public class EventDutyConfiguration : IEntityTypeConfiguration<EventDuty>
         builder.Property(e => e.Label).IsRequired().HasMaxLength(200);
         builder.Property(e => e.AssignedMemberId).IsRequired();
         builder.Property(e => e.AssignmentStatusId);
+        builder.Property(e => e.IsActive).IsRequired();
+        builder.Property(e => e.IsDeleted).IsRequired();
 
         builder.HasOne(e => e.ProgramItem)
             .WithMany()
