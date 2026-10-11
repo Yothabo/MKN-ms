@@ -9,6 +9,7 @@ using MknMs.Application.Processes.Configuration.ConfigureServiceDutyAndSchedule;
 using MknMs.Application.Processes.Configuration.ConfigureTimeSlot;
 using MknMs.Application.Processes.Configuration.Lookup_ServiceType;
 using MknMs.Application.Processes.Configuration.Lookup_TimeOfDay;
+using MknMs.Application.Processes.Configuration.ManageAttendanceRule;
 using MknMs.Application.Processes.Configuration.ManageEligibility;
 using MknMs.Application.Processes.Configuration.ManageEvent;
 using MknMs.Application.Processes.Configuration.ManageEventDuty;
@@ -39,6 +40,7 @@ public static class ConfigurationEndpoints
         MapManageMembership(routes);
         MapManageEligibility(routes);
         MapManageEventsAndPrograms(routes);
+        MapManageAttendanceRule(routes);
         return routes;
     }
 
@@ -511,6 +513,76 @@ public static class ConfigurationEndpoints
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.RemoveAsync(id, cancellationToken)));
     }
+
+    // -----------------------------------------------------------------
+    // 3.3 Manage Attendance Rule
+    // -----------------------------------------------------------------
+
+    private static void MapManageAttendanceRule(IEndpointRouteBuilder routes)
+    {
+        routes.MapGet("/api/config/3.3/attendance-rules", async (
+            bool? includeDisabled,
+            bool? includeInactive,
+            IManageAttendanceRuleService service,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await service.ListAsync(
+                includeDisabled ?? true,
+                includeInactive ?? false,
+                cancellationToken)));
+
+        routes.MapGet("/api/config/3.3/attendance-rules/{id:int}", async (
+            int id,
+            IManageAttendanceRuleService service,
+            CancellationToken cancellationToken) =>
+        {
+            var rule = await service.GetAsync(id, cancellationToken);
+            return rule is null ? Results.NotFound() : Results.Ok(rule);
+        });
+
+        routes.MapGet("/api/config/3.3/attendance-rules/{id:int}/scope", async (
+            int id,
+            IManageAttendanceRuleService service,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await service.ListScopeAsync(id, cancellationToken)));
+
+        routes.MapPost("/api/config/3.3/attendance-rules", async (
+            [FromBody] CreateAttendanceRuleRequest request,
+            IManageAttendanceRuleService service,
+            CancellationToken cancellationToken) =>
+            ToHttpResult(await service.CreateAsync(request, cancellationToken)));
+
+        routes.MapPut("/api/config/3.3/attendance-rules/{id:int}", async (
+            int id,
+            [FromBody] UpdateAttendanceRuleRequest request,
+            IManageAttendanceRuleService service,
+            CancellationToken cancellationToken) =>
+            ToHttpResult(await service.UpdateAsync(id, request, cancellationToken)));
+
+        routes.MapPost("/api/config/3.3/attendance-rules/{id:int}/disable", async (
+            int id,
+            IManageAttendanceRuleService service,
+            CancellationToken cancellationToken) =>
+            ToHttpResult(await service.DisableAsync(id, cancellationToken)));
+
+        routes.MapPost("/api/config/3.3/attendance-rules/{id:int}/enable", async (
+            int id,
+            IManageAttendanceRuleService service,
+            CancellationToken cancellationToken) =>
+            ToHttpResult(await service.EnableAsync(id, cancellationToken)));
+
+        routes.MapPost("/api/config/3.3/attendance-rules/{id:int}/deactivate", async (
+            int id,
+            IManageAttendanceRuleService service,
+            CancellationToken cancellationToken) =>
+            ToHttpResult(await service.DeactivateAsync(id, cancellationToken)));
+
+        routes.MapPost("/api/config/3.3/attendance-rules/{id:int}/soft-delete", async (
+            int id,
+            [FromBody] SoftDeleteAttendanceRuleRequest request,
+            IManageAttendanceRuleService service,
+            CancellationToken cancellationToken) =>
+            ToHttpResult(await service.SoftDeleteAsync(id, request.Reason, cancellationToken)));
+    }
 }
 
 // -----------------------------------------------------------------
@@ -616,6 +688,11 @@ public sealed record CreateProgramItemRequest
     public required string ScheduledEnd { get; init; }
     public int? ServiceDefId { get; init; }
     public required int ActingAdminId { get; init; }
+}
+
+public sealed record SoftDeleteAttendanceRuleRequest
+{
+    public required string Reason { get; init; }
 }
 
 public sealed record CreateEventDutyRequest

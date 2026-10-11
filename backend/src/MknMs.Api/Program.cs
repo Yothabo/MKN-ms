@@ -9,6 +9,7 @@ using MknMs.Application.Processes.Configuration.ConfigureServiceDutyAndSchedule;
 using MknMs.Application.Processes.Configuration.ConfigureTimeSlot;
 using MknMs.Application.Processes.Configuration.Lookup_ServiceType;
 using MknMs.Application.Processes.Configuration.Lookup_TimeOfDay;
+using MknMs.Application.Processes.Configuration.ManageAttendanceRule;
 using MknMs.Application.Processes.Configuration.ManageEligibility;
 using MknMs.Application.Processes.Configuration.ManageEvent;
 using MknMs.Application.Processes.Configuration.ManageEventDuty;
@@ -64,6 +65,7 @@ builder.Services.AddScoped<IConfigureDutyRulesService, ConfigureDutyRulesService
 // 3.0 Manage Membership.
 builder.Services.AddScoped<IManageMemberRecordService, ManageMemberRecordService>();
 builder.Services.AddScoped<IManageIdentifierHistoryService, ManageIdentifierHistoryService>();
+builder.Services.AddScoped<IManageAttendanceRuleService, ManageAttendanceRuleService>();
 
 // 4.0 Manage Eligibility.
 builder.Services.AddScoped<IManageEligibilityService, ManageEligibilityService>();
