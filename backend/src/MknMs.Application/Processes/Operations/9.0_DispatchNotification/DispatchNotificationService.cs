@@ -141,4 +141,62 @@ public sealed class DispatchNotificationService : IDispatchNotificationService
                 assignment.AssignmentId);
         }
     }
+
+    public async Task DispatchAttendanceRuleNoticeAsync(
+        Member member,
+        AttendanceRule rule,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            // Channel resolution follows the assignment path exactly:
+            // §14.1.2, no fallback.
+            var setting = await _db.SystemSettings
+                .FirstOrDefaultAsync(s => s.Key == ChannelKey, cancellationToken);
+
+            if (string.IsNullOrWhiteSpace(setting?.Value))
+            {
+                if (setting?.Required ?? false)
+                {
+                    throw new InvalidOperationException(
+                        $"Required setting '{ChannelKey}' is not configured. " +
+                        "Notification dispatch cannot proceed.");
+                }
+
+                return;
+            }
+
+            var channelName = setting!.Value!.Trim();
+
+            if (!string.Equals(channelName, LogChannel, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            var memberName = $"{member.Name} {member.Surname}";
+
+            var message =
+                $"Attendance notice: {memberName}, the rule " +
+                $"'{rule.Name}' has fired.";
+
+            _logger.LogInformation(
+                "Notification [{Channel}] attendance_rule={RuleId} member={MemberId}: {Message}",
+                channelName,
+                rule.AttendanceRuleId,
+                member.MemberId,
+                message);
+        }
+        catch (InvalidOperationException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Notification dispatch failed for attendance rule {RuleId}. " +
+                "The rule outcome is unaffected.",
+                rule.AttendanceRuleId);
+        }
+    }
 }

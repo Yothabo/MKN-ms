@@ -1,4 +1,6 @@
+using MknMs.Domain.D4_Member;
 using MknMs.Domain.D7_RosterAssignment;
+using MknMs.Domain.D13_AttendanceRule;
 using MknMs.Application.Processes.Operations.DispatchNotification;
 
 namespace MknMs.IntegrationTests;
@@ -28,6 +30,14 @@ public sealed class FakeDispatchNotificationService : IDispatchNotificationServi
         CancellationToken cancellationToken = default)
     {
         _dispatchedAssignmentIds.Add(assignment.AssignmentId);
+        return Task.CompletedTask;
+    }
+
+    public Task DispatchAttendanceRuleNoticeAsync(
+        Member member,
+        AttendanceRule rule,
+        CancellationToken cancellationToken = default)
+    {
         return Task.CompletedTask;
     }
 }
