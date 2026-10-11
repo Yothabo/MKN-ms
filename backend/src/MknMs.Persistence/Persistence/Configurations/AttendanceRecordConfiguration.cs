@@ -1,3 +1,4 @@
+
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -10,7 +11,7 @@ namespace MknMs.Persistence.Configurations;
 /// Unique on (MemberId, OccurrenceId) — amendment §15.2.2. Attendance
 /// is a raw fact; no interpretation layer.
 ///
-/// Specification: §4 (Attendance Record), §13, §15.2.2.
+/// Specification: §4 (Attendance Record), §13, §15.2.2, §15.8.19.
 /// </remarks>
 public class AttendanceRecordConfiguration : IEntityTypeConfiguration<AttendanceRecord>
 {
@@ -21,6 +22,7 @@ public class AttendanceRecordConfiguration : IEntityTypeConfiguration<Attendance
         builder.Property(e => e.MemberId).IsRequired();
         builder.Property(e => e.OccurrenceId).IsRequired();
         builder.Property(e => e.Timestamp).IsRequired();
+        builder.Property(e => e.Source).IsRequired().HasMaxLength(50);
 
         builder.HasOne(e => e.Member)
             .WithMany()

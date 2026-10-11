@@ -10,9 +10,9 @@ namespace MknMs.Domain.D9_EventProgram;
 /// event-sourced ServiceOccurrence directly (process 8.0). When null,
 /// no occurrence is created and the item has no roster machinery.
 ///
-/// ProgramItem carries only IsDeleted; its live state is computed.
+/// Location is a finer physical location than the branch, optional.
 ///
-/// Specification: §4 (Program Item), §9.1.11, §9.7.
+/// Specification: §4 (Program Item), §9.1.11, §9.7, §15.8.11.
 /// </remarks>
 public class ProgramItem
 {
@@ -29,6 +29,8 @@ public class ProgramItem
     public DateTimeOffset ScheduledEnd { get; set; }
 
     public int? ServiceDefId { get; set; }
+
+    public string? Location { get; set; }
 
     public bool IsDeleted { get; set; }
 

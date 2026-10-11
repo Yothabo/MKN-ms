@@ -10,13 +10,20 @@ namespace MknMs.Domain.D2_DutyRule;
 /// specification. CriteriaValue is free text in storage, interpreted per
 /// CriteriaType at evaluation time.
 ///
-/// Specification: §4 (Duty Rule), §9.1.10, §9.7.
+/// ServiceDefId is optional. Null means the rule applies to the Duty
+/// wherever it appears. Set means the rule applies only where the
+/// Duty is required by that Service Definition, and it overrides the
+/// duty-global rules entirely for that pair.
+///
+/// Specification: §4 (Duty Rule), §9.1.10, §9.7, §10.1.5, §15.8.6.
 /// </remarks>
 public class DutyRule
 {
     public int RuleId { get; set; }
 
     public int DutyId { get; set; }
+
+    public int? ServiceDefId { get; set; }
 
     public int TierOrder { get; set; }
 
@@ -30,4 +37,6 @@ public class DutyRule
 
     // Navigation
     public Duty Duty { get; set; } = null!;
+
+    public ServiceDefinition? ServiceDefinition { get; set; }
 }

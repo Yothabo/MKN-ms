@@ -699,11 +699,17 @@ namespace MknMs.Infrastructure.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_deleted");
 
+                    b.Property<int?>("ServiceDefId")
+                        .HasColumnType("integer")
+                        .HasColumnName("service_def_id");
+
                     b.Property<int>("TierOrder")
                         .HasColumnType("integer")
                         .HasColumnName("tier_order");
 
                     b.HasKey("RuleId");
+
+                    b.HasIndex("ServiceDefId");
 
                     b.HasIndex("DutyId", "TierOrder")
                         .HasDatabaseName("ix_duty_rule_duty_tier");
@@ -738,6 +744,10 @@ namespace MknMs.Infrastructure.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
                         .HasColumnName("name");
+
+                    b.Property<bool?>("UsesAttendanceRegister")
+                        .HasColumnType("boolean")
+                        .HasColumnName("uses_attendance_register");
 
                     b.HasKey("BranchId")
                         .HasName("pk_branch");
@@ -1022,6 +1032,10 @@ namespace MknMs.Infrastructure.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("AdminId"));
 
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
                     b.Property<int>("MemberId")
                         .HasColumnType("integer")
                         .HasColumnName("member_id");
@@ -1089,6 +1103,11 @@ namespace MknMs.Infrastructure.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("branch_id");
 
+                    b.Property<string>("CardNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("card_number");
+
                     b.Property<DateOnly>("DateOfBirth")
                         .HasColumnType("date")
                         .HasColumnName("date_of_birth");
@@ -1112,6 +1131,15 @@ namespace MknMs.Infrastructure.Migrations
                         .HasColumnType("date")
                         .HasColumnName("join_date");
 
+                    b.Property<string>("JoinReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("join_reason");
+
+                    b.Property<int?>("MemberStatusId")
+                        .HasColumnType("integer")
+                        .HasColumnName("member_status_id");
+
                     b.Property<string>("MembershipStage")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -1130,6 +1158,11 @@ namespace MknMs.Infrastructure.Migrations
                         .HasColumnType("character varying(50)")
                         .HasColumnName("phone");
 
+                    b.Property<string>("ReceiptNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("receipt_number");
+
                     b.Property<int>("RoleId")
                         .HasColumnType("integer")
                         .HasColumnName("role_id");
@@ -1145,6 +1178,9 @@ namespace MknMs.Infrastructure.Migrations
 
                     b.HasIndex("BranchId")
                         .HasDatabaseName("ix_member_branch");
+
+                    b.HasIndex("MemberStatusId")
+                        .HasDatabaseName("ix_member_status");
 
                     b.HasIndex("RoleId")
                         .HasDatabaseName("ix_member_role");
@@ -1428,6 +1464,12 @@ namespace MknMs.Infrastructure.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("occurrence_id");
 
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("source");
+
                     b.Property<DateTimeOffset>("Timestamp")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("timestamp");
@@ -1460,6 +1502,10 @@ namespace MknMs.Infrastructure.Migrations
                         .HasColumnType("date")
                         .HasColumnName("end_date");
 
+                    b.Property<int?>("HostBranchId")
+                        .HasColumnType("integer")
+                        .HasColumnName("host_branch_id");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean")
                         .HasColumnName("is_active");
@@ -1490,8 +1536,15 @@ namespace MknMs.Infrastructure.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("type");
 
+                    b.Property<bool?>("UsesAttendanceRegister")
+                        .HasColumnType("boolean")
+                        .HasColumnName("uses_attendance_register");
+
                     b.HasKey("EventId")
                         .HasName("pk_event");
+
+                    b.HasIndex("HostBranchId")
+                        .HasDatabaseName("ix_event_host_branch");
 
                     b.ToTable("event");
                 });
@@ -1531,6 +1584,10 @@ namespace MknMs.Infrastructure.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("assignment_status_id");
 
+                    b.Property<int?>("DutyId")
+                        .HasColumnType("integer")
+                        .HasColumnName("duty_id");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean")
                         .HasColumnName("is_active");
@@ -1549,6 +1606,10 @@ namespace MknMs.Infrastructure.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("program_item_id");
 
+                    b.Property<int?>("ServiceDefId")
+                        .HasColumnType("integer")
+                        .HasColumnName("service_def_id");
+
                     b.HasKey("EventDutyId")
                         .HasName("pk_event_duty");
 
@@ -1558,8 +1619,13 @@ namespace MknMs.Infrastructure.Migrations
                     b.HasIndex("AssignmentStatusId")
                         .HasDatabaseName("ix_event_duty_assignment_status_id");
 
+                    b.HasIndex("DutyId")
+                        .HasDatabaseName("ix_event_duty_duty");
+
                     b.HasIndex("ProgramItemId")
                         .HasDatabaseName("ix_event_duty_program_item");
+
+                    b.HasIndex("ServiceDefId");
 
                     b.ToTable("event_duty");
                 });
@@ -1609,6 +1675,11 @@ namespace MknMs.Infrastructure.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean")
                         .HasColumnName("is_deleted");
+
+                    b.Property<string>("Location")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("location");
 
                     b.Property<int>("ProgramId")
                         .HasColumnType("integer")
@@ -1770,7 +1841,15 @@ namespace MknMs.Infrastructure.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_duty_rule_duty_duty_id");
 
+                    b.HasOne("MknMs.Domain.D3_BranchTimeSlotService.ServiceDefinition", "ServiceDefinition")
+                        .WithMany()
+                        .HasForeignKey("ServiceDefId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_duty_rule_service_definitions_service_definition_temp_id");
+
                     b.Navigation("Duty");
+
+                    b.Navigation("ServiceDefinition");
                 });
 
             modelBuilder.Entity("MknMs.Domain.D3_BranchTimeSlotService.BranchTimeSlot", b =>
@@ -1958,6 +2037,12 @@ namespace MknMs.Infrastructure.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_member_branch_branch_id");
 
+                    b.HasOne("MknMs.Domain.D4_Member.MemberStatus", "MemberStatus")
+                        .WithMany()
+                        .HasForeignKey("MemberStatusId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_member_member_statuses_member_status_id");
+
                     b.HasOne("MknMs.Domain.D1_RoleDuty.Role", "Role")
                         .WithMany()
                         .HasForeignKey("RoleId")
@@ -1966,6 +2051,8 @@ namespace MknMs.Infrastructure.Migrations
                         .HasConstraintName("fk_member_role_role_id");
 
                     b.Navigation("Branch");
+
+                    b.Navigation("MemberStatus");
 
                     b.Navigation("Role");
                 });
@@ -2126,6 +2213,17 @@ namespace MknMs.Infrastructure.Migrations
                     b.Navigation("ServiceOccurrence");
                 });
 
+            modelBuilder.Entity("MknMs.Domain.D9_EventProgram.Event", b =>
+                {
+                    b.HasOne("MknMs.Domain.D3_BranchTimeSlotService.Branch", "HostBranch")
+                        .WithMany()
+                        .HasForeignKey("HostBranchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_event_branch_host_branch_id");
+
+                    b.Navigation("HostBranch");
+                });
+
             modelBuilder.Entity("MknMs.Domain.D9_EventProgram.EventBranch", b =>
                 {
                     b.HasOne("MknMs.Domain.D3_BranchTimeSlotService.Branch", "Branch")
@@ -2162,6 +2260,12 @@ namespace MknMs.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_event_duty_assignment_status_assignment_status_id");
 
+                    b.HasOne("MknMs.Domain.D1_RoleDuty.Duty", "Duty")
+                        .WithMany()
+                        .HasForeignKey("DutyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_event_duty_duty_duty_id");
+
                     b.HasOne("MknMs.Domain.D9_EventProgram.ProgramItem", "ProgramItem")
                         .WithMany()
                         .HasForeignKey("ProgramItemId")
@@ -2169,11 +2273,21 @@ namespace MknMs.Infrastructure.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_event_duty_program_items_program_item_id");
 
+                    b.HasOne("MknMs.Domain.D3_BranchTimeSlotService.ServiceDefinition", "ServiceDefinition")
+                        .WithMany()
+                        .HasForeignKey("ServiceDefId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_event_duty_service_definition_service_definition_temp_id1");
+
                     b.Navigation("AssignedMember");
 
                     b.Navigation("AssignmentStatus");
 
+                    b.Navigation("Duty");
+
                     b.Navigation("ProgramItem");
+
+                    b.Navigation("ServiceDefinition");
                 });
 
             modelBuilder.Entity("MknMs.Domain.D9_EventProgram.Program", b =>
@@ -2201,7 +2315,7 @@ namespace MknMs.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("ServiceDefId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_program_item_service_definition_service_definition_temp_id");
+                        .HasConstraintName("fk_program_item_service_definition_service_definition_temp_id2");
 
                     b.Navigation("Program");
 

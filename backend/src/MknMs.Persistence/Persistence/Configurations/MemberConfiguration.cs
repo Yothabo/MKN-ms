@@ -1,3 +1,4 @@
+
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -8,9 +9,10 @@ namespace MknMs.Persistence.Configurations;
 /// </summary>
 /// <remarks>
 /// A member holds exactly one BranchId and one RoleId. MembershipStage
-/// is free text, not a lookup. Email is the only optional field.
+/// is free text, not a lookup. Email is optional. MemberStatusId is
+/// nullable at this phase; it becomes non-null in Step 7.
 ///
-/// Specification: §4 (Member), §9.1.7.
+/// Specification: §4 (Member), §9.1.7, §15.8.1, §15.8.2, §15.8.3.
 /// </remarks>
 public class MemberConfiguration : IEntityTypeConfiguration<Member>
 {
@@ -18,7 +20,10 @@ public class MemberConfiguration : IEntityTypeConfiguration<Member>
     {
         builder.HasKey(e => e.MemberId);
 
+        builder.Property(e => e.ReceiptNumber).HasMaxLength(100);
+        builder.Property(e => e.CardNumber).HasMaxLength(100);
         builder.Property(e => e.JoinDate).IsRequired();
+        builder.Property(e => e.JoinReason).HasMaxLength(1000);
         builder.Property(e => e.DateOfBirth).IsRequired();
         builder.Property(e => e.MembershipStage).IsRequired().HasMaxLength(100);
         builder.Property(e => e.Name).IsRequired().HasMaxLength(200);
@@ -28,6 +33,7 @@ public class MemberConfiguration : IEntityTypeConfiguration<Member>
         builder.Property(e => e.Email).HasMaxLength(320);
         builder.Property(e => e.BranchId).IsRequired();
         builder.Property(e => e.RoleId).IsRequired();
+        builder.Property(e => e.MemberStatusId);
         builder.Property(e => e.IsActive).IsRequired();
 
         builder.HasOne(e => e.Branch)
@@ -40,7 +46,14 @@ public class MemberConfiguration : IEntityTypeConfiguration<Member>
             .HasForeignKey(e => e.RoleId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        builder.HasOne(e => e.MemberStatus)
+            .WithMany()
+            .HasForeignKey(e => e.MemberStatusId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .IsRequired(false);
+
         builder.HasIndex(e => e.BranchId).HasDatabaseName("ix_member_branch");
         builder.HasIndex(e => e.RoleId).HasDatabaseName("ix_member_role");
+        builder.HasIndex(e => e.MemberStatusId).HasDatabaseName("ix_member_status");
     }
 }

@@ -1,3 +1,4 @@
+
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -7,7 +8,7 @@ namespace MknMs.Persistence.Configurations;
 /// EF Core mapping for Admin.
 /// </summary>
 /// <remarks>
-/// Specification: §4 (Admin), §9.1.8.
+/// Specification: §4 (Admin), §9.1.8, §15.8.27.
 /// </remarks>
 public class AdminConfiguration : IEntityTypeConfiguration<Admin>
 {
@@ -17,6 +18,7 @@ public class AdminConfiguration : IEntityTypeConfiguration<Admin>
 
         builder.Property(e => e.MemberId).IsRequired();
         builder.Property(e => e.PermissionTierId).IsRequired();
+        builder.Property(e => e.IsActive).IsRequired();
 
         builder.HasOne(e => e.Member)
             .WithMany()
