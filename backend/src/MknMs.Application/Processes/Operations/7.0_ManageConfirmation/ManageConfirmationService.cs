@@ -49,9 +49,7 @@ public sealed class ManageConfirmationService : IManageConfirmationService
     private const string DeclinedStatusIdKey = "DeclinedStatusID";
     private const string TimedOutStatusIdKey = "TimedOutStatusID";
     private const string ConfirmationTimeoutHoursKey = "ConfirmationTimeoutHours";
-    private const string TenureThresholdKey = "TenureThresholdDays";
-    private const string AgeRangeMinKey = "AgeRangeMin";
-    private const string AgeRangeMaxKey = "AgeRangeMax";
+
 
     private readonly MknDbContext _db;
     private readonly IDispatchNotificationService _notification;
@@ -475,18 +473,12 @@ public sealed class ManageConfirmationService : IManageConfirmationService
 
         var timeZone = await TimeZoneResolver.ResolveAsync(_db, cancellationToken);
         var today = TimeZoneResolver.ToDateInTimeZone(_clock.GetUtcNow(), timeZone);
-        var tenureThresholdDays = await ReadIntSettingAsync(TenureThresholdKey, cancellationToken);
-        var ageRangeMin = await ReadIntSettingAsync(AgeRangeMinKey, cancellationToken) ?? 0;
-        var ageRangeMax = await ReadIntSettingAsync(AgeRangeMaxKey, cancellationToken) ?? 120;
 
         var candidates = await FindCandidatesAsync(
             occurrenceId,
             dutyId,
             exclusion,
             today,
-            tenureThresholdDays,
-            ageRangeMin,
-            ageRangeMax,
             cancellationToken);
 
         if (candidates.Count == 0)
@@ -605,9 +597,6 @@ public sealed class ManageConfirmationService : IManageConfirmationService
         int dutyId,
         HashSet<int> exclusion,
         DateOnly today,
-        int? tenureThresholdDays,
-        int ageRangeMin,
-        int ageRangeMax,
         CancellationToken cancellationToken)
     {
         var eligibleMemberIds = await ResolveEligibleMembersAsync(
@@ -661,8 +650,7 @@ public sealed class ManageConfirmationService : IManageConfirmationService
                 {
                     var matches = await EvaluateCriterionAsync(
                         member, rule.CriteriaType, rule.CriteriaValue,
-                        occurrence, today, tenureThresholdDays,
-                        ageRangeMin, ageRangeMax, cancellationToken);
+                        occurrence, today, cancellationToken);
 
                     if (!matches)
                     {
@@ -724,9 +712,6 @@ public sealed class ManageConfirmationService : IManageConfirmationService
         string criteriaValue,
         ServiceOccurrence occurrence,
         DateOnly today,
-        int? tenureThresholdDays,
-        int ageRangeMin,
-        int ageRangeMax,
         CancellationToken cancellationToken)
     {
         switch (criteriaType)
@@ -740,10 +725,10 @@ public sealed class ManageConfirmationService : IManageConfirmationService
                 return string.Equals(member.Gender, criteriaValue, StringComparison.OrdinalIgnoreCase);
 
             case "AgeRange":
-                return EvaluateAgeRange(member.DateOfBirth, criteriaValue, today, ageRangeMin, ageRangeMax);
+                return EvaluateAgeRange(member.DateOfBirth, criteriaValue, today);
 
             case "Tenure":
-                return EvaluateTenure(member.JoinDate, today, tenureThresholdDays, criteriaValue);
+                return EvaluateTenure(member.JoinDate, today, criteriaValue);
 
             case "MembershipStage":
                 return string.Equals(member.MembershipStage, criteriaValue, StringComparison.OrdinalIgnoreCase);
@@ -836,23 +821,18 @@ public sealed class ManageConfirmationService : IManageConfirmationService
     private static bool EvaluateAgeRange(
         DateOnly dateOfBirth,
         string criteriaValue,
-        DateOnly today,
-        int fallbackMin,
-        int fallbackMax)
+        DateOnly today)
     {
-        int min, max;
+        // §10.1.5: CriteriaValue is a range like "13-35". An
+        // unparseable value produces no candidate (B1).
         var parts = criteriaValue.Split('-',
             StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
 
-        if (parts.Length == 2
-            && int.TryParse(parts[0], out var lo)
-            && int.TryParse(parts[1], out var hi))
+        if (parts.Length != 2
+            || !int.TryParse(parts[0], out var min)
+            || !int.TryParse(parts[1], out var max))
         {
-            min = lo; max = hi;
-        }
-        else
-        {
-            min = fallbackMin; max = fallbackMax;
+            return false;
         }
 
         var age = today.Year - dateOfBirth.Year;
@@ -863,21 +843,13 @@ public sealed class ManageConfirmationService : IManageConfirmationService
     private static bool EvaluateTenure(
         DateOnly joinDate,
         DateOnly today,
-        int? tenureThresholdDays,
         string criteriaValue)
     {
-        int threshold;
-        if (int.TryParse(criteriaValue, out var parsed))
+        // §10.1.5: CriteriaValue is a number of days. An unparseable
+        // value produces no candidate (B1).
+        if (!int.TryParse(criteriaValue, out var threshold))
         {
-            threshold = parsed;
-        }
-        else if (tenureThresholdDays is int t)
-        {
-            threshold = t;
-        }
-        else
-        {
-            return true;
+            return false;
         }
 
         return (today.DayNumber - joinDate.DayNumber) >= threshold;

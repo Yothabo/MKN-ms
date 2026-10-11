@@ -28,10 +28,6 @@ namespace MknMs.Application.Processes.Operations.GenerateAssignment;
 /// </remarks>
 public sealed class GenerateAssignmentService : IGenerateAssignmentService
 {
-    private const string TenureThresholdKey = "TenureThresholdDays";
-    private const string AgeRangeMinKey = "AgeRangeMin";
-    private const string AgeRangeMaxKey = "AgeRangeMax";
-
     private readonly MknDbContext _db;
     private readonly IDispatchNotificationService _notification;
     private readonly TimeProvider _clock;
@@ -68,11 +64,6 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
         {
             var occurrences = await ResolveTargetOccurrencesAsync(command, cancellationToken);
 
-            // Pre-load system settings used by criteria evaluation.
-            var tenureThresholdDays = await ReadIntSettingAsync(TenureThresholdKey, cancellationToken);
-            var ageRangeMin = await ReadIntSettingAsync(AgeRangeMinKey, cancellationToken) ?? 0;
-            var ageRangeMax = await ReadIntSettingAsync(AgeRangeMaxKey, cancellationToken) ?? 120;
-
             var timeZone = await TimeZoneResolver.ResolveAsync(_db, cancellationToken);
             var today = TimeZoneResolver.ToDateInTimeZone(_clock.GetUtcNow(), timeZone);
 
@@ -86,9 +77,6 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
                 var outcome = await FillOccurrenceAsync(
                     occurrence,
                     today,
-                    tenureThresholdDays,
-                    ageRangeMin,
-                    ageRangeMax,
                     cancellationToken);
 
                 totalCreated += outcome.AssignmentsCreated;
@@ -182,9 +170,6 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
     private async Task<OccurrenceFillOutcome> FillOccurrenceAsync(
         ServiceOccurrence occurrence,
         DateOnly today,
-        int? tenureThresholdDays,
-        int ageRangeMin,
-        int ageRangeMax,
         CancellationToken cancellationToken)
     {
         // Effective duty list: inherited from ServiceDefinitionDuty, then
@@ -263,9 +248,6 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
                     existingCount,
                     exclusion,
                     today,
-                    tenureThresholdDays,
-                    ageRangeMin,
-                    ageRangeMax,
                     cancellationToken);
 
                 var toAssign = candidates.Take(remaining).ToList();
@@ -392,9 +374,6 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
         int existingCount,
         HashSet<int> membersOnOccurrence,
         DateOnly today,
-        int? tenureThresholdDays,
-        int ageRangeMin,
-        int ageRangeMax,
         CancellationToken cancellationToken)
     {
         // Step 1 — Eligibility gate. A member is a candidate only if
@@ -463,9 +442,6 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
                         rule.CriteriaValue,
                         occurrence,
                         today,
-                        tenureThresholdDays,
-                        ageRangeMin,
-                        ageRangeMax,
                         branchAttendanceCache,
                         cancellationToken);
 
@@ -538,9 +514,6 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
         string criteriaValue,
         ServiceOccurrence occurrence,
         DateOnly today,
-        int? tenureThresholdDays,
-        int ageRangeMin,
-        int ageRangeMax,
         Dictionary<int, bool> branchAttendanceCache,
         CancellationToken cancellationToken)
     {
@@ -553,10 +526,10 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
                 return string.Equals(member.Gender, criteriaValue, StringComparison.OrdinalIgnoreCase);
 
             case "AgeRange":
-                return EvaluateAgeRange(member.DateOfBirth, criteriaValue, today, ageRangeMin, ageRangeMax);
+                return EvaluateAgeRange(member.DateOfBirth, criteriaValue, today);
 
             case "Tenure":
-                return EvaluateTenure(member.JoinDate, today, tenureThresholdDays, criteriaValue);
+                return EvaluateTenure(member.JoinDate, today, criteriaValue);
 
             case "MembershipStage":
                 return string.Equals(member.MembershipStage, criteriaValue, StringComparison.OrdinalIgnoreCase);
@@ -610,27 +583,20 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
     private static bool EvaluateAgeRange(
         DateOnly dateOfBirth,
         string criteriaValue,
-        DateOnly today,
-        int fallbackMin,
-        int fallbackMax)
+        DateOnly today)
     {
-        // CriteriaValue is a range like "13-35". Fall back to system
-        // settings if parsing fails — the settings provide the outer
-        // bounds, the value provides the specific range.
-        int min, max;
+        // §10.1.5: CriteriaValue is a range like "13-35". An
+        // unparseable value produces no candidate (B1) — there is no
+        // fallback to a system setting; the criterion value is the
+        // sole source.
+        var parts = criteriaValue.Split('-',
+            StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
 
-        var parts = criteriaValue.Split('-', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length == 2
-            && int.TryParse(parts[0], out var lo)
-            && int.TryParse(parts[1], out var hi))
+        if (parts.Length != 2
+            || !int.TryParse(parts[0], out var min)
+            || !int.TryParse(parts[1], out var max))
         {
-            min = lo;
-            max = hi;
-        }
-        else
-        {
-            min = fallbackMin;
-            max = fallbackMax;
+            return false;
         }
 
         var age = today.Year - dateOfBirth.Year;
@@ -645,24 +611,14 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
     private static bool EvaluateTenure(
         DateOnly joinDate,
         DateOnly today,
-        int? tenureThresholdDays,
         string criteriaValue)
     {
-        // CriteriaValue is a number of days. If unparseable, fall back
-        // to the system setting.
-        int threshold;
-
-        if (int.TryParse(criteriaValue, out var parsed))
+        // §10.1.5: CriteriaValue is a number of days. An unparseable
+        // value produces no candidate (B1) — there is no fallback to a
+        // system setting; the criterion value is the sole source.
+        if (!int.TryParse(criteriaValue, out var threshold))
         {
-            threshold = parsed;
-        }
-        else if (tenureThresholdDays is int t)
-        {
-            threshold = t;
-        }
-        else
-        {
-            return true;
+            return false;
         }
 
         var days = today.DayNumber - joinDate.DayNumber;
@@ -744,22 +700,4 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
                 cancellationToken);
 
         return exists;
-    }
-
-    // -----------------------------------------------------------------
-    // System settings
-    // -----------------------------------------------------------------
-
-    private async Task<int?> ReadIntSettingAsync(string key, CancellationToken cancellationToken)
-    {
-        var setting = await _db.SystemSettings
-            .FirstOrDefaultAsync(s => s.Key == key, cancellationToken);
-
-        if (setting?.Value is null)
-        {
-            return null;
-        }
-
-        return int.TryParse(setting.Value, out var value) ? value : null;
-    }
-}
+    }}
