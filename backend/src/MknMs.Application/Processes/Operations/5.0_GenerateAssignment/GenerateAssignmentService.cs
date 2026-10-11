@@ -404,7 +404,10 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
 
         // Step 2 — Load member data for the eligible set.
         var members = await _db.Members
-            .Where(m => eligibleMemberIds.Contains(m.MemberId) && m.IsActive)
+            .Include(m => m.MemberStatus)
+            .Where(m => eligibleMemberIds.Contains(m.MemberId)
+                && m.MemberStatus.IsRosterable
+                && !m.MemberStatus.IsDeleted)
             .ToListAsync(cancellationToken);
 
         // Step 3 — Availability: exclude members with a non-terminal

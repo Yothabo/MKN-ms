@@ -633,7 +633,10 @@ public sealed class ManageConfirmationService : IManageConfirmationService
         }
 
         var members = await _db.Members
-            .Where(m => eligibleMemberIds.Contains(m.MemberId) && m.IsActive)
+            .Include(m => m.MemberStatus)
+            .Where(m => eligibleMemberIds.Contains(m.MemberId)
+                && m.MemberStatus.IsRosterable
+                && !m.MemberStatus.IsDeleted)
             .ToListAsync(cancellationToken);
 
         members = members

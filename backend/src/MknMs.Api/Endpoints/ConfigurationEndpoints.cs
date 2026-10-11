@@ -340,11 +340,12 @@ public static class ConfigurationEndpoints
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.UpdateAsync(id, request, cancellationToken)));
 
-        routes.MapDelete("/api/config/3.0/members/{id:int}", async (
+        routes.MapPost("/api/config/3.0/members/{id:int}/set-status", async (
             int id,
+            [FromBody] SetMemberStatusRequest request,
             IManageMemberRecordService service,
             CancellationToken cancellationToken) =>
-            ToHttpResult(await service.DeactivateAsync(id, cancellationToken)));
+            ToHttpResult(await service.SetStatusAsync(id, request.MemberStatusId, cancellationToken)));
 
         // Identifier history
         routes.MapGet("/api/config/3.0/members/{memberId:int}/identifiers", async (
@@ -688,6 +689,11 @@ public sealed record CreateProgramItemRequest
     public required string ScheduledEnd { get; init; }
     public int? ServiceDefId { get; init; }
     public required int ActingAdminId { get; init; }
+}
+
+public sealed record SetMemberStatusRequest
+{
+    public required int MemberStatusId { get; init; }
 }
 
 public sealed record SoftDeleteAttendanceRuleRequest

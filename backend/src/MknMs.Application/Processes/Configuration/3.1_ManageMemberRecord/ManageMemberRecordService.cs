@@ -32,8 +32,14 @@ public interface IManageMemberRecordService
         UpdateMemberRequest request,
         CancellationToken cancellationToken = default);
 
-    Task<ConfigurationResult<Member>> DeactivateAsync(
+    /// <summary>
+    /// Sets the member's MemberStatusId. A member is not deactivated
+    /// and not soft-deleted; state is expressed by MemberStatusId
+    /// only (§9.7).
+    /// </summary>
+    Task<ConfigurationResult<Member>> SetStatusAsync(
         int memberId,
+        int memberStatusId,
         CancellationToken cancellationToken = default);
 }
 
@@ -49,6 +55,7 @@ public sealed record CreateMemberRequest
     public string? Email { get; init; }
     public required int BranchId { get; init; }
     public required int RoleId { get; init; }
+    public required int MemberStatusId { get; init; }
 }
 
 public sealed record UpdateMemberRequest
@@ -62,6 +69,7 @@ public sealed record UpdateMemberRequest
     public string? Email { get; init; }
     public required int BranchId { get; init; }
     public required int RoleId { get; init; }
+    public required int MemberStatusId { get; init; }
 }
 
 public sealed class ManageMemberRecordService : IManageMemberRecordService
@@ -78,14 +86,18 @@ public sealed class ManageMemberRecordService : IManageMemberRecordService
         bool includeInactive = false,
         CancellationToken cancellationToken = default)
     {
-        var query = _db.Members.AsQueryable();
+        var query = _db.Members
+            .Include(m => m.MemberStatus)
+            .AsQueryable();
+
         if (branchId is int id)
         {
             query = query.Where(m => m.BranchId == id);
         }
         if (!includeInactive)
         {
-            query = query.Where(m => m.IsActive);
+            query = query.Where(m => m.MemberStatus.IsRosterable
+                && !m.MemberStatus.IsDeleted);
         }
         return await query.OrderBy(m => m.MemberId).ToListAsync(cancellationToken);
     }
@@ -102,7 +114,7 @@ public sealed class ManageMemberRecordService : IManageMemberRecordService
         var validation = await ValidateMemberFieldsAsync(
             request.Name, request.Surname, request.MembershipStage,
             request.Gender, request.Phone, request.BranchId, request.RoleId,
-            cancellationToken);
+            request.MemberStatusId, cancellationToken);
 
         if (validation is not null)
         {
@@ -121,6 +133,7 @@ public sealed class ManageMemberRecordService : IManageMemberRecordService
             Email = string.IsNullOrWhiteSpace(request.Email) ? null : request.Email.Trim(),
             BranchId = request.BranchId,
             RoleId = request.RoleId,
+            MemberStatusId = request.MemberStatusId,
             IsActive = true,
         };
         _db.Members.Add(entity);
@@ -136,7 +149,7 @@ public sealed class ManageMemberRecordService : IManageMemberRecordService
         var validation = await ValidateMemberFieldsAsync(
             request.Name, request.Surname, request.MembershipStage,
             request.Gender, request.Phone, request.BranchId, request.RoleId,
-            cancellationToken);
+            request.MemberStatusId, cancellationToken);
 
         if (validation is not null)
         {
@@ -149,9 +162,9 @@ public sealed class ManageMemberRecordService : IManageMemberRecordService
             throw new EntityNotFoundException(nameof(Member), memberId);
         }
 
-        // Changing BranchId or RoleId affects only future use. Existing
-        // operational records (assignments, attendance) are not touched
-        // — they anchor to occurrences, not to the member's attributes.
+        // Changing BranchId, RoleId, or MemberStatusId affects only
+        // future use. Existing operational records (assignments,
+        // attendance) are not touched.
         entity.Name = request.Name.Trim();
         entity.Surname = request.Surname.Trim();
         entity.DateOfBirth = request.DateOfBirth;
@@ -161,12 +174,14 @@ public sealed class ManageMemberRecordService : IManageMemberRecordService
         entity.Email = string.IsNullOrWhiteSpace(request.Email) ? null : request.Email.Trim();
         entity.BranchId = request.BranchId;
         entity.RoleId = request.RoleId;
+        entity.MemberStatusId = request.MemberStatusId;
         await _db.SaveChangesAsync(cancellationToken);
         return ConfigurationResult<Member>.Success(entity);
     }
 
-    public async Task<ConfigurationResult<Member>> DeactivateAsync(
+    public async Task<ConfigurationResult<Member>> SetStatusAsync(
         int memberId,
+        int memberStatusId,
         CancellationToken cancellationToken = default)
     {
         var entity = await _db.Members.FirstOrDefaultAsync(m => m.MemberId == memberId, cancellationToken);
@@ -175,13 +190,16 @@ public sealed class ManageMemberRecordService : IManageMemberRecordService
             throw new EntityNotFoundException(nameof(Member), memberId);
         }
 
-        if (!entity.IsActive)
+        var status = await _db.MemberStatuses
+            .FirstOrDefaultAsync(s => s.MemberStatusId == memberStatusId, cancellationToken);
+        if (status is null)
         {
             return ConfigurationResult<Member>.Failure(
-                new ConfigurationError(ConfigurationErrorCodes.AlreadyInactive, "Member is already inactive."));
+                new ConfigurationError(ConfigurationErrorCodes.ReferencedEntityMissing,
+                    "MemberStatus does not exist."));
         }
 
-        entity.IsActive = false;
+        entity.MemberStatusId = memberStatusId;
         await _db.SaveChangesAsync(cancellationToken);
         return ConfigurationResult<Member>.Success(entity);
     }
@@ -194,6 +212,7 @@ public sealed class ManageMemberRecordService : IManageMemberRecordService
         string phone,
         int branchId,
         int roleId,
+        int memberStatusId,
         CancellationToken cancellationToken)
     {
         if (!ConfigurationValidation.IsValidName(name))
@@ -229,6 +248,14 @@ public sealed class ManageMemberRecordService : IManageMemberRecordService
         {
             return new ConfigurationError(ConfigurationErrorCodes.ReferencedEntityMissing,
                 "Role does not exist.");
+        }
+
+        var status = await _db.MemberStatuses
+            .FirstOrDefaultAsync(s => s.MemberStatusId == memberStatusId, cancellationToken);
+        if (status is null)
+        {
+            return new ConfigurationError(ConfigurationErrorCodes.ReferencedEntityMissing,
+                "MemberStatus does not exist.");
         }
 
         return null;
