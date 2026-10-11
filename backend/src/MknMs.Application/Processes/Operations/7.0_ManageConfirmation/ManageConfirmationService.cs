@@ -771,6 +771,16 @@ public sealed class ManageConfirmationService : IManageConfirmationService
                 return await EvaluateEligibilityFlagAsync(
                     member, criteriaValue, today, cancellationToken);
 
+            case "MemberAttribute":
+                return await EvaluateMemberAttributeAsync(
+                    member, criteriaValue, cancellationToken);
+
+            case "MemberStatus":
+                return EvaluateMemberStatus(member, criteriaValue);
+
+            case "Youth":
+                return await EvaluateYouthAsync(member, today, cancellationToken);
+
             case "AcceptanceRate":
             case "DutiesCarried":
             case "DaysSinceLastAssignment":
@@ -779,6 +789,96 @@ public sealed class ManageConfirmationService : IManageConfirmationService
             default:
                 return false;
         }
+    }
+
+    private async Task<bool> EvaluateMemberAttributeAsync(
+        Member member,
+        string criteriaValue,
+        CancellationToken cancellationToken)
+    {
+        // §10.1.5: CriteriaValue is "AttributeTypeName=RequiredValue".
+        var idx = criteriaValue.IndexOf('=');
+        if (idx <= 0 || idx == criteriaValue.Length - 1)
+        {
+            return false;
+        }
+
+        var typeName = criteriaValue.Substring(0, idx);
+        var requiredValue = criteriaValue.Substring(idx + 1);
+
+        var attrTypeId = await _db.AttributeTypes
+            .Where(a => a.Name == typeName)
+            .Select(a => (int?)a.AttributeTypeId)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (attrTypeId is null)
+        {
+            return false;
+        }
+
+        return await _db.MemberAttributeValues
+            .AnyAsync(v => v.MemberId == member.MemberId
+                && v.AttributeTypeId == attrTypeId.Value
+                && v.Value == requiredValue,
+                cancellationToken);
+    }
+
+    private static bool EvaluateMemberStatus(Member member, string criteriaValue)
+    {
+        // §10.1.5: comma-separated MemberStatusIDs, no whitespace.
+        // §10.1.5: no whitespace permitted in the MemberStatus value.
+        // A value containing whitespace produces no candidate (B1).
+        if (criteriaValue.Any(char.IsWhiteSpace))
+        {
+            return false;
+        }
+
+        var parts = criteriaValue.Split(',', StringSplitOptions.RemoveEmptyEntries);
+
+        if (parts.Length == 0)
+        {
+            return false;
+        }
+
+        foreach (var p in parts)
+        {
+            if (!int.TryParse(p, out var id) || id <= 0)
+            {
+                return false;
+            }
+
+            if (member.MemberStatusId == id)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private async Task<bool> EvaluateYouthAsync(
+        Member member,
+        DateOnly today,
+        CancellationToken cancellationToken)
+    {
+        // §10.1.5: Youth uses YouthAgeMin and YouthAgeMax. Both are
+        // required; when either is absent, the criterion matches no
+        // candidate.
+        var min = await ReadIntSettingAsync("YouthAgeMin", cancellationToken);
+        var max = await ReadIntSettingAsync("YouthAgeMax", cancellationToken);
+
+        if (min is null || max is null)
+        {
+            return false;
+        }
+
+        var age = today.Year - member.DateOfBirth.Year;
+        if (member.DateOfBirth > today.AddYears(-age))
+        {
+            age--;
+        }
+
+        return age >= min.Value && age <= max.Value;
     }
 
     private async Task<bool> EvaluateBranchAttendanceRecencyAsync(

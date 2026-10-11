@@ -59,7 +59,7 @@ public sealed class ConfigureDutyRulesService : IConfigureDutyRulesService
     /// </summary>
     private static readonly HashSet<string> ValidCriteriaTypes = new(StringComparer.Ordinal)
     {
-        // Active criteria types.
+        // Active criteria types (§5).
         "Role",
         "Gender",
         "AgeRange",
@@ -67,9 +67,12 @@ public sealed class ConfigureDutyRulesService : IConfigureDutyRulesService
         "MembershipStage",
         "BranchAttendanceRecency",
         "EligibilityFlag",
+        "MemberAttribute",
+        "MemberStatus",
+        "Youth",
 
         // Reserved for future use. Accepted as writes; not evaluated
-        // by 5.2 until a future spec revision activates them.
+        // until a future spec revision activates them.
         "AcceptanceRate",
         "DutiesCarried",
         "DaysSinceLastAssignment",
