@@ -8,11 +8,11 @@ namespace MknMs.Persistence.Configurations;
 /// EF Core mapping for Member.
 /// </summary>
 /// <remarks>
-/// A member holds exactly one BranchId and one RoleId. MembershipStage
-/// is free text, not a lookup. Email is optional. MemberStatusId is
-/// nullable at this phase; it becomes non-null in Step 7.
+/// MemberStatusId is non-null as of Step 7. Member.IsActive is
+/// retained until Step 8.
 ///
-/// Specification: §4 (Member), §9.1.7, §15.8.1, §15.8.2, §15.8.3.
+/// Specification: §4 (Member), §9.1.7, §15.8.1, §15.8.2, §15.8.3,
+/// §15.8.27.
 /// </remarks>
 public class MemberConfiguration : IEntityTypeConfiguration<Member>
 {
@@ -33,7 +33,7 @@ public class MemberConfiguration : IEntityTypeConfiguration<Member>
         builder.Property(e => e.Email).HasMaxLength(320);
         builder.Property(e => e.BranchId).IsRequired();
         builder.Property(e => e.RoleId).IsRequired();
-        builder.Property(e => e.MemberStatusId);
+        builder.Property(e => e.MemberStatusId).IsRequired();
         builder.Property(e => e.IsActive).IsRequired();
 
         builder.HasOne(e => e.Branch)
@@ -49,8 +49,7 @@ public class MemberConfiguration : IEntityTypeConfiguration<Member>
         builder.HasOne(e => e.MemberStatus)
             .WithMany()
             .HasForeignKey(e => e.MemberStatusId)
-            .OnDelete(DeleteBehavior.Restrict)
-            .IsRequired(false);
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasIndex(e => e.BranchId).HasDatabaseName("ix_member_branch");
         builder.HasIndex(e => e.RoleId).HasDatabaseName("ix_member_role");

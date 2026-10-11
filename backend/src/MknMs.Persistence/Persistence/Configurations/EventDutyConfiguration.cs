@@ -8,8 +8,7 @@ namespace MknMs.Persistence.Configurations;
 /// EF Core mapping for EventDuty.
 /// </summary>
 /// <remarks>
-/// DutyId is nullable at this phase; it becomes non-null in Step 7.
-/// Label is retained until Step 8 removes it.
+/// DutyId is non-null as of Step 7. Label is retained until Step 8.
 ///
 /// Specification: §4 (Event Duty), §9.1.11, §9.7, §10.1.5, §15.8.10.
 /// </remarks>
@@ -21,7 +20,7 @@ public class EventDutyConfiguration : IEntityTypeConfiguration<EventDuty>
 
         builder.Property(e => e.ProgramItemId).IsRequired();
         builder.Property(e => e.Label).IsRequired().HasMaxLength(200);
-        builder.Property(e => e.DutyId);
+        builder.Property(e => e.DutyId).IsRequired();
         builder.Property(e => e.ServiceDefId);
         builder.Property(e => e.AssignedMemberId).IsRequired();
         builder.Property(e => e.AssignmentStatusId);
@@ -36,8 +35,7 @@ public class EventDutyConfiguration : IEntityTypeConfiguration<EventDuty>
         builder.HasOne(e => e.Duty)
             .WithMany()
             .HasForeignKey(e => e.DutyId)
-            .OnDelete(DeleteBehavior.Restrict)
-            .IsRequired(false);
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasOne(e => e.ServiceDefinition)
             .WithMany()

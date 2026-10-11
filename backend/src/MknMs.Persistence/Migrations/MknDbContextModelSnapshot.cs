@@ -1136,7 +1136,7 @@ namespace MknMs.Infrastructure.Migrations
                         .HasColumnType("character varying(1000)")
                         .HasColumnName("join_reason");
 
-                    b.Property<int?>("MemberStatusId")
+                    b.Property<int>("MemberStatusId")
                         .HasColumnType("integer")
                         .HasColumnName("member_status_id");
 
@@ -1502,7 +1502,7 @@ namespace MknMs.Infrastructure.Migrations
                         .HasColumnType("date")
                         .HasColumnName("end_date");
 
-                    b.Property<int?>("HostBranchId")
+                    b.Property<int>("HostBranchId")
                         .HasColumnType("integer")
                         .HasColumnName("host_branch_id");
 
@@ -1584,7 +1584,7 @@ namespace MknMs.Infrastructure.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("assignment_status_id");
 
-                    b.Property<int?>("DutyId")
+                    b.Property<int>("DutyId")
                         .HasColumnType("integer")
                         .HasColumnName("duty_id");
 
@@ -2041,6 +2041,7 @@ namespace MknMs.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("MemberStatusId")
                         .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
                         .HasConstraintName("fk_member_member_statuses_member_status_id");
 
                     b.HasOne("MknMs.Domain.D1_RoleDuty.Role", "Role")
@@ -2219,6 +2220,7 @@ namespace MknMs.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("HostBranchId")
                         .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
                         .HasConstraintName("fk_event_branch_host_branch_id");
 
                     b.Navigation("HostBranch");
@@ -2264,6 +2266,7 @@ namespace MknMs.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("DutyId")
                         .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
                         .HasConstraintName("fk_event_duty_duty_duty_id");
 
                     b.HasOne("MknMs.Domain.D9_EventProgram.ProgramItem", "ProgramItem")
