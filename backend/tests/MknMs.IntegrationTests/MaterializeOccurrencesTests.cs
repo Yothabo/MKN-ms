@@ -48,6 +48,8 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
             "TRUNCATE TABLE materializer_run, service_occurrence, service_occurrence_duty, " +
             "service_schedule, branch_time_slot, service_definition, service_type, " +
             "time_of_day, branch, system_setting RESTART IDENTITY CASCADE;");
+
+        await TestSeed.EnsureRequiredSettingsAsync(_db);
     }
 
     public Task DisposeAsync()

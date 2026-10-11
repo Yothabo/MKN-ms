@@ -48,8 +48,14 @@ public class SpecComplianceTests : IAsyncLifetime
             "service_occurrence_duty, service_occurrence, service_schedule, " +
             "service_definition_duty, branch_time_slot, service_definition, " +
             "service_type, time_of_day, branch, identifier_history, eligibility, " +
-            "duty_rule, admin, member, role, duty, system_setting, " +
-            "outcome_state, assignment_status, permission_tier RESTART IDENTITY CASCADE;");
+            "duty_rule, admin, member, member_attribute_value, member_status, " +
+            "attendance_rule_scope, attendance_rule, readmission, role, duty, " +
+            "system_setting, outcome_state, assignment_status, permission_tier, " +
+            "attribute_type, capability, event_branch, configuration_audit_log, " +
+            "entity_deletion_policy, notification_subscription " +
+            "RESTART IDENTITY CASCADE;");
+
+        await TestSeed.EnsureRequiredSettingsAsync(_db);
     }
 
     public Task DisposeAsync()
@@ -77,6 +83,8 @@ public class SpecComplianceTests : IAsyncLifetime
         _db.PermissionTiers.Add(tier);
         await _db.SaveChangesAsync();
 
+        var statusId = await TestSeed.EnsureDefaultMemberStatusAsync(_db);
+
         var alex = new Member
         {
             Name = "Alex", Surname = "Example",
@@ -84,7 +92,8 @@ public class SpecComplianceTests : IAsyncLifetime
             DateOfBirth = new DateOnly(1990, 1, 1),
             MembershipStage = "Full", Gender = "Other",
             Phone = "+27-000-0000", Email = null,
-            BranchId = branch.BranchId, RoleId = role.RoleId, IsActive = true,
+            BranchId = branch.BranchId, RoleId = role.RoleId,
+            MemberStatusId = statusId, IsActive = true,
         };
         _db.Members.Add(alex);
         await _db.SaveChangesAsync();
@@ -296,6 +305,7 @@ public class SpecComplianceTests : IAsyncLifetime
             MemberId = memberId,
             OccurrenceId = otherOccurrence.OccurrenceId,
             Timestamp = Now.AddDays(-1),
+            Source = "Manual",
         });
 
         // Eligibility + DutyRule: Branch-Attendance Recency, value "Target".
@@ -346,6 +356,7 @@ public class SpecComplianceTests : IAsyncLifetime
             MemberId = memberId,
             OccurrenceId = occurrence.OccurrenceId,
             Timestamp = Now.AddDays(-1),
+            Source = "Manual",
         });
 
         _db.Eligibilities.Add(new Eligibility

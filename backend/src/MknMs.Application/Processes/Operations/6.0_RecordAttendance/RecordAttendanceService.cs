@@ -85,6 +85,7 @@ public sealed class RecordAttendanceService : IRecordAttendanceService
                 MemberId = command.MemberId,
                 OccurrenceId = command.OccurrenceId,
                 Timestamp = _clock.GetUtcNow(),
+                Source = "Manual",
             };
 
             _db.AttendanceRecords.Add(record);

@@ -43,6 +43,7 @@ public static class QuartzSchedulerRegistration
     public const string GenerateCron = "0 0 3 * * ?";
     public const string ConfirmationTimeoutCron = "0 0 * * * ?";
     public const string FillStatusSweepCron = "0 30 * * * ?";
+    public const string AttendanceRuleCron = "0 0 4 * * ?";
 
     public static IServiceCollection AddMknScheduledJobs(
         this IServiceCollection services,
@@ -81,6 +82,14 @@ public static class QuartzSchedulerRegistration
                 .ForJob(fillKey)
                 .WithIdentity($"{nameof(EvaluateFillStatusSweepJob)}-trigger")
                 .WithCronSchedule(FillStatusSweepCron, cron => cron.InTimeZone(timeZone)));
+
+            // 13.0 Attendance Rule Engine — daily at 04:00.
+            var attendanceKey = new JobKey(nameof(AttendanceRuleEngineJob));
+            q.AddJob<AttendanceRuleEngineJob>(opts => opts.WithIdentity(attendanceKey));
+            q.AddTrigger(opts => opts
+                .ForJob(attendanceKey)
+                .WithIdentity($"{nameof(AttendanceRuleEngineJob)}-trigger")
+                .WithCronSchedule(AttendanceRuleCron, cron => cron.InTimeZone(timeZone)));
         });
 
         services.AddQuartzHostedService(opts =>

@@ -48,8 +48,14 @@ public class DispatchNotificationTests : IAsyncLifetime
             "service_occurrence_duty, service_occurrence, service_schedule, " +
             "service_definition_duty, branch_time_slot, service_definition, " +
             "service_type, time_of_day, branch, identifier_history, eligibility, " +
-            "duty_rule, admin, member, role, duty, system_setting, " +
-            "outcome_state, assignment_status, permission_tier RESTART IDENTITY CASCADE;");
+            "duty_rule, admin, member, member_attribute_value, member_status, " +
+            "attendance_rule_scope, attendance_rule, readmission, role, duty, " +
+            "system_setting, outcome_state, assignment_status, permission_tier, " +
+            "attribute_type, capability, event_branch, configuration_audit_log, " +
+            "entity_deletion_policy, notification_subscription " +
+            "RESTART IDENTITY CASCADE;");
+
+        await TestSeed.EnsureRequiredSettingsAsync(_db);
     }
 
     public Task DisposeAsync()
@@ -92,6 +98,8 @@ public class DispatchNotificationTests : IAsyncLifetime
             await _db.SaveChangesAsync();
         }
 
+        var statusId = await TestSeed.EnsureDefaultMemberStatusAsync(_db);
+
         var member = new Member
         {
             Name = "Alex", Surname = "Example",
@@ -99,7 +107,8 @@ public class DispatchNotificationTests : IAsyncLifetime
             DateOfBirth = new DateOnly(1990, 5, 20),
             MembershipStage = "Full", Gender = "Other",
             Phone = "+27-000-0000", Email = null,
-            BranchId = branch.BranchId, RoleId = role.RoleId, IsActive = true,
+            BranchId = branch.BranchId, RoleId = role.RoleId,
+            MemberStatusId = statusId, IsActive = true,
         };
         _db.Members.Add(member);
         await _db.SaveChangesAsync();
@@ -280,6 +289,8 @@ public class DispatchNotificationTests : IAsyncLifetime
             .AsNoTracking()
             .FirstAsync(a => a.AssignmentId == f.Assignment.AssignmentId);
 
+        var settingCountBefore = await _db.SystemSettings.CountAsync();
+
         var logger = new CapturingLogger<DispatchNotificationService>();
         var service = new DispatchNotificationService(_db, logger);
 
@@ -297,8 +308,12 @@ public class DispatchNotificationTests : IAsyncLifetime
         var assignmentCount = await _db.RosterAssignments.CountAsync();
         assignmentCount.Should().Be(1);
 
+        // The dispatch writes nothing, so the SystemSetting count is
+        // unchanged by the call. TestSeed inserted the required
+        // settings during the fixture; the absolute count is not
+        // fixed, so assert the count did not grow.
         var settingCount = await _db.SystemSettings.CountAsync();
-        settingCount.Should().Be(1);
+        settingCount.Should().Be(settingCountBefore);
     }
 }
 

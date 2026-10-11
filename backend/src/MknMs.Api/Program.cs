@@ -16,6 +16,7 @@ using MknMs.Application.Processes.Configuration.ManageIdentifierHistory;
 using MknMs.Application.Processes.Configuration.ManageMemberRecord;
 using MknMs.Application.Processes.Configuration.ManageProgram;
 using MknMs.Application.Processes.Configuration.ManageProgramItem;
+using MknMs.Application.Processes.Operations.AttendanceRuleEngine;
 using MknMs.Application.Processes.Operations.DispatchNotification;
 using MknMs.Application.Processes.Operations.EvaluateFillStatus;
 using MknMs.Application.Processes.Operations.RecordAttendance;
@@ -98,6 +99,9 @@ builder.Services.AddScoped<ICreateManualAssignmentService, CreateManualAssignmen
 // 11.0 Materialize Occurrences.
 builder.Services.AddScoped<IMaterializeOccurrencesService, MaterializeOccurrencesService>();
 
+// 13.0 Attendance Rule Engine.
+builder.Services.AddScoped<IAttendanceRuleEngineService, AttendanceRuleEngineService>();
+
 // Standard API services.
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -135,6 +139,7 @@ app.MapManageConfirmationEndpoint();
 app.MapEvaluateFillStatusEndpoint();
 app.MapRecordAttendanceEndpoint();
 app.MapCreateManualAssignmentEndpoint();
+app.MapAttendanceRuleEngineEndpoint();
 
 app.Run();
 

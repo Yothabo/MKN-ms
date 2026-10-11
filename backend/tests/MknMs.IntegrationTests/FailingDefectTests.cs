@@ -63,8 +63,14 @@ public class FailingDefectTests : IAsyncLifetime
             "service_occurrence_duty, service_occurrence, service_schedule, " +
             "service_definition_duty, branch_time_slot, service_definition, " +
             "service_type, time_of_day, branch, identifier_history, eligibility, " +
-            "duty_rule, admin, member, role, duty, system_setting, " +
-            "outcome_state, assignment_status, permission_tier RESTART IDENTITY CASCADE;");
+            "duty_rule, admin, member, member_attribute_value, member_status, " +
+            "attendance_rule_scope, attendance_rule, readmission, role, duty, " +
+            "system_setting, outcome_state, assignment_status, permission_tier, " +
+            "attribute_type, capability, event_branch, configuration_audit_log, " +
+            "entity_deletion_policy, notification_subscription " +
+            "RESTART IDENTITY CASCADE;");
+
+        await TestSeed.EnsureRequiredSettingsAsync(_db);
     }
 
     public Task DisposeAsync()
@@ -116,6 +122,14 @@ public class FailingDefectTests : IAsyncLifetime
             new SystemSetting { Key = "ConfirmationTimeoutHours", Value = "48", Required = true });
         await _db.SaveChangesAsync();
 
+        var memberStatus = new MemberStatus
+        {
+            Name = "Active", IsRosterable = true, IsDefault = true,
+            IsActive = true, IsDeleted = false,
+        };
+        _db.MemberStatuses.Add(memberStatus);
+        await _db.SaveChangesAsync();
+
         Member NewMember(string name, string phone) => new()
         {
             Name = name, Surname = "Test",
@@ -124,6 +138,7 @@ public class FailingDefectTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Other",
             Phone = phone, Email = null,
             BranchId = branch.BranchId, RoleId = role.RoleId,
+            MemberStatusId = memberStatus.MemberStatusId,
             IsActive = true,
         };
 

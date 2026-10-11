@@ -55,8 +55,14 @@ public class ManageConfirmationTests : IAsyncLifetime
             "service_occurrence_duty, service_occurrence, service_schedule, " +
             "service_definition_duty, branch_time_slot, service_definition, " +
             "service_type, time_of_day, branch, identifier_history, eligibility, " +
-            "duty_rule, admin, member, role, duty, system_setting, " +
-            "outcome_state, assignment_status, permission_tier RESTART IDENTITY CASCADE;");
+            "duty_rule, admin, member, member_attribute_value, member_status, " +
+            "attendance_rule_scope, attendance_rule, readmission, role, duty, " +
+            "system_setting, outcome_state, assignment_status, permission_tier, " +
+            "attribute_type, capability, event_branch, configuration_audit_log, " +
+            "entity_deletion_policy, notification_subscription " +
+            "RESTART IDENTITY CASCADE;");
+
+        await TestSeed.EnsureRequiredSettingsAsync(_db);
     }
 
     public Task DisposeAsync()
@@ -147,6 +153,8 @@ public class ManageConfirmationTests : IAsyncLifetime
 
         await _db.SaveChangesAsync();
 
+        var statusId = await TestSeed.EnsureDefaultMemberStatusAsync(_db);
+
         var alex = new Member
         {
             Name = "Alex", Surname = "Example",
@@ -155,7 +163,7 @@ public class ManageConfirmationTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Other",
             Phone = "+27-000-0000", Email = null,
             BranchId = branch.BranchId, RoleId = coordinator.RoleId,
-            IsActive = true,
+            MemberStatusId = statusId, IsActive = true,
         };
         var beatrice = new Member
         {
@@ -165,7 +173,7 @@ public class ManageConfirmationTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Female",
             Phone = "+27-000-0001", Email = null,
             BranchId = branch.BranchId, RoleId = steward.RoleId,
-            IsActive = true,
+            MemberStatusId = statusId, IsActive = true,
         };
         var dana = new Member
         {
@@ -175,7 +183,7 @@ public class ManageConfirmationTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Female",
             Phone = "+27-000-0003", Email = null,
             BranchId = branch.BranchId, RoleId = steward.RoleId,
-            IsActive = true,
+            MemberStatusId = statusId, IsActive = true,
         };
         _db.Members.Add(alex);
         _db.Members.Add(beatrice);
