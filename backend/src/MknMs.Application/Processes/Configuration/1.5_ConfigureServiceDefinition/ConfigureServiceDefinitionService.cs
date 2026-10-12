@@ -189,10 +189,6 @@ public sealed class ConfigureServiceDefinitionService : IConfigureServiceDefinit
             Action = ConfigurationLifecycleActions.Deactivate,
             InitiatedByAdminId = actingAdminId,
             ApprovedByAdminId = actingAdminId,
-            ConsequencesPreviewed =
-                "Service definition deactivated; existing references are unaffected.",
-            ConsequencesOccurred =
-                "Service definition deactivated; existing references are unaffected.",
         }, cancellationToken);
 
         if (!audit.IsSuccess)

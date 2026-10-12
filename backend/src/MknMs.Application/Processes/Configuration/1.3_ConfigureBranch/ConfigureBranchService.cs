@@ -136,10 +136,6 @@ public sealed class ConfigureBranchService : IConfigureBranchService
             Action = ConfigurationLifecycleActions.Deactivate,
             InitiatedByAdminId = actingAdminId,
             ApprovedByAdminId = actingAdminId,
-            ConsequencesPreviewed =
-                "Branch deactivated; existing references are unaffected.",
-            ConsequencesOccurred =
-                "Branch deactivated; existing references are unaffected.",
         }, cancellationToken);
 
         if (!audit.IsSuccess)

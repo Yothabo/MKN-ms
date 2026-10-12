@@ -106,10 +106,6 @@ public sealed class ConfigureRoleService : IConfigureRoleService
             Action = ConfigurationLifecycleActions.Deactivate,
             InitiatedByAdminId = actingAdminId,
             ApprovedByAdminId = actingAdminId,
-            ConsequencesPreviewed =
-                "Role deactivated; existing references are unaffected.",
-            ConsequencesOccurred =
-                "Role deactivated; existing references are unaffected.",
         }, cancellationToken);
 
         if (!audit.IsSuccess)

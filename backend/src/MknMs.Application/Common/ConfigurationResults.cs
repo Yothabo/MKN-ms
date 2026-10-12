@@ -27,4 +27,6 @@ public static class ConfigurationErrorCodes
     public const string ConfigurationMissing = "configuration_missing";
 
     public const string ConfigurationInvalid = "configuration_invalid";
+
+    public const string LifecycleViolation = "lifecycle_violation";
 }

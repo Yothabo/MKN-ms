@@ -63,6 +63,8 @@ public static class ConfigurationEndpoints
                 Results.Conflict(new { error = result.Error }),
             ConfigurationErrorCodes.AlreadyInactive or ConfigurationErrorCodes.AlreadyActive =>
                 Results.Conflict(new { error = result.Error }),
+            ConfigurationErrorCodes.LifecycleViolation =>
+                Results.UnprocessableEntity(new { error = result.Error }),
             ConfigurationErrorCodes.ReferencedEntityMissing or
             ConfigurationErrorCodes.ReferencedEntityInactive or
             ConfigurationErrorCodes.InvalidValue =>

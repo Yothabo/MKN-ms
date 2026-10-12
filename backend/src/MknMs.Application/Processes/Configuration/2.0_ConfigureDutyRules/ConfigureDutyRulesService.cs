@@ -247,10 +247,6 @@ public sealed class ConfigureDutyRulesService : IConfigureDutyRulesService
             Action = ConfigurationLifecycleActions.Deactivate,
             InitiatedByAdminId = actingAdminId,
             ApprovedByAdminId = actingAdminId,
-            ConsequencesPreviewed =
-                "Duty rule deactivated; existing assignments are unaffected.",
-            ConsequencesOccurred =
-                "Duty rule deactivated; existing assignments are unaffected.",
         }, cancellationToken);
 
         if (!audit.IsSuccess)

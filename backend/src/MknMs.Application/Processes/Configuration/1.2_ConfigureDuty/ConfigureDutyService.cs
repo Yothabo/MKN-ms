@@ -106,10 +106,6 @@ public sealed class ConfigureDutyService : IConfigureDutyService
             Action = ConfigurationLifecycleActions.Deactivate,
             InitiatedByAdminId = actingAdminId,
             ApprovedByAdminId = actingAdminId,
-            ConsequencesPreviewed =
-                "Duty deactivated; existing references are unaffected.",
-            ConsequencesOccurred =
-                "Duty deactivated; existing references are unaffected.",
         }, cancellationToken);
 
         if (!audit.IsSuccess)

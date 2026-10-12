@@ -171,10 +171,6 @@ public sealed class ConfigureTimeSlotService : IConfigureTimeSlotService
             Action = ConfigurationLifecycleActions.Deactivate,
             InitiatedByAdminId = actingAdminId,
             ApprovedByAdminId = actingAdminId,
-            ConsequencesPreviewed =
-                "Time slot deactivated; existing references are unaffected.",
-            ConsequencesOccurred =
-                "Time slot deactivated; existing references are unaffected.",
         }, cancellationToken);
 
         if (!audit.IsSuccess)

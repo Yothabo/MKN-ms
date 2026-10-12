@@ -218,10 +218,6 @@ public sealed class ConfigureServiceDutyAndScheduleService : IConfigureServiceDu
             Action = ConfigurationLifecycleActions.Deactivate,
             InitiatedByAdminId = actingAdminId,
             ApprovedByAdminId = actingAdminId,
-            ConsequencesPreviewed =
-                "Service duty deactivated; existing occurrences are unaffected.",
-            ConsequencesOccurred =
-                "Service duty deactivated; existing occurrences are unaffected.",
         }, cancellationToken);
 
         if (!audit.IsSuccess)
@@ -371,10 +367,6 @@ public sealed class ConfigureServiceDutyAndScheduleService : IConfigureServiceDu
             Action = ConfigurationLifecycleActions.Deactivate,
             InitiatedByAdminId = actingAdminId,
             ApprovedByAdminId = actingAdminId,
-            ConsequencesPreviewed =
-                "Service schedule deactivated; existing occurrences are unaffected.",
-            ConsequencesOccurred =
-                "Service schedule deactivated; existing occurrences are unaffected.",
         }, cancellationToken);
 
         if (!audit.IsSuccess)

@@ -205,10 +205,6 @@ public sealed class ManageEventService : IManageEventService
             Action = ConfigurationLifecycleActions.Deactivate,
             InitiatedByAdminId = actingAdminId,
             ApprovedByAdminId = actingAdminId,
-            ConsequencesPreviewed =
-                "Event deactivated; existing references are unaffected.",
-            ConsequencesOccurred =
-                "Event deactivated; existing references are unaffected.",
         }, cancellationToken);
 
         if (!audit.IsSuccess)
