@@ -104,6 +104,10 @@ builder.Services.AddScoped<IMaterializeOccurrencesService, MaterializeOccurrence
 // 13.0 Attendance Rule Engine.
 builder.Services.AddScoped<IAttendanceRuleEngineService, AttendanceRuleEngineService>();
 
+// Configuration lifecycle — audit writer shared across every
+// configuration process.
+builder.Services.AddScoped<IConfigurationLifecycleService, ConfigurationLifecycleService>();
+
 // Standard API services.
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
