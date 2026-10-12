@@ -210,8 +210,6 @@ public sealed class ConfigureServiceDutyAndScheduleService : IConfigureServiceDu
         }
 
         entity.IsActive = false;
-        await _db.SaveChangesAsync(cancellationToken);
-
         var audit = await _lifecycle.RecordAsync(new ConfigurationLifecycleEvent
         {
             EntityType = nameof(ServiceDefinitionDuty),
@@ -231,6 +229,7 @@ public sealed class ConfigureServiceDutyAndScheduleService : IConfigureServiceDu
             return ConfigurationResult<ServiceDefinitionDuty>.Failure(audit.Error!);
         }
 
+        await _db.SaveChangesAsync(cancellationToken);
         return ConfigurationResult<ServiceDefinitionDuty>.Success(entity);
     }
 
@@ -364,8 +363,6 @@ public sealed class ConfigureServiceDutyAndScheduleService : IConfigureServiceDu
         }
 
         entity.IsActive = false;
-        await _db.SaveChangesAsync(cancellationToken);
-
         var audit = await _lifecycle.RecordAsync(new ConfigurationLifecycleEvent
         {
             EntityType = nameof(ServiceSchedule),
@@ -385,6 +382,7 @@ public sealed class ConfigureServiceDutyAndScheduleService : IConfigureServiceDu
             return ConfigurationResult<ServiceSchedule>.Failure(audit.Error!);
         }
 
+        await _db.SaveChangesAsync(cancellationToken);
         return ConfigurationResult<ServiceSchedule>.Success(entity);
     }
 }

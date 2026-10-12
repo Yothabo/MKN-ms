@@ -145,6 +145,7 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
 
         var result = await service.RecordAsync(
             ValidEvent(initiated, approved));
+        await _db.SaveChangesAsync();
 
         result.IsSuccess.Should().BeTrue();
         result.Value!.AuditId.Should().BeGreaterThan(0);
@@ -172,6 +173,7 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
             initiated, approved,
             ConfigurationLifecycleActions.SoftDelete,
             "no longer used"));
+        await _db.SaveChangesAsync();
 
         result.IsSuccess.Should().BeTrue();
 
@@ -190,6 +192,7 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
             initiated, approved,
             ConfigurationLifecycleActions.SoftDelete,
             "   spaced   "));
+        await _db.SaveChangesAsync();
 
         var row = await _db.ConfigurationAuditLogs.SingleAsync();
         row.Reason.Should().Be("spaced");
@@ -237,6 +240,32 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Record_DoesNotPersist_UntilCallerSaves()
+    {
+        // §9.7 + §9.8: the state change and the audit write are one
+        // atomic unit. RecordAsync only adds the entity; the caller
+        // controls the persistence boundary. A read from a fresh
+        // context before the caller saves shows nothing.
+        var (initiated, approved) = await SeedAdminsAsync();
+        var service = new ConfigurationLifecycleService(_db, _clock);
+
+        await service.RecordAsync(ValidEvent(initiated, approved));
+
+        // Same context, but explicitly clear the tracker and re-query
+        // without saving. The row was added but never committed, so a
+        // fresh context sees no row.
+        _db.ChangeTracker.Clear();
+
+        var options = new DbContextOptionsBuilder<MknDbContext>()
+            .UseNpgsql(TestConnectionString)
+            .Options;
+        await using var fresh = new MknDbContext(options);
+        var count = await fresh.ConfigurationAuditLogs.CountAsync();
+
+        count.Should().Be(0);
+    }
+
+    [Fact]
     public async Task Record_DoesNotWriteAnythingElse()
     {
         var (initiated, approved) = await SeedAdminsAsync();
@@ -246,6 +275,7 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
         var policiesBefore = await _db.EntityDeletionPolicies.CountAsync();
 
         await service.RecordAsync(ValidEvent(initiated, approved));
+        await _db.SaveChangesAsync();
 
         var rolesAfter = await _db.Roles.CountAsync();
         var policiesAfter = await _db.EntityDeletionPolicies.CountAsync();

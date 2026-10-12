@@ -128,8 +128,6 @@ public sealed class ConfigureBranchService : IConfigureBranchService
         }
 
         entity.IsActive = false;
-        await _db.SaveChangesAsync(cancellationToken);
-
         var audit = await _lifecycle.RecordAsync(new ConfigurationLifecycleEvent
         {
             EntityType = nameof(Branch),
@@ -149,6 +147,7 @@ public sealed class ConfigureBranchService : IConfigureBranchService
             return ConfigurationResult<Branch>.Failure(audit.Error!);
         }
 
+        await _db.SaveChangesAsync(cancellationToken);
         return ConfigurationResult<Branch>.Success(entity);
     }
 }

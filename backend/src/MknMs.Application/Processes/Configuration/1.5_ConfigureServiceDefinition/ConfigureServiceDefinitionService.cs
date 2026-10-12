@@ -181,8 +181,6 @@ public sealed class ConfigureServiceDefinitionService : IConfigureServiceDefinit
         }
 
         entity.IsActive = false;
-        await _db.SaveChangesAsync(cancellationToken);
-
         var audit = await _lifecycle.RecordAsync(new ConfigurationLifecycleEvent
         {
             EntityType = nameof(ServiceDefinition),
@@ -202,6 +200,7 @@ public sealed class ConfigureServiceDefinitionService : IConfigureServiceDefinit
             return ConfigurationResult<ServiceDefinition>.Failure(audit.Error!);
         }
 
+        await _db.SaveChangesAsync(cancellationToken);
         return ConfigurationResult<ServiceDefinition>.Success(entity);
     }
 }

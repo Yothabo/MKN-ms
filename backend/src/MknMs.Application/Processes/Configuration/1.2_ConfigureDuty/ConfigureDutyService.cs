@@ -98,8 +98,6 @@ public sealed class ConfigureDutyService : IConfigureDutyService
         }
 
         entity.IsActive = false;
-        await _db.SaveChangesAsync(cancellationToken);
-
         var audit = await _lifecycle.RecordAsync(new ConfigurationLifecycleEvent
         {
             EntityType = nameof(Duty),
@@ -119,6 +117,7 @@ public sealed class ConfigureDutyService : IConfigureDutyService
             return ConfigurationResult<Duty>.Failure(audit.Error!);
         }
 
+        await _db.SaveChangesAsync(cancellationToken);
         return ConfigurationResult<Duty>.Success(entity);
     }
 }

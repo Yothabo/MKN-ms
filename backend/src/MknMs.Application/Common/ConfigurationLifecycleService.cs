@@ -11,10 +11,12 @@ namespace MknMs.Application.Common;
 /// the reason when one is supplied, who initiated it and who
 /// approved it, and the timestamps.
 ///
-/// This service writes the audit row. It does not read
-/// EntityDeletionPolicy; that is E3. It does not perform the cascade
-/// from §9.7's table; that is E4. It writes exactly the columns the
-/// entity carries and nothing more.
+/// This service adds the audit row to the DbContext. It does not
+/// call SaveChangesAsync; the calling service controls the
+/// persistence boundary so the state change and the audit row are
+/// one atomic unit (§9.7, §9.8). It does not read
+/// EntityDeletionPolicy; that is E3. It does not perform the
+/// cascade from §9.7's table; that is E4.
 ///
 /// The action vocabulary is the two values §4 names:
 ///
@@ -78,14 +80,15 @@ public sealed class ConfigurationLifecycleService : IConfigurationLifecycleServi
         _clock = clock;
     }
 
-    public async Task<ConfigurationResult<ConfigurationAuditLog>> RecordAsync(
+    public Task<ConfigurationResult<ConfigurationAuditLog>> RecordAsync(
         ConfigurationLifecycleEvent lifecycleEvent,
         CancellationToken cancellationToken = default)
     {
         var validation = Validate(lifecycleEvent);
         if (validation is not null)
         {
-            return ConfigurationResult<ConfigurationAuditLog>.Failure(validation);
+            return Task.FromResult(
+                ConfigurationResult<ConfigurationAuditLog>.Failure(validation));
         }
 
         var now = _clock.GetUtcNow();
@@ -108,10 +111,14 @@ public sealed class ConfigurationLifecycleService : IConfigurationLifecycleServi
             NotifiedAt = null,
         };
 
+        // The audit entity is added to the DbContext but not yet
+        // persisted. The caller performs the single SaveChangesAsync
+        // that commits both the state change and this audit row in
+        // one transaction (§9.7, §9.8).
         _db.ConfigurationAuditLogs.Add(audit);
-        await _db.SaveChangesAsync(cancellationToken);
 
-        return ConfigurationResult<ConfigurationAuditLog>.Success(audit);
+        return Task.FromResult(
+            ConfigurationResult<ConfigurationAuditLog>.Success(audit));
     }
 
     private static ConfigurationError? Validate(ConfigurationLifecycleEvent e)

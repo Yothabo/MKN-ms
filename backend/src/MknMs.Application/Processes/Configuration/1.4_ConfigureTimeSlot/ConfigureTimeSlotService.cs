@@ -163,8 +163,6 @@ public sealed class ConfigureTimeSlotService : IConfigureTimeSlotService
         }
 
         entity.IsActive = false;
-        await _db.SaveChangesAsync(cancellationToken);
-
         var audit = await _lifecycle.RecordAsync(new ConfigurationLifecycleEvent
         {
             EntityType = nameof(BranchTimeSlot),
@@ -184,6 +182,7 @@ public sealed class ConfigureTimeSlotService : IConfigureTimeSlotService
             return ConfigurationResult<BranchTimeSlot>.Failure(audit.Error!);
         }
 
+        await _db.SaveChangesAsync(cancellationToken);
         return ConfigurationResult<BranchTimeSlot>.Success(entity);
     }
 }

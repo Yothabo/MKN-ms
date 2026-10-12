@@ -98,8 +98,6 @@ public sealed class ConfigureRoleService : IConfigureRoleService
         }
 
         entity.IsActive = false;
-        await _db.SaveChangesAsync(cancellationToken);
-
         var audit = await _lifecycle.RecordAsync(new ConfigurationLifecycleEvent
         {
             EntityType = nameof(Role),
@@ -119,6 +117,7 @@ public sealed class ConfigureRoleService : IConfigureRoleService
             return ConfigurationResult<Role>.Failure(audit.Error!);
         }
 
+        await _db.SaveChangesAsync(cancellationToken);
         return ConfigurationResult<Role>.Success(entity);
     }
 }
