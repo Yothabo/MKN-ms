@@ -631,6 +631,85 @@ public class GenerateAssignmentTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Run_BranchAttendanceRecency_RegisterOffAtBranch_CriterionSkipped()
+    {
+        // §10.1.5: Branch-Attendance Recency is skipped when the
+        // effective register scope is off. §9.6: the branch of the
+        // occurrence's time slot controls the schedule-sourced scope.
+        var fixture = await SeedFixtureAsync();
+
+        // Turn the register off at the branch the occurrence is at.
+        var branch = await _db.Branches.FirstAsync();
+        branch.UsesAttendanceRegister = false;
+        await _db.SaveChangesAsync();
+
+        // Replace Reading duty's rule with a Branch-Attendance
+        // Recency criterion that would otherwise gate on attendance.
+        var existing = await _db.DutyRules
+            .Where(r => r.DutyId == fixture.ReadingDutyId)
+            .ToListAsync();
+        _db.DutyRules.RemoveRange(existing);
+        await _db.SaveChangesAsync();
+
+        _db.DutyRules.Add(new DutyRule
+        {
+            DutyId = fixture.ReadingDutyId,
+            TierOrder = 1,
+            CriteriaType = "BranchAttendanceRecency",
+            CriteriaValue = "30",
+            IsActive = true,
+        });
+        await _db.SaveChangesAsync();
+
+        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var result = await service.RunAsync(new GenerateAssignmentCommand
+        {
+            OccurrenceId = fixture.OccurrenceId,
+        });
+
+        // The criterion is skipped, so the tier matches the eligible
+        // member.
+        result.DutiesFullyFilled.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Run_BranchAttendanceRecency_RegisterOnAtBranch_CriterionGates()
+    {
+        // Same setup, register on. Without matching attendance, the
+        // criterion produces no candidate.
+        var fixture = await SeedFixtureAsync();
+
+        var branch = await _db.Branches.FirstAsync();
+        branch.UsesAttendanceRegister = true;
+        await _db.SaveChangesAsync();
+
+        var existing = await _db.DutyRules
+            .Where(r => r.DutyId == fixture.ReadingDutyId)
+            .ToListAsync();
+        _db.DutyRules.RemoveRange(existing);
+        await _db.SaveChangesAsync();
+
+        _db.DutyRules.Add(new DutyRule
+        {
+            DutyId = fixture.ReadingDutyId,
+            TierOrder = 1,
+            CriteriaType = "BranchAttendanceRecency",
+            CriteriaValue = "30",
+            IsActive = true,
+        });
+        await _db.SaveChangesAsync();
+
+        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var result = await service.RunAsync(new GenerateAssignmentCommand
+        {
+            OccurrenceId = fixture.OccurrenceId,
+        });
+
+        // No matching attendance, so the tier produces no candidate.
+        result.DutiesUnfilled.Should().BeGreaterOrEqualTo(1);
+    }
+
+    [Fact]
     public async Task Run_WithTerminalAssignmentOnOccurrence_DoesNotBlockAvailability()
     {
         var fixture = await SeedFixtureAsync();

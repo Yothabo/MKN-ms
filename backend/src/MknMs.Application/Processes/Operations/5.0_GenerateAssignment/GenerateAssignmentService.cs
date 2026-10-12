@@ -79,6 +79,41 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
                 };
             }
 
+            // §15.3.12: AttendanceRegisterEnabled is required for the
+            // Branch-Attendance Recency criterion. Absent or invalid
+            // -> the whole run fails, per the required-setting rule.
+            var registerSetting = await _db.SystemSettings
+                .FirstOrDefaultAsync(s => s.Key == "AttendanceRegisterEnabled",
+                    cancellationToken);
+
+            if (registerSetting?.Value is null)
+            {
+                return new GenerateAssignmentResult
+                {
+                    Status = "Failure",
+                    OccurrencesProcessed = 0,
+                    AssignmentsCreated = 0,
+                    DutiesFullyFilled = 0,
+                    DutiesPartiallyFilled = 0,
+                    DutiesUnfilled = 0,
+                    ErrorDetail = "Required setting 'AttendanceRegisterEnabled' is not configured.",
+                };
+            }
+
+            if (!bool.TryParse(registerSetting.Value, out var globalRegisterEnabled))
+            {
+                return new GenerateAssignmentResult
+                {
+                    Status = "Failure",
+                    OccurrencesProcessed = 0,
+                    AssignmentsCreated = 0,
+                    DutiesFullyFilled = 0,
+                    DutiesPartiallyFilled = 0,
+                    DutiesUnfilled = 0,
+                    ErrorDetail = "Setting 'AttendanceRegisterEnabled' must be 'true' or 'false'.",
+                };
+            }
+
             var today = TimeZoneResolver.ToDateInTimeZone(_clock.GetUtcNow(), timeZoneResult.Zone!);
 
             var totalCreated = 0;
@@ -91,6 +126,7 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
                 var outcome = await FillOccurrenceAsync(
                     occurrence,
                     today,
+                    globalRegisterEnabled,
                     cancellationToken);
 
                 totalCreated += outcome.AssignmentsCreated;
@@ -184,6 +220,7 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
     private async Task<OccurrenceFillOutcome> FillOccurrenceAsync(
         ServiceOccurrence occurrence,
         DateOnly today,
+        bool globalRegisterEnabled,
         CancellationToken cancellationToken)
     {
         // Effective duty list: inherited from ServiceDefinitionDuty, then
@@ -262,6 +299,7 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
                     existingCount,
                     exclusion,
                     today,
+                    globalRegisterEnabled,
                     cancellationToken);
 
                 var toAssign = candidates.Take(remaining).ToList();
@@ -388,6 +426,7 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
         int existingCount,
         HashSet<int> membersOnOccurrence,
         DateOnly today,
+        bool globalRegisterEnabled,
         CancellationToken cancellationToken)
     {
         // Step 1 — Eligibility gate. A member is a candidate only if
@@ -459,6 +498,7 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
                         rule.CriteriaValue,
                         occurrence,
                         today,
+                        globalRegisterEnabled,
                         branchAttendanceCache,
                         cancellationToken);
 
@@ -531,6 +571,7 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
         string criteriaValue,
         ServiceOccurrence occurrence,
         DateOnly today,
+        bool globalRegisterEnabled,
         Dictionary<int, bool> branchAttendanceCache,
         CancellationToken cancellationToken)
     {
@@ -558,7 +599,8 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
                 // branch of the occurrence being filled; the window is
                 // the rule's CriteriaValue, in days.
                 return await EvaluateBranchAttendanceRecencyAsync(
-                    member, criteriaValue, occurrence, cancellationToken);
+                    member, criteriaValue, occurrence, globalRegisterEnabled,
+                    cancellationToken);
 
             case "EligibilityFlag":
                 // The Eligibility Flag criterion references a duty; the
@@ -759,13 +801,24 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
         Member member,
         string criteriaValue,
         ServiceOccurrence occurrence,
+        bool globalRegisterEnabled,
         CancellationToken cancellationToken)
     {
-        // §10.1.5: "Member has an AttendanceRecord at the specified
-        // branch within the configured window." CriteriaValue is the
-        // window in days. The specified branch is the branch of the
-        // occurrence being filled, resolved through the occurrence's
-        // schedule and time slot.
+        // §10.1.5: the criterion is skipped for occurrences whose
+        // effective attendance register scope is off. §9.6 defines
+        // the resolution: branch override for schedule-sourced
+        // occurrences, event override for event-sourced ones, then
+        // the global setting. A skipped criterion contributes no
+        // filter; the tier evaluates on its other criteria, or
+        // matches every eligible member if it had none.
+        var effectiveScope = await ResolveEffectiveRegisterScopeAsync(
+            occurrence, globalRegisterEnabled, cancellationToken);
+
+        if (!effectiveScope)
+        {
+            return true;
+        }
+
         if (!int.TryParse(criteriaValue, out var windowDays))
         {
             return false;
@@ -806,6 +859,34 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
         return hasRecent;
     }
 
+
+    private async Task<bool> ResolveEffectiveRegisterScopeAsync(
+        ServiceOccurrence occurrence,
+        bool globalRegisterEnabled,
+        CancellationToken cancellationToken)
+    {
+        if (occurrence.ScheduleId is int scheduleId)
+        {
+            var branchOverride = await _db.ServiceSchedules
+                .Where(s => s.ScheduleId == scheduleId)
+                .Select(s => s.TimeSlot.Branch.UsesAttendanceRegister)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            return branchOverride ?? globalRegisterEnabled;
+        }
+
+        if (occurrence.EventId is int eventId)
+        {
+            var eventOverride = await _db.Events
+                .Where(e => e.EventId == eventId)
+                .Select(e => e.UsesAttendanceRegister)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            return eventOverride ?? globalRegisterEnabled;
+        }
+
+        return globalRegisterEnabled;
+    }
 
     private async Task<bool> EvaluateEligibilityFlagAsync(
         Member member,
