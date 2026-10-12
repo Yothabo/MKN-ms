@@ -1,18 +1,21 @@
+
 namespace MknMs.Application.Processes.Configuration.ManageEventDuty;
 
 /// <summary>
 /// Subprocess of 8.0 — Manage Event Duty.
 /// </summary>
 /// <remarks>
-/// Creates, edits, and removes EventDuty rows. An EventDuty is an
-/// ad-hoc role on a specific Program Item, with a free-text Label and
-/// a direct member assignment — no Eligibility or Priority run. It is
-/// not a reference to the Duty table.
+/// Creates, edits, and removes EventDuty rows. An EventDuty is a
+/// requirement on a specific Program Item for a real Duty, with a
+/// required slot count and an optional Service Definition scope.
 ///
-/// AssignmentStatusId is optional and references the same lookup used
-/// by Roster Assignment.
+/// DutyId references the Duty table. When ServiceDefId is set, the
+/// duty uses that service's per-service rules on this event; when
+/// null, the duty's global rules apply. AssignmentStatusId is
+/// optional and references the same lookup used by Roster
+/// Assignment.
 ///
-/// Specification: §4 (Event Duty), §9.1.11.
+/// Specification: §4 (Event Duty), §9.1.11, §15.8.10.
 /// </remarks>
 public interface IManageEventDutyService
 {
@@ -24,14 +27,16 @@ public interface IManageEventDutyService
 
     Task<ConfigurationResult<EventDuty>> CreateAsync(
         int programItemId,
-        string label,
+        int dutyId,
+        int? serviceDefId,
         int assignedMemberId,
         int? assignmentStatusId,
         CancellationToken cancellationToken = default);
 
     Task<ConfigurationResult<EventDuty>> UpdateAsync(
         int eventDutyId,
-        string label,
+        int dutyId,
+        int? serviceDefId,
         int assignedMemberId,
         int? assignmentStatusId,
         CancellationToken cancellationToken = default);
@@ -68,13 +73,15 @@ public sealed class ManageEventDutyService : IManageEventDutyService
 
     public async Task<ConfigurationResult<EventDuty>> CreateAsync(
         int programItemId,
-        string label,
+        int dutyId,
+        int? serviceDefId,
         int assignedMemberId,
         int? assignmentStatusId,
         CancellationToken cancellationToken = default)
     {
         var validation = await ValidateAsync(
-            label, assignedMemberId, assignmentStatusId, cancellationToken);
+            dutyId, serviceDefId, assignedMemberId, assignmentStatusId,
+            cancellationToken);
         if (validation is not null)
         {
             return ConfigurationResult<EventDuty>.Failure(validation);
@@ -92,9 +99,12 @@ public sealed class ManageEventDutyService : IManageEventDutyService
         var entity = new EventDuty
         {
             ProgramItemId = programItemId,
-            Label = label.Trim(),
+            DutyId = dutyId,
+            ServiceDefId = serviceDefId,
             AssignedMemberId = assignedMemberId,
             AssignmentStatusId = assignmentStatusId,
+            IsActive = true,
+            IsDeleted = false,
         };
         _db.EventDuties.Add(entity);
         await _db.SaveChangesAsync(cancellationToken);
@@ -103,13 +113,15 @@ public sealed class ManageEventDutyService : IManageEventDutyService
 
     public async Task<ConfigurationResult<EventDuty>> UpdateAsync(
         int eventDutyId,
-        string label,
+        int dutyId,
+        int? serviceDefId,
         int assignedMemberId,
         int? assignmentStatusId,
         CancellationToken cancellationToken = default)
     {
         var validation = await ValidateAsync(
-            label, assignedMemberId, assignmentStatusId, cancellationToken);
+            dutyId, serviceDefId, assignedMemberId, assignmentStatusId,
+            cancellationToken);
         if (validation is not null)
         {
             return ConfigurationResult<EventDuty>.Failure(validation);
@@ -122,7 +134,8 @@ public sealed class ManageEventDutyService : IManageEventDutyService
             throw new EntityNotFoundException(nameof(EventDuty), eventDutyId);
         }
 
-        entity.Label = label.Trim();
+        entity.DutyId = dutyId;
+        entity.ServiceDefId = serviceDefId;
         entity.AssignedMemberId = assignedMemberId;
         entity.AssignmentStatusId = assignmentStatusId;
         await _db.SaveChangesAsync(cancellationToken);
@@ -140,26 +153,35 @@ public sealed class ManageEventDutyService : IManageEventDutyService
             throw new EntityNotFoundException(nameof(EventDuty), eventDutyId);
         }
 
-        // EventDuty is a small ad-hoc record with no downstream
-        // references. Removing it is the correct behavior when the
-        // administrator decides the role is no longer needed. This is
-        // the one deletion permitted in the configuration layer, and
-        // it is permitted only because nothing references an
-        // EventDuty row.
         _db.EventDuties.Remove(entity);
         await _db.SaveChangesAsync(cancellationToken);
         return ConfigurationResult<bool>.Success(true);
     }
 
     private async Task<ConfigurationError?> ValidateAsync(
-        string label,
+        int dutyId,
+        int? serviceDefId,
         int assignedMemberId,
         int? assignmentStatusId,
         CancellationToken cancellationToken)
     {
-        if (!ConfigurationValidation.IsValidName(label))
+        var duty = await _db.Duties
+            .FirstOrDefaultAsync(d => d.DutyId == dutyId, cancellationToken);
+        if (duty is null)
         {
-            return new ConfigurationError(ConfigurationErrorCodes.InvalidValue, "Label is required.");
+            return new ConfigurationError(ConfigurationErrorCodes.ReferencedEntityMissing,
+                "Duty does not exist.");
+        }
+
+        if (serviceDefId is int sdId)
+        {
+            var def = await _db.ServiceDefinitions
+                .FirstOrDefaultAsync(s => s.ServiceDefId == sdId, cancellationToken);
+            if (def is null)
+            {
+                return new ConfigurationError(ConfigurationErrorCodes.ReferencedEntityMissing,
+                    "Service definition does not exist.");
+            }
         }
 
         var member = await _db.Members

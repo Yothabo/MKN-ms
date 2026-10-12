@@ -505,8 +505,9 @@ public static class ConfigurationEndpoints
             IManageEventDutyService service,
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.CreateAsync(
-                itemId, request.Label, request.AssignedMemberId,
-                request.AssignmentStatusId, cancellationToken)));
+                itemId, request.DutyId, request.ServiceDefId,
+                request.AssignedMemberId, request.AssignmentStatusId,
+                cancellationToken)));
 
         routes.MapDelete("/api/config/8.0/event-duties/{id:int}", async (
             int id,
@@ -703,7 +704,8 @@ public sealed record SoftDeleteAttendanceRuleRequest
 
 public sealed record CreateEventDutyRequest
 {
-    public required string Label { get; init; }
+    public required int DutyId { get; init; }
+    public int? ServiceDefId { get; init; }
     public required int AssignedMemberId { get; init; }
     public int? AssignmentStatusId { get; init; }
 }
