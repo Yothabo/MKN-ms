@@ -42,6 +42,9 @@ public interface IConfigureServiceDutyAndScheduleService
         int serviceDefId,
         int dutyId,
         int actingAdminId,
+        int approvedByAdminId,
+        bool consequencesAcknowledged,
+        string? reason = null,
         CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<ServiceSchedule>> ListSchedulesAsync(
@@ -65,6 +68,9 @@ public interface IConfigureServiceDutyAndScheduleService
     Task<ConfigurationResult<ServiceSchedule>> DeactivateScheduleAsync(
         int scheduleId,
         int actingAdminId,
+        int approvedByAdminId,
+        bool consequencesAcknowledged,
+        string? reason = null,
         CancellationToken cancellationToken = default);
 }
 
@@ -192,6 +198,9 @@ public sealed class ConfigureServiceDutyAndScheduleService : IConfigureServiceDu
         int serviceDefId,
         int dutyId,
         int actingAdminId,
+        int approvedByAdminId,
+        bool consequencesAcknowledged,
+        string? reason = null,
         CancellationToken cancellationToken = default)
     {
         var entity = await _db.ServiceDefinitionDuties
@@ -209,6 +218,14 @@ public sealed class ConfigureServiceDutyAndScheduleService : IConfigureServiceDu
                     "This duty is already deactivated for this service."));
         }
 
+        if (!consequencesAcknowledged)
+        {
+            return ConfigurationResult<ServiceDefinitionDuty>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.ValidationFailed,
+                    "The consequences of this deactivation must be acknowledged."));
+        }
+
         entity.IsActive = false;
         var audit = await _lifecycle.RecordAsync(new ConfigurationLifecycleEvent
         {
@@ -216,8 +233,9 @@ public sealed class ConfigureServiceDutyAndScheduleService : IConfigureServiceDu
             EntityId = entity.ServiceDefId,
             EntityName = $"ServiceDef {entity.ServiceDefId} / Duty {entity.DutyId}",
             Action = ConfigurationLifecycleActions.Deactivate,
+            Reason = reason,
             InitiatedByAdminId = actingAdminId,
-            ApprovedByAdminId = actingAdminId,
+            ApprovedByAdminId = approvedByAdminId,
         }, cancellationToken);
 
         if (!audit.IsSuccess)
@@ -342,6 +360,9 @@ public sealed class ConfigureServiceDutyAndScheduleService : IConfigureServiceDu
     public async Task<ConfigurationResult<ServiceSchedule>> DeactivateScheduleAsync(
         int scheduleId,
         int actingAdminId,
+        int approvedByAdminId,
+        bool consequencesAcknowledged,
+        string? reason = null,
         CancellationToken cancellationToken = default)
     {
         var entity = await _db.ServiceSchedules
@@ -358,6 +379,14 @@ public sealed class ConfigureServiceDutyAndScheduleService : IConfigureServiceDu
                     "Schedule is already inactive."));
         }
 
+        if (!consequencesAcknowledged)
+        {
+            return ConfigurationResult<ServiceSchedule>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.ValidationFailed,
+                    "The consequences of this deactivation must be acknowledged."));
+        }
+
         entity.IsActive = false;
         var audit = await _lifecycle.RecordAsync(new ConfigurationLifecycleEvent
         {
@@ -365,8 +394,9 @@ public sealed class ConfigureServiceDutyAndScheduleService : IConfigureServiceDu
             EntityId = entity.ScheduleId,
             EntityName = $"Schedule {entity.ScheduleId}",
             Action = ConfigurationLifecycleActions.Deactivate,
+            Reason = reason,
             InitiatedByAdminId = actingAdminId,
-            ApprovedByAdminId = actingAdminId,
+            ApprovedByAdminId = approvedByAdminId,
         }, cancellationToken);
 
         if (!audit.IsSuccess)

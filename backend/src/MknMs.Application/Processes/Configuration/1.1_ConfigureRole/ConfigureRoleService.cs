@@ -19,7 +19,13 @@ public interface IConfigureRoleService
 
     Task<ConfigurationResult<Role>> RenameAsync(int roleId, string newName, int actingAdminId, CancellationToken cancellationToken = default);
 
-    Task<ConfigurationResult<Role>> DeactivateAsync(int roleId, int actingAdminId, CancellationToken cancellationToken = default);
+    Task<ConfigurationResult<Role>> DeactivateAsync(
+        int roleId,
+        int actingAdminId,
+        int approvedByAdminId,
+        bool consequencesAcknowledged,
+        string? reason = null,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class ConfigureRoleService : IConfigureRoleService
@@ -83,7 +89,13 @@ public sealed class ConfigureRoleService : IConfigureRoleService
         return ConfigurationResult<Role>.Success(entity);
     }
 
-    public async Task<ConfigurationResult<Role>> DeactivateAsync(int roleId, int actingAdminId, CancellationToken cancellationToken = default)
+    public async Task<ConfigurationResult<Role>> DeactivateAsync(
+        int roleId,
+        int actingAdminId,
+        int approvedByAdminId,
+        bool consequencesAcknowledged,
+        string? reason = null,
+        CancellationToken cancellationToken = default)
     {
         var entity = await _db.Roles.FirstOrDefaultAsync(r => r.RoleId == roleId, cancellationToken);
         if (entity is null)
@@ -97,6 +109,14 @@ public sealed class ConfigureRoleService : IConfigureRoleService
                 new ConfigurationError(ConfigurationErrorCodes.AlreadyInactive, "Role is already inactive."));
         }
 
+        if (!consequencesAcknowledged)
+        {
+            return ConfigurationResult<Role>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.ValidationFailed,
+                    "The consequences of this deactivation must be acknowledged."));
+        }
+
         entity.IsActive = false;
         var audit = await _lifecycle.RecordAsync(new ConfigurationLifecycleEvent
         {
@@ -104,8 +124,9 @@ public sealed class ConfigureRoleService : IConfigureRoleService
             EntityId = entity.RoleId,
             EntityName = entity.Name,
             Action = ConfigurationLifecycleActions.Deactivate,
+            Reason = reason,
             InitiatedByAdminId = actingAdminId,
-            ApprovedByAdminId = actingAdminId,
+            ApprovedByAdminId = approvedByAdminId,
         }, cancellationToken);
 
         if (!audit.IsSuccess)

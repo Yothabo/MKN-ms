@@ -37,6 +37,9 @@ public interface IConfigureServiceDefinitionService
     Task<ConfigurationResult<ServiceDefinition>> DeactivateAsync(
         int serviceDefId,
         int actingAdminId,
+        int approvedByAdminId,
+        bool consequencesAcknowledged,
+        string? reason = null,
         CancellationToken cancellationToken = default);
 }
 
@@ -165,6 +168,9 @@ public sealed class ConfigureServiceDefinitionService : IConfigureServiceDefinit
     public async Task<ConfigurationResult<ServiceDefinition>> DeactivateAsync(
         int serviceDefId,
         int actingAdminId,
+        int approvedByAdminId,
+        bool consequencesAcknowledged,
+        string? reason = null,
         CancellationToken cancellationToken = default)
     {
         var entity = await _db.ServiceDefinitions
@@ -180,6 +186,14 @@ public sealed class ConfigureServiceDefinitionService : IConfigureServiceDefinit
                 new ConfigurationError(ConfigurationErrorCodes.AlreadyInactive, "Service definition is already inactive."));
         }
 
+        if (!consequencesAcknowledged)
+        {
+            return ConfigurationResult<ServiceDefinition>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.ValidationFailed,
+                    "The consequences of this deactivation must be acknowledged."));
+        }
+
         entity.IsActive = false;
         var audit = await _lifecycle.RecordAsync(new ConfigurationLifecycleEvent
         {
@@ -187,8 +201,9 @@ public sealed class ConfigureServiceDefinitionService : IConfigureServiceDefinit
             EntityId = entity.ServiceDefId,
             EntityName = entity.Name,
             Action = ConfigurationLifecycleActions.Deactivate,
+            Reason = reason,
             InitiatedByAdminId = actingAdminId,
-            ApprovedByAdminId = actingAdminId,
+            ApprovedByAdminId = approvedByAdminId,
         }, cancellationToken);
 
         if (!audit.IsSuccess)

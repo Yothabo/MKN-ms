@@ -34,7 +34,13 @@ public interface IConfigureTimeSlotService
         int actingAdminId,
         CancellationToken cancellationToken = default);
 
-    Task<ConfigurationResult<BranchTimeSlot>> DeactivateAsync(int timeSlotId, int actingAdminId, CancellationToken cancellationToken = default);
+    Task<ConfigurationResult<BranchTimeSlot>> DeactivateAsync(
+        int timeSlotId,
+        int actingAdminId,
+        int approvedByAdminId,
+        bool consequencesAcknowledged,
+        string? reason = null,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class ConfigureTimeSlotService : IConfigureTimeSlotService
@@ -148,7 +154,13 @@ public sealed class ConfigureTimeSlotService : IConfigureTimeSlotService
         return ConfigurationResult<BranchTimeSlot>.Success(entity);
     }
 
-    public async Task<ConfigurationResult<BranchTimeSlot>> DeactivateAsync(int timeSlotId, int actingAdminId, CancellationToken cancellationToken = default)
+    public async Task<ConfigurationResult<BranchTimeSlot>> DeactivateAsync(
+        int timeSlotId,
+        int actingAdminId,
+        int approvedByAdminId,
+        bool consequencesAcknowledged,
+        string? reason = null,
+        CancellationToken cancellationToken = default)
     {
         var entity = await _db.BranchTimeSlots.FirstOrDefaultAsync(t => t.TimeSlotId == timeSlotId, cancellationToken);
         if (entity is null)
@@ -162,6 +174,14 @@ public sealed class ConfigureTimeSlotService : IConfigureTimeSlotService
                 new ConfigurationError(ConfigurationErrorCodes.AlreadyInactive, "Time slot is already inactive."));
         }
 
+        if (!consequencesAcknowledged)
+        {
+            return ConfigurationResult<BranchTimeSlot>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.ValidationFailed,
+                    "The consequences of this deactivation must be acknowledged."));
+        }
+
         entity.IsActive = false;
         var audit = await _lifecycle.RecordAsync(new ConfigurationLifecycleEvent
         {
@@ -169,8 +189,9 @@ public sealed class ConfigureTimeSlotService : IConfigureTimeSlotService
             EntityId = entity.TimeSlotId,
             EntityName = $"{entity.DayOfWeek} {entity.TimeSlotId}",
             Action = ConfigurationLifecycleActions.Deactivate,
+            Reason = reason,
             InitiatedByAdminId = actingAdminId,
-            ApprovedByAdminId = actingAdminId,
+            ApprovedByAdminId = approvedByAdminId,
         }, cancellationToken);
 
         if (!audit.IsSuccess)

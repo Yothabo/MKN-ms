@@ -65,6 +65,8 @@ public static class ConfigurationEndpoints
                 Results.Conflict(new { error = result.Error }),
             ConfigurationErrorCodes.LifecycleViolation =>
                 Results.UnprocessableEntity(new { error = result.Error }),
+            ConfigurationErrorCodes.ValidationFailed =>
+                Results.BadRequest(new { error = result.Error }),
             ConfigurationErrorCodes.ReferencedEntityMissing or
             ConfigurationErrorCodes.ReferencedEntityInactive or
             ConfigurationErrorCodes.InvalidValue =>
@@ -131,10 +133,13 @@ public static class ConfigurationEndpoints
 
         routes.MapDelete("/api/config/1.0/roles/{id:int}", async (
             int id,
-            [FromBody] ActingAdminRequest request,
+            [FromBody] LifecycleActionRequest request,
             IConfigureRoleService service,
             CancellationToken cancellationToken) =>
-            ToHttpResult(await service.DeactivateAsync(id, request.ActingAdminId, cancellationToken)));
+            ToHttpResult(await service.DeactivateAsync(
+                id, request.ActingAdminId, request.ApprovedByAdminId,
+                request.ConsequencesAcknowledged, request.Reason,
+                cancellationToken)));
 
         // 1.2 Duty
         routes.MapGet("/api/config/1.0/duties", async (
@@ -158,10 +163,13 @@ public static class ConfigurationEndpoints
 
         routes.MapDelete("/api/config/1.0/duties/{id:int}", async (
             int id,
-            [FromBody] ActingAdminRequest request,
+            [FromBody] LifecycleActionRequest request,
             IConfigureDutyService service,
             CancellationToken cancellationToken) =>
-            ToHttpResult(await service.DeactivateAsync(id, request.ActingAdminId, cancellationToken)));
+            ToHttpResult(await service.DeactivateAsync(
+                id, request.ActingAdminId, request.ApprovedByAdminId,
+                request.ConsequencesAcknowledged, request.Reason,
+                cancellationToken)));
 
         // 1.3 Branch
         routes.MapGet("/api/config/1.0/branches", async (
@@ -185,10 +193,13 @@ public static class ConfigurationEndpoints
 
         routes.MapDelete("/api/config/1.0/branches/{id:int}", async (
             int id,
-            [FromBody] ActingAdminRequest request,
+            [FromBody] LifecycleActionRequest request,
             IConfigureBranchService service,
             CancellationToken cancellationToken) =>
-            ToHttpResult(await service.DeactivateAsync(id, request.ActingAdminId, cancellationToken)));
+            ToHttpResult(await service.DeactivateAsync(
+                id, request.ActingAdminId, request.ApprovedByAdminId,
+                request.ConsequencesAcknowledged, request.Reason,
+                cancellationToken)));
 
         // 1.4 Time Slot
         routes.MapGet("/api/config/1.0/time-slots", async (
@@ -208,10 +219,13 @@ public static class ConfigurationEndpoints
 
         routes.MapDelete("/api/config/1.0/time-slots/{id:int}", async (
             int id,
-            [FromBody] ActingAdminRequest request,
+            [FromBody] LifecycleActionRequest request,
             IConfigureTimeSlotService service,
             CancellationToken cancellationToken) =>
-            ToHttpResult(await service.DeactivateAsync(id, request.ActingAdminId, cancellationToken)));
+            ToHttpResult(await service.DeactivateAsync(
+                id, request.ActingAdminId, request.ApprovedByAdminId,
+                request.ConsequencesAcknowledged, request.Reason,
+                cancellationToken)));
 
         // 1.5 Service Definition
         routes.MapGet("/api/config/1.0/service-definitions", async (
@@ -230,10 +244,13 @@ public static class ConfigurationEndpoints
 
         routes.MapDelete("/api/config/1.0/service-definitions/{id:int}", async (
             int id,
-            [FromBody] ActingAdminRequest request,
+            [FromBody] LifecycleActionRequest request,
             IConfigureServiceDefinitionService service,
             CancellationToken cancellationToken) =>
-            ToHttpResult(await service.DeactivateAsync(id, request.ActingAdminId, cancellationToken)));
+            ToHttpResult(await service.DeactivateAsync(
+                id, request.ActingAdminId, request.ApprovedByAdminId,
+                request.ConsequencesAcknowledged, request.Reason,
+                cancellationToken)));
 
         // 1.6 Service Definition Duty and Service Schedule
         routes.MapGet("/api/config/1.0/service-definitions/{id:int}/duties", async (
@@ -253,10 +270,13 @@ public static class ConfigurationEndpoints
         routes.MapDelete("/api/config/1.0/service-definitions/{id:int}/duties/{dutyId:int}", async (
             int id,
             int dutyId,
-            [FromBody] ActingAdminRequest request,
+            [FromBody] LifecycleActionRequest request,
             IConfigureServiceDutyAndScheduleService service,
             CancellationToken cancellationToken) =>
-            ToHttpResult(await service.RemoveDutyAsync(id, dutyId, request.ActingAdminId, cancellationToken)));
+            ToHttpResult(await service.RemoveDutyAsync(
+                id, dutyId, request.ActingAdminId, request.ApprovedByAdminId,
+                request.ConsequencesAcknowledged, request.Reason,
+                cancellationToken)));
 
         routes.MapGet("/api/config/1.0/service-schedules", async (
             int? serviceDefId,
@@ -276,10 +296,13 @@ public static class ConfigurationEndpoints
 
         routes.MapDelete("/api/config/1.0/service-schedules/{id:int}", async (
             int id,
-            [FromBody] ActingAdminRequest request,
+            [FromBody] LifecycleActionRequest request,
             IConfigureServiceDutyAndScheduleService service,
             CancellationToken cancellationToken) =>
-            ToHttpResult(await service.DeactivateScheduleAsync(id, request.ActingAdminId, cancellationToken)));
+            ToHttpResult(await service.DeactivateScheduleAsync(
+                id, request.ActingAdminId, request.ApprovedByAdminId,
+                request.ConsequencesAcknowledged, request.Reason,
+                cancellationToken)));
     }
 
     // -----------------------------------------------------------------
@@ -723,6 +746,14 @@ public sealed record CreateProgramItemRequest
 public sealed record ActingAdminRequest
 {
     public required int ActingAdminId { get; init; }
+}
+
+public sealed record LifecycleActionRequest
+{
+    public required int ActingAdminId { get; init; }
+    public required int ApprovedByAdminId { get; init; }
+    public required bool ConsequencesAcknowledged { get; init; }
+    public string? Reason { get; init; }
 }
 
 public sealed record SetMemberStatusRequest

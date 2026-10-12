@@ -19,7 +19,13 @@ public interface IConfigureDutyService
 
     Task<ConfigurationResult<Duty>> RenameAsync(int dutyId, string newName, int actingAdminId, CancellationToken cancellationToken = default);
 
-    Task<ConfigurationResult<Duty>> DeactivateAsync(int dutyId, int actingAdminId, CancellationToken cancellationToken = default);
+    Task<ConfigurationResult<Duty>> DeactivateAsync(
+        int dutyId,
+        int actingAdminId,
+        int approvedByAdminId,
+        bool consequencesAcknowledged,
+        string? reason = null,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class ConfigureDutyService : IConfigureDutyService
@@ -83,7 +89,13 @@ public sealed class ConfigureDutyService : IConfigureDutyService
         return ConfigurationResult<Duty>.Success(entity);
     }
 
-    public async Task<ConfigurationResult<Duty>> DeactivateAsync(int dutyId, int actingAdminId, CancellationToken cancellationToken = default)
+    public async Task<ConfigurationResult<Duty>> DeactivateAsync(
+        int dutyId,
+        int actingAdminId,
+        int approvedByAdminId,
+        bool consequencesAcknowledged,
+        string? reason = null,
+        CancellationToken cancellationToken = default)
     {
         var entity = await _db.Duties.FirstOrDefaultAsync(d => d.DutyId == dutyId, cancellationToken);
         if (entity is null)
@@ -97,6 +109,14 @@ public sealed class ConfigureDutyService : IConfigureDutyService
                 new ConfigurationError(ConfigurationErrorCodes.AlreadyInactive, "Duty is already inactive."));
         }
 
+        if (!consequencesAcknowledged)
+        {
+            return ConfigurationResult<Duty>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.ValidationFailed,
+                    "The consequences of this deactivation must be acknowledged."));
+        }
+
         entity.IsActive = false;
         var audit = await _lifecycle.RecordAsync(new ConfigurationLifecycleEvent
         {
@@ -104,8 +124,9 @@ public sealed class ConfigureDutyService : IConfigureDutyService
             EntityId = entity.DutyId,
             EntityName = entity.Name,
             Action = ConfigurationLifecycleActions.Deactivate,
+            Reason = reason,
             InitiatedByAdminId = actingAdminId,
-            ApprovedByAdminId = actingAdminId,
+            ApprovedByAdminId = approvedByAdminId,
         }, cancellationToken);
 
         if (!audit.IsSuccess)

@@ -29,7 +29,13 @@ public interface IConfigureBranchService
         int actingAdminId,
         CancellationToken cancellationToken = default);
 
-    Task<ConfigurationResult<Branch>> DeactivateAsync(int branchId, int actingAdminId, CancellationToken cancellationToken = default);
+    Task<ConfigurationResult<Branch>> DeactivateAsync(
+        int branchId,
+        int actingAdminId,
+        int approvedByAdminId,
+        bool consequencesAcknowledged,
+        string? reason = null,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class ConfigureBranchService : IConfigureBranchService
@@ -113,7 +119,13 @@ public sealed class ConfigureBranchService : IConfigureBranchService
         return ConfigurationResult<Branch>.Success(entity);
     }
 
-    public async Task<ConfigurationResult<Branch>> DeactivateAsync(int branchId, int actingAdminId, CancellationToken cancellationToken = default)
+    public async Task<ConfigurationResult<Branch>> DeactivateAsync(
+        int branchId,
+        int actingAdminId,
+        int approvedByAdminId,
+        bool consequencesAcknowledged,
+        string? reason = null,
+        CancellationToken cancellationToken = default)
     {
         var entity = await _db.Branches.FirstOrDefaultAsync(b => b.BranchId == branchId, cancellationToken);
         if (entity is null)
@@ -127,6 +139,14 @@ public sealed class ConfigureBranchService : IConfigureBranchService
                 new ConfigurationError(ConfigurationErrorCodes.AlreadyInactive, "Branch is already inactive."));
         }
 
+        if (!consequencesAcknowledged)
+        {
+            return ConfigurationResult<Branch>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.ValidationFailed,
+                    "The consequences of this deactivation must be acknowledged."));
+        }
+
         entity.IsActive = false;
         var audit = await _lifecycle.RecordAsync(new ConfigurationLifecycleEvent
         {
@@ -134,8 +154,9 @@ public sealed class ConfigureBranchService : IConfigureBranchService
             EntityId = entity.BranchId,
             EntityName = entity.Name,
             Action = ConfigurationLifecycleActions.Deactivate,
+            Reason = reason,
             InitiatedByAdminId = actingAdminId,
-            ApprovedByAdminId = actingAdminId,
+            ApprovedByAdminId = approvedByAdminId,
         }, cancellationToken);
 
         if (!audit.IsSuccess)
