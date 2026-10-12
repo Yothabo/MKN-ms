@@ -15,11 +15,11 @@ public interface IConfigureRoleService
 
     Task<Role?> GetAsync(int roleId, CancellationToken cancellationToken = default);
 
-    Task<ConfigurationResult<Role>> CreateAsync(string name, CancellationToken cancellationToken = default);
+    Task<ConfigurationResult<Role>> CreateAsync(string name, int actingAdminId, CancellationToken cancellationToken = default);
 
-    Task<ConfigurationResult<Role>> RenameAsync(int roleId, string newName, CancellationToken cancellationToken = default);
+    Task<ConfigurationResult<Role>> RenameAsync(int roleId, string newName, int actingAdminId, CancellationToken cancellationToken = default);
 
-    Task<ConfigurationResult<Role>> DeactivateAsync(int roleId, CancellationToken cancellationToken = default);
+    Task<ConfigurationResult<Role>> DeactivateAsync(int roleId, int actingAdminId, CancellationToken cancellationToken = default);
 }
 
 public sealed class ConfigureRoleService : IConfigureRoleService
@@ -46,7 +46,7 @@ public sealed class ConfigureRoleService : IConfigureRoleService
         return await _db.Roles.FirstOrDefaultAsync(r => r.RoleId == roleId, cancellationToken);
     }
 
-    public async Task<ConfigurationResult<Role>> CreateAsync(string name, CancellationToken cancellationToken = default)
+    public async Task<ConfigurationResult<Role>> CreateAsync(string name, int actingAdminId, CancellationToken cancellationToken = default)
     {
         if (!ConfigurationValidation.IsValidName(name))
         {
@@ -60,7 +60,7 @@ public sealed class ConfigureRoleService : IConfigureRoleService
         return ConfigurationResult<Role>.Success(entity);
     }
 
-    public async Task<ConfigurationResult<Role>> RenameAsync(int roleId, string newName, CancellationToken cancellationToken = default)
+    public async Task<ConfigurationResult<Role>> RenameAsync(int roleId, string newName, int actingAdminId, CancellationToken cancellationToken = default)
     {
         if (!ConfigurationValidation.IsValidName(newName))
         {
@@ -79,7 +79,7 @@ public sealed class ConfigureRoleService : IConfigureRoleService
         return ConfigurationResult<Role>.Success(entity);
     }
 
-    public async Task<ConfigurationResult<Role>> DeactivateAsync(int roleId, CancellationToken cancellationToken = default)
+    public async Task<ConfigurationResult<Role>> DeactivateAsync(int roleId, int actingAdminId, CancellationToken cancellationToken = default)
     {
         var entity = await _db.Roles.FirstOrDefaultAsync(r => r.RoleId == roleId, cancellationToken);
         if (entity is null)

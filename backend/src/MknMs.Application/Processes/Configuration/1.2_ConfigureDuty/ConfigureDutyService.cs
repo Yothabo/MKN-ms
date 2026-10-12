@@ -15,11 +15,11 @@ public interface IConfigureDutyService
 
     Task<Duty?> GetAsync(int dutyId, CancellationToken cancellationToken = default);
 
-    Task<ConfigurationResult<Duty>> CreateAsync(string name, CancellationToken cancellationToken = default);
+    Task<ConfigurationResult<Duty>> CreateAsync(string name, int actingAdminId, CancellationToken cancellationToken = default);
 
-    Task<ConfigurationResult<Duty>> RenameAsync(int dutyId, string newName, CancellationToken cancellationToken = default);
+    Task<ConfigurationResult<Duty>> RenameAsync(int dutyId, string newName, int actingAdminId, CancellationToken cancellationToken = default);
 
-    Task<ConfigurationResult<Duty>> DeactivateAsync(int dutyId, CancellationToken cancellationToken = default);
+    Task<ConfigurationResult<Duty>> DeactivateAsync(int dutyId, int actingAdminId, CancellationToken cancellationToken = default);
 }
 
 public sealed class ConfigureDutyService : IConfigureDutyService
@@ -46,7 +46,7 @@ public sealed class ConfigureDutyService : IConfigureDutyService
         return await _db.Duties.FirstOrDefaultAsync(d => d.DutyId == dutyId, cancellationToken);
     }
 
-    public async Task<ConfigurationResult<Duty>> CreateAsync(string name, CancellationToken cancellationToken = default)
+    public async Task<ConfigurationResult<Duty>> CreateAsync(string name, int actingAdminId, CancellationToken cancellationToken = default)
     {
         if (!ConfigurationValidation.IsValidName(name))
         {
@@ -60,7 +60,7 @@ public sealed class ConfigureDutyService : IConfigureDutyService
         return ConfigurationResult<Duty>.Success(entity);
     }
 
-    public async Task<ConfigurationResult<Duty>> RenameAsync(int dutyId, string newName, CancellationToken cancellationToken = default)
+    public async Task<ConfigurationResult<Duty>> RenameAsync(int dutyId, string newName, int actingAdminId, CancellationToken cancellationToken = default)
     {
         if (!ConfigurationValidation.IsValidName(newName))
         {
@@ -79,7 +79,7 @@ public sealed class ConfigureDutyService : IConfigureDutyService
         return ConfigurationResult<Duty>.Success(entity);
     }
 
-    public async Task<ConfigurationResult<Duty>> DeactivateAsync(int dutyId, CancellationToken cancellationToken = default)
+    public async Task<ConfigurationResult<Duty>> DeactivateAsync(int dutyId, int actingAdminId, CancellationToken cancellationToken = default)
     {
         var entity = await _db.Duties.FirstOrDefaultAsync(d => d.DutyId == dutyId, cancellationToken);
         if (entity is null)

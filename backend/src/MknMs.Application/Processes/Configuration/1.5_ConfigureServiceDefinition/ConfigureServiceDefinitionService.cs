@@ -22,6 +22,7 @@ public interface IConfigureServiceDefinitionService
     Task<ConfigurationResult<ServiceDefinition>> CreateAsync(
         string name,
         int serviceTypeId,
+        int actingAdminId,
         int? owningBranchId = null,
         CancellationToken cancellationToken = default);
 
@@ -30,10 +31,12 @@ public interface IConfigureServiceDefinitionService
         string name,
         int serviceTypeId,
         int? owningBranchId,
+        int actingAdminId,
         CancellationToken cancellationToken = default);
 
     Task<ConfigurationResult<ServiceDefinition>> DeactivateAsync(
         int serviceDefId,
+        int actingAdminId,
         CancellationToken cancellationToken = default);
 }
 
@@ -67,6 +70,7 @@ public sealed class ConfigureServiceDefinitionService : IConfigureServiceDefinit
     public async Task<ConfigurationResult<ServiceDefinition>> CreateAsync(
         string name,
         int serviceTypeId,
+        int actingAdminId,
         int? owningBranchId = null,
         CancellationToken cancellationToken = default)
     {
@@ -112,6 +116,7 @@ public sealed class ConfigureServiceDefinitionService : IConfigureServiceDefinit
         string name,
         int serviceTypeId,
         int? owningBranchId,
+        int actingAdminId,
         CancellationToken cancellationToken = default)
     {
         if (!ConfigurationValidation.IsValidName(name))
@@ -155,6 +160,7 @@ public sealed class ConfigureServiceDefinitionService : IConfigureServiceDefinit
 
     public async Task<ConfigurationResult<ServiceDefinition>> DeactivateAsync(
         int serviceDefId,
+        int actingAdminId,
         CancellationToken cancellationToken = default)
     {
         var entity = await _db.ServiceDefinitions

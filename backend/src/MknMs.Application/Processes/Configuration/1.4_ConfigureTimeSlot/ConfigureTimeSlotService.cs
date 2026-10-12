@@ -24,15 +24,17 @@ public interface IConfigureTimeSlotService
         int branchId,
         string dayOfWeek,
         int timeOfDayId,
+        int actingAdminId,
         CancellationToken cancellationToken = default);
 
     Task<ConfigurationResult<BranchTimeSlot>> UpdateAsync(
         int timeSlotId,
         string dayOfWeek,
         int timeOfDayId,
+        int actingAdminId,
         CancellationToken cancellationToken = default);
 
-    Task<ConfigurationResult<BranchTimeSlot>> DeactivateAsync(int timeSlotId, CancellationToken cancellationToken = default);
+    Task<ConfigurationResult<BranchTimeSlot>> DeactivateAsync(int timeSlotId, int actingAdminId, CancellationToken cancellationToken = default);
 }
 
 public sealed class ConfigureTimeSlotService : IConfigureTimeSlotService
@@ -75,6 +77,7 @@ public sealed class ConfigureTimeSlotService : IConfigureTimeSlotService
         int branchId,
         string dayOfWeek,
         int timeOfDayId,
+        int actingAdminId,
         CancellationToken cancellationToken = default)
     {
         var branch = await _db.Branches.FirstOrDefaultAsync(b => b.BranchId == branchId, cancellationToken);
@@ -113,6 +116,7 @@ public sealed class ConfigureTimeSlotService : IConfigureTimeSlotService
         int timeSlotId,
         string dayOfWeek,
         int timeOfDayId,
+        int actingAdminId,
         CancellationToken cancellationToken = default)
     {
         if (!ValidDays.Contains(dayOfWeek))
@@ -140,7 +144,7 @@ public sealed class ConfigureTimeSlotService : IConfigureTimeSlotService
         return ConfigurationResult<BranchTimeSlot>.Success(entity);
     }
 
-    public async Task<ConfigurationResult<BranchTimeSlot>> DeactivateAsync(int timeSlotId, CancellationToken cancellationToken = default)
+    public async Task<ConfigurationResult<BranchTimeSlot>> DeactivateAsync(int timeSlotId, int actingAdminId, CancellationToken cancellationToken = default)
     {
         var entity = await _db.BranchTimeSlots.FirstOrDefaultAsync(t => t.TimeSlotId == timeSlotId, cancellationToken);
         if (entity is null)

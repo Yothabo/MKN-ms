@@ -19,15 +19,17 @@ public interface IConfigureBranchService
     Task<ConfigurationResult<Branch>> CreateAsync(
         string name,
         string location,
+        int actingAdminId,
         CancellationToken cancellationToken = default);
 
     Task<ConfigurationResult<Branch>> UpdateAsync(
         int branchId,
         string name,
         string location,
+        int actingAdminId,
         CancellationToken cancellationToken = default);
 
-    Task<ConfigurationResult<Branch>> DeactivateAsync(int branchId, CancellationToken cancellationToken = default);
+    Task<ConfigurationResult<Branch>> DeactivateAsync(int branchId, int actingAdminId, CancellationToken cancellationToken = default);
 }
 
 public sealed class ConfigureBranchService : IConfigureBranchService
@@ -57,6 +59,7 @@ public sealed class ConfigureBranchService : IConfigureBranchService
     public async Task<ConfigurationResult<Branch>> CreateAsync(
         string name,
         string location,
+        int actingAdminId,
         CancellationToken cancellationToken = default)
     {
         if (!ConfigurationValidation.IsValidName(name))
@@ -80,6 +83,7 @@ public sealed class ConfigureBranchService : IConfigureBranchService
         int branchId,
         string name,
         string location,
+        int actingAdminId,
         CancellationToken cancellationToken = default)
     {
         if (!ConfigurationValidation.IsValidName(name))
@@ -105,7 +109,7 @@ public sealed class ConfigureBranchService : IConfigureBranchService
         return ConfigurationResult<Branch>.Success(entity);
     }
 
-    public async Task<ConfigurationResult<Branch>> DeactivateAsync(int branchId, CancellationToken cancellationToken = default)
+    public async Task<ConfigurationResult<Branch>> DeactivateAsync(int branchId, int actingAdminId, CancellationToken cancellationToken = default)
     {
         var entity = await _db.Branches.FirstOrDefaultAsync(b => b.BranchId == branchId, cancellationToken);
         if (entity is null)

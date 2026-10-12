@@ -28,17 +28,20 @@ public interface IConfigureServiceDutyAndScheduleService
         int serviceDefId,
         int dutyId,
         int requiredSlotCount,
+        int actingAdminId,
         CancellationToken cancellationToken = default);
 
     Task<ConfigurationResult<ServiceDefinitionDuty>> UpdateDutyAsync(
         int serviceDefId,
         int dutyId,
         int requiredSlotCount,
+        int actingAdminId,
         CancellationToken cancellationToken = default);
 
     Task<ConfigurationResult<ServiceDefinitionDuty>> RemoveDutyAsync(
         int serviceDefId,
         int dutyId,
+        int actingAdminId,
         CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<ServiceSchedule>> ListSchedulesAsync(
@@ -50,15 +53,18 @@ public interface IConfigureServiceDutyAndScheduleService
         int serviceDefId,
         int timeSlotId,
         TimeOnly startTime,
+        int actingAdminId,
         CancellationToken cancellationToken = default);
 
     Task<ConfigurationResult<ServiceSchedule>> UpdateScheduleAsync(
         int scheduleId,
         TimeOnly startTime,
+        int actingAdminId,
         CancellationToken cancellationToken = default);
 
     Task<ConfigurationResult<ServiceSchedule>> DeactivateScheduleAsync(
         int scheduleId,
+        int actingAdminId,
         CancellationToken cancellationToken = default);
 }
 
@@ -93,6 +99,7 @@ public sealed class ConfigureServiceDutyAndScheduleService : IConfigureServiceDu
         int serviceDefId,
         int dutyId,
         int requiredSlotCount,
+        int actingAdminId,
         CancellationToken cancellationToken = default)
     {
         if (!ConfigurationValidation.IsPositive(requiredSlotCount))
@@ -154,6 +161,7 @@ public sealed class ConfigureServiceDutyAndScheduleService : IConfigureServiceDu
         int serviceDefId,
         int dutyId,
         int requiredSlotCount,
+        int actingAdminId,
         CancellationToken cancellationToken = default)
     {
         if (!ConfigurationValidation.IsPositive(requiredSlotCount))
@@ -179,6 +187,7 @@ public sealed class ConfigureServiceDutyAndScheduleService : IConfigureServiceDu
     public async Task<ConfigurationResult<ServiceDefinitionDuty>> RemoveDutyAsync(
         int serviceDefId,
         int dutyId,
+        int actingAdminId,
         CancellationToken cancellationToken = default)
     {
         var entity = await _db.ServiceDefinitionDuties
@@ -226,6 +235,7 @@ public sealed class ConfigureServiceDutyAndScheduleService : IConfigureServiceDu
         int serviceDefId,
         int timeSlotId,
         TimeOnly startTime,
+        int actingAdminId,
         CancellationToken cancellationToken = default)
     {
         var definition = await _db.ServiceDefinitions
@@ -295,6 +305,7 @@ public sealed class ConfigureServiceDutyAndScheduleService : IConfigureServiceDu
     public async Task<ConfigurationResult<ServiceSchedule>> UpdateScheduleAsync(
         int scheduleId,
         TimeOnly startTime,
+        int actingAdminId,
         CancellationToken cancellationToken = default)
     {
         var entity = await _db.ServiceSchedules
@@ -311,6 +322,7 @@ public sealed class ConfigureServiceDutyAndScheduleService : IConfigureServiceDu
 
     public async Task<ConfigurationResult<ServiceSchedule>> DeactivateScheduleAsync(
         int scheduleId,
+        int actingAdminId,
         CancellationToken cancellationToken = default)
     {
         var entity = await _db.ServiceSchedules

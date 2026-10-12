@@ -118,20 +118,21 @@ public static class ConfigurationEndpoints
             [FromBody] CreateNamedEntityRequest request,
             IConfigureRoleService service,
             CancellationToken cancellationToken) =>
-            ToHttpResult(await service.CreateAsync(request.Name, cancellationToken)));
+            ToHttpResult(await service.CreateAsync(request.Name, request.ActingAdminId, cancellationToken)));
 
         routes.MapPut("/api/config/1.0/roles/{id:int}", async (
             int id,
             [FromBody] CreateNamedEntityRequest request,
             IConfigureRoleService service,
             CancellationToken cancellationToken) =>
-            ToHttpResult(await service.RenameAsync(id, request.Name, cancellationToken)));
+            ToHttpResult(await service.RenameAsync(id, request.Name, request.ActingAdminId, cancellationToken)));
 
         routes.MapDelete("/api/config/1.0/roles/{id:int}", async (
             int id,
+            [FromBody] ActingAdminRequest request,
             IConfigureRoleService service,
             CancellationToken cancellationToken) =>
-            ToHttpResult(await service.DeactivateAsync(id, cancellationToken)));
+            ToHttpResult(await service.DeactivateAsync(id, request.ActingAdminId, cancellationToken)));
 
         // 1.2 Duty
         routes.MapGet("/api/config/1.0/duties", async (
@@ -144,20 +145,21 @@ public static class ConfigurationEndpoints
             [FromBody] CreateNamedEntityRequest request,
             IConfigureDutyService service,
             CancellationToken cancellationToken) =>
-            ToHttpResult(await service.CreateAsync(request.Name, cancellationToken)));
+            ToHttpResult(await service.CreateAsync(request.Name, request.ActingAdminId, cancellationToken)));
 
         routes.MapPut("/api/config/1.0/duties/{id:int}", async (
             int id,
             [FromBody] CreateNamedEntityRequest request,
             IConfigureDutyService service,
             CancellationToken cancellationToken) =>
-            ToHttpResult(await service.RenameAsync(id, request.Name, cancellationToken)));
+            ToHttpResult(await service.RenameAsync(id, request.Name, request.ActingAdminId, cancellationToken)));
 
         routes.MapDelete("/api/config/1.0/duties/{id:int}", async (
             int id,
+            [FromBody] ActingAdminRequest request,
             IConfigureDutyService service,
             CancellationToken cancellationToken) =>
-            ToHttpResult(await service.DeactivateAsync(id, cancellationToken)));
+            ToHttpResult(await service.DeactivateAsync(id, request.ActingAdminId, cancellationToken)));
 
         // 1.3 Branch
         routes.MapGet("/api/config/1.0/branches", async (
@@ -170,20 +172,21 @@ public static class ConfigurationEndpoints
             [FromBody] CreateBranchRequest request,
             IConfigureBranchService service,
             CancellationToken cancellationToken) =>
-            ToHttpResult(await service.CreateAsync(request.Name, request.Location, cancellationToken)));
+            ToHttpResult(await service.CreateAsync(request.Name, request.Location, request.ActingAdminId, cancellationToken)));
 
         routes.MapPut("/api/config/1.0/branches/{id:int}", async (
             int id,
             [FromBody] CreateBranchRequest request,
             IConfigureBranchService service,
             CancellationToken cancellationToken) =>
-            ToHttpResult(await service.UpdateAsync(id, request.Name, request.Location, cancellationToken)));
+            ToHttpResult(await service.UpdateAsync(id, request.Name, request.Location, request.ActingAdminId, cancellationToken)));
 
         routes.MapDelete("/api/config/1.0/branches/{id:int}", async (
             int id,
+            [FromBody] ActingAdminRequest request,
             IConfigureBranchService service,
             CancellationToken cancellationToken) =>
-            ToHttpResult(await service.DeactivateAsync(id, cancellationToken)));
+            ToHttpResult(await service.DeactivateAsync(id, request.ActingAdminId, cancellationToken)));
 
         // 1.4 Time Slot
         routes.MapGet("/api/config/1.0/time-slots", async (
@@ -198,13 +201,15 @@ public static class ConfigurationEndpoints
             IConfigureTimeSlotService service,
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.CreateAsync(
-                request.BranchId, request.DayOfWeek, request.TimeOfDayId, cancellationToken)));
+                request.BranchId, request.DayOfWeek, request.TimeOfDayId,
+                request.ActingAdminId, cancellationToken)));
 
         routes.MapDelete("/api/config/1.0/time-slots/{id:int}", async (
             int id,
+            [FromBody] ActingAdminRequest request,
             IConfigureTimeSlotService service,
             CancellationToken cancellationToken) =>
-            ToHttpResult(await service.DeactivateAsync(id, cancellationToken)));
+            ToHttpResult(await service.DeactivateAsync(id, request.ActingAdminId, cancellationToken)));
 
         // 1.5 Service Definition
         routes.MapGet("/api/config/1.0/service-definitions", async (
@@ -218,13 +223,15 @@ public static class ConfigurationEndpoints
             IConfigureServiceDefinitionService service,
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.CreateAsync(
-                request.Name, request.ServiceTypeId, request.OwningBranchId, cancellationToken)));
+                request.Name, request.ServiceTypeId, request.ActingAdminId,
+                request.OwningBranchId, cancellationToken)));
 
         routes.MapDelete("/api/config/1.0/service-definitions/{id:int}", async (
             int id,
+            [FromBody] ActingAdminRequest request,
             IConfigureServiceDefinitionService service,
             CancellationToken cancellationToken) =>
-            ToHttpResult(await service.DeactivateAsync(id, cancellationToken)));
+            ToHttpResult(await service.DeactivateAsync(id, request.ActingAdminId, cancellationToken)));
 
         // 1.6 Service Definition Duty and Service Schedule
         routes.MapGet("/api/config/1.0/service-definitions/{id:int}/duties", async (
@@ -239,14 +246,15 @@ public static class ConfigurationEndpoints
             [FromBody] AddServiceDutyRequest request,
             IConfigureServiceDutyAndScheduleService service,
             CancellationToken cancellationToken) =>
-            ToHttpResult(await service.AddDutyAsync(id, request.DutyId, request.RequiredSlotCount, cancellationToken)));
+            ToHttpResult(await service.AddDutyAsync(id, request.DutyId, request.RequiredSlotCount, request.ActingAdminId, cancellationToken)));
 
         routes.MapDelete("/api/config/1.0/service-definitions/{id:int}/duties/{dutyId:int}", async (
             int id,
             int dutyId,
+            [FromBody] ActingAdminRequest request,
             IConfigureServiceDutyAndScheduleService service,
             CancellationToken cancellationToken) =>
-            ToHttpResult(await service.RemoveDutyAsync(id, dutyId, cancellationToken)));
+            ToHttpResult(await service.RemoveDutyAsync(id, dutyId, request.ActingAdminId, cancellationToken)));
 
         routes.MapGet("/api/config/1.0/service-schedules", async (
             int? serviceDefId,
@@ -260,13 +268,16 @@ public static class ConfigurationEndpoints
             IConfigureServiceDutyAndScheduleService service,
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.CreateScheduleAsync(
-                request.ServiceDefId, request.TimeSlotId, TimeOnly.Parse(request.StartTime), cancellationToken)));
+                request.ServiceDefId, request.TimeSlotId,
+                TimeOnly.Parse(request.StartTime), request.ActingAdminId,
+                cancellationToken)));
 
         routes.MapDelete("/api/config/1.0/service-schedules/{id:int}", async (
             int id,
+            [FromBody] ActingAdminRequest request,
             IConfigureServiceDutyAndScheduleService service,
             CancellationToken cancellationToken) =>
-            ToHttpResult(await service.DeactivateScheduleAsync(id, cancellationToken)));
+            ToHttpResult(await service.DeactivateScheduleAsync(id, request.ActingAdminId, cancellationToken)));
     }
 
     // -----------------------------------------------------------------
@@ -601,12 +612,14 @@ public sealed record CreateLookupRequest
 public sealed record CreateNamedEntityRequest
 {
     public required string Name { get; init; }
+    public required int ActingAdminId { get; init; }
 }
 
 public sealed record CreateBranchRequest
 {
     public required string Name { get; init; }
     public required string Location { get; init; }
+    public required int ActingAdminId { get; init; }
 }
 
 public sealed record CreateTimeSlotRequest
@@ -614,6 +627,7 @@ public sealed record CreateTimeSlotRequest
     public required int BranchId { get; init; }
     public required string DayOfWeek { get; init; }
     public required int TimeOfDayId { get; init; }
+    public required int ActingAdminId { get; init; }
 }
 
 public sealed record CreateServiceDefinitionRequest
@@ -621,12 +635,14 @@ public sealed record CreateServiceDefinitionRequest
     public required string Name { get; init; }
     public required int ServiceTypeId { get; init; }
     public int? OwningBranchId { get; init; }
+    public required int ActingAdminId { get; init; }
 }
 
 public sealed record AddServiceDutyRequest
 {
     public required int DutyId { get; init; }
     public required int RequiredSlotCount { get; init; }
+    public required int ActingAdminId { get; init; }
 }
 
 public sealed record CreateScheduleRequest
@@ -634,6 +650,7 @@ public sealed record CreateScheduleRequest
     public required int ServiceDefId { get; init; }
     public required int TimeSlotId { get; init; }
     public required string StartTime { get; init; }
+    public required int ActingAdminId { get; init; }
 }
 
 public sealed record CreateDutyRuleRequest
@@ -693,6 +710,11 @@ public sealed record CreateProgramItemRequest
     public required string ScheduledStart { get; init; }
     public required string ScheduledEnd { get; init; }
     public int? ServiceDefId { get; init; }
+    public required int ActingAdminId { get; init; }
+}
+
+public sealed record ActingAdminRequest
+{
     public required int ActingAdminId { get; init; }
 }
 
