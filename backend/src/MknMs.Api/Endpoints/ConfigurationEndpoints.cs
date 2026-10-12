@@ -299,7 +299,8 @@ public static class ConfigurationEndpoints
             IConfigureDutyRulesService service,
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.CreateAsync(
-                dutyId, request.TierOrder, request.CriteriaType, request.CriteriaValue, cancellationToken)));
+                dutyId, request.TierOrder, request.CriteriaType, request.CriteriaValue,
+                request.ActingAdminId, cancellationToken)));
 
         routes.MapPut("/api/config/2.0/rules/{id:int}", async (
             int id,
@@ -307,13 +308,15 @@ public static class ConfigurationEndpoints
             IConfigureDutyRulesService service,
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.UpdateAsync(
-                id, request.TierOrder, request.CriteriaType, request.CriteriaValue, cancellationToken)));
+                id, request.TierOrder, request.CriteriaType, request.CriteriaValue,
+                request.ActingAdminId, cancellationToken)));
 
         routes.MapDelete("/api/config/2.0/rules/{id:int}", async (
             int id,
+            [FromBody] ActingAdminRequest request,
             IConfigureDutyRulesService service,
             CancellationToken cancellationToken) =>
-            ToHttpResult(await service.DeactivateAsync(id, cancellationToken)));
+            ToHttpResult(await service.DeactivateAsync(id, request.ActingAdminId, cancellationToken)));
     }
 
     // -----------------------------------------------------------------
@@ -462,9 +465,10 @@ public static class ConfigurationEndpoints
 
         routes.MapDelete("/api/config/8.0/events/{id:int}", async (
             int id,
+            [FromBody] ActingAdminRequest request,
             IManageEventService service,
             CancellationToken cancellationToken) =>
-            ToHttpResult(await service.DeactivateAsync(id, cancellationToken)));
+            ToHttpResult(await service.DeactivateAsync(id, request.ActingAdminId, cancellationToken)));
 
         // Program
         routes.MapGet("/api/config/8.0/events/{eventId:int}/program", async (
@@ -658,6 +662,7 @@ public sealed record CreateDutyRuleRequest
     public required int TierOrder { get; init; }
     public required string CriteriaType { get; init; }
     public required string CriteriaValue { get; init; }
+    public required int ActingAdminId { get; init; }
 }
 
 public sealed record IssueIdentifierRequest

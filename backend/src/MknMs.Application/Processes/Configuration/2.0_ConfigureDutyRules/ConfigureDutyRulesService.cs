@@ -35,6 +35,7 @@ public interface IConfigureDutyRulesService
         int tierOrder,
         string criteriaType,
         string criteriaValue,
+        int actingAdminId,
         CancellationToken cancellationToken = default);
 
     Task<ConfigurationResult<DutyRule>> UpdateAsync(
@@ -42,10 +43,12 @@ public interface IConfigureDutyRulesService
         int tierOrder,
         string criteriaType,
         string criteriaValue,
+        int actingAdminId,
         CancellationToken cancellationToken = default);
 
     Task<ConfigurationResult<DutyRule>> DeactivateAsync(
         int ruleId,
+        int actingAdminId,
         CancellationToken cancellationToken = default);
 }
 
@@ -79,10 +82,14 @@ public sealed class ConfigureDutyRulesService : IConfigureDutyRulesService
     };
 
     private readonly MknDbContext _db;
+    private readonly IConfigurationLifecycleService _lifecycle;
 
-    public ConfigureDutyRulesService(MknDbContext db)
+    public ConfigureDutyRulesService(
+        MknDbContext db,
+        IConfigurationLifecycleService lifecycle)
     {
         _db = db;
+        _lifecycle = lifecycle;
     }
 
     public async Task<IReadOnlyList<DutyRule>> ListForDutyAsync(
@@ -112,6 +119,7 @@ public sealed class ConfigureDutyRulesService : IConfigureDutyRulesService
         int tierOrder,
         string criteriaType,
         string criteriaValue,
+        int actingAdminId,
         CancellationToken cancellationToken = default)
     {
         if (!ConfigurationValidation.IsPositive(tierOrder))
@@ -169,6 +177,7 @@ public sealed class ConfigureDutyRulesService : IConfigureDutyRulesService
         int tierOrder,
         string criteriaType,
         string criteriaValue,
+        int actingAdminId,
         CancellationToken cancellationToken = default)
     {
         if (!ConfigurationValidation.IsPositive(tierOrder))
@@ -211,6 +220,7 @@ public sealed class ConfigureDutyRulesService : IConfigureDutyRulesService
 
     public async Task<ConfigurationResult<DutyRule>> DeactivateAsync(
         int ruleId,
+        int actingAdminId,
         CancellationToken cancellationToken = default)
     {
         var entity = await _db.DutyRules
@@ -228,6 +238,26 @@ public sealed class ConfigureDutyRulesService : IConfigureDutyRulesService
         }
 
         entity.IsActive = false;
+
+        var audit = await _lifecycle.RecordAsync(new ConfigurationLifecycleEvent
+        {
+            EntityType = nameof(DutyRule),
+            EntityId = entity.RuleId,
+            EntityName = $"Rule {entity.RuleId}",
+            Action = ConfigurationLifecycleActions.Deactivate,
+            InitiatedByAdminId = actingAdminId,
+            ApprovedByAdminId = actingAdminId,
+            ConsequencesPreviewed =
+                "Duty rule deactivated; existing assignments are unaffected.",
+            ConsequencesOccurred =
+                "Duty rule deactivated; existing assignments are unaffected.",
+        }, cancellationToken);
+
+        if (!audit.IsSuccess)
+        {
+            return ConfigurationResult<DutyRule>.Failure(audit.Error!);
+        }
+
         await _db.SaveChangesAsync(cancellationToken);
         return ConfigurationResult<DutyRule>.Success(entity);
     }

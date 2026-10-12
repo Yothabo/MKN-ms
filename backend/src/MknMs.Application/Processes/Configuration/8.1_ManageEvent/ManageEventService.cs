@@ -57,16 +57,21 @@ public interface IManageEventService
 
     Task<ConfigurationResult<Event>> DeactivateAsync(
         int eventId,
+        int actingAdminId,
         CancellationToken cancellationToken = default);
 }
 
 public sealed class ManageEventService : IManageEventService
 {
     private readonly MknDbContext _db;
+    private readonly IConfigurationLifecycleService _lifecycle;
 
-    public ManageEventService(MknDbContext db)
+    public ManageEventService(
+        MknDbContext db,
+        IConfigurationLifecycleService lifecycle)
     {
         _db = db;
+        _lifecycle = lifecycle;
     }
 
     public async Task<IReadOnlyList<Event>> ListAsync(
@@ -175,6 +180,7 @@ public sealed class ManageEventService : IManageEventService
 
     public async Task<ConfigurationResult<Event>> DeactivateAsync(
         int eventId,
+        int actingAdminId,
         CancellationToken cancellationToken = default)
     {
         var entity = await _db.Events.FirstOrDefaultAsync(e => e.EventId == eventId, cancellationToken);
@@ -190,6 +196,26 @@ public sealed class ManageEventService : IManageEventService
         }
 
         entity.IsActive = false;
+
+        var audit = await _lifecycle.RecordAsync(new ConfigurationLifecycleEvent
+        {
+            EntityType = nameof(Event),
+            EntityId = entity.EventId,
+            EntityName = entity.Name,
+            Action = ConfigurationLifecycleActions.Deactivate,
+            InitiatedByAdminId = actingAdminId,
+            ApprovedByAdminId = actingAdminId,
+            ConsequencesPreviewed =
+                "Event deactivated; existing references are unaffected.",
+            ConsequencesOccurred =
+                "Event deactivated; existing references are unaffected.",
+        }, cancellationToken);
+
+        if (!audit.IsSuccess)
+        {
+            return ConfigurationResult<Event>.Failure(audit.Error!);
+        }
+
         await _db.SaveChangesAsync(cancellationToken);
         return ConfigurationResult<Event>.Success(entity);
     }
