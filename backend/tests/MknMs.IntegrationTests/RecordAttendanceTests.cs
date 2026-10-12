@@ -97,6 +97,7 @@ public class RecordAttendanceTests : IAsyncLifetime
             DateOfBirth = new DateOnly(1990, 5, 20),
             MembershipStage = "Full", Gender = "Other",
             Phone = "+27-000-0000", Email = null,
+            ReceiptNumber = "R-0001",
             BranchId = branch.BranchId, RoleId = role.RoleId,
             MemberStatusId = statusId, IsActive = true,
         };
@@ -284,5 +285,80 @@ public class RecordAttendanceTests : IAsyncLifetime
 
         var count = await _db.AttendanceRecords.CountAsync();
         count.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Record_WithMemberLackingIdentifier_Fails()
+    {
+        var f = await SeedFixtureAsync();
+
+        var member = await _db.Members.FirstAsync();
+        member.ReceiptNumber = null;
+        member.CardNumber = null;
+        await _db.SaveChangesAsync();
+
+        var service = new RecordAttendanceService(_db, _clock);
+        var result = await service.RunAsync(new RecordAttendanceCommand
+        {
+            MemberId = f.MemberId,
+            OccurrenceId = f.OccurrenceId,
+        });
+
+        result.Status.Should().Be("Failure");
+        result.Recorded.Should().BeFalse();
+        result.ErrorDetail.Should().Contain("ReceiptNumber");
+
+        var count = await _db.AttendanceRecords.CountAsync();
+        count.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Record_WithRegisterOffAtEffectiveScope_Fails()
+    {
+        var f = await SeedFixtureAsync();
+
+        var setting = await _db.SystemSettings
+            .FirstAsync(s => s.Key == "AttendanceRegisterEnabled");
+        setting.Value = "false";
+        await _db.SaveChangesAsync();
+
+        var service = new RecordAttendanceService(_db, _clock);
+        var result = await service.RunAsync(new RecordAttendanceCommand
+        {
+            MemberId = f.MemberId,
+            OccurrenceId = f.OccurrenceId,
+        });
+
+        result.Status.Should().Be("Failure");
+        result.Recorded.Should().BeFalse();
+        result.ErrorDetail.Should().Contain("register is off");
+
+        var count = await _db.AttendanceRecords.CountAsync();
+        count.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Record_WithBranchOverrideOn_GlobalOff_WritesRow()
+    {
+        var f = await SeedFixtureAsync();
+
+        var setting = await _db.SystemSettings
+            .FirstAsync(s => s.Key == "AttendanceRegisterEnabled");
+        setting.Value = "false";
+        await _db.SaveChangesAsync();
+
+        var branch = await _db.Branches.FirstAsync();
+        branch.UsesAttendanceRegister = true;
+        await _db.SaveChangesAsync();
+
+        var service = new RecordAttendanceService(_db, _clock);
+        var result = await service.RunAsync(new RecordAttendanceCommand
+        {
+            MemberId = f.MemberId,
+            OccurrenceId = f.OccurrenceId,
+        });
+
+        result.Status.Should().Be("Success");
+        result.Recorded.Should().BeTrue();
     }
 }

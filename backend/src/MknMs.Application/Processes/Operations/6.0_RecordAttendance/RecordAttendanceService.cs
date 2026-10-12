@@ -4,19 +4,38 @@ namespace MknMs.Application.Processes.Operations.RecordAttendance;
 /// Implementation of process 6.0 Record Attendance.
 /// </summary>
 /// <remarks>
-/// The narrowest process in the system. Reads Member and
-/// ServiceOccurrence to validate the pair, writes AttendanceRecord.
-/// Nothing else. No interpretation, no recency computation, no
-/// notification, no trigger.
+/// Reads Member, ServiceOccurrence, and the attendance register
+/// scope, then writes AttendanceRecord. Nothing else. No
+/// interpretation, no recency computation, no notification, no
+/// trigger.
 ///
-/// Idempotent per (MemberId, OccurrenceId): a repeat invocation finds
-/// the existing row and returns it, rather than failing or creating a
-/// duplicate.
+/// Two pre-write checks per §9.1.7 and §13:
 ///
-/// Specification: §13.
+///   - Attendance register eligibility. A member is tracked only if
+///     they hold a ReceiptNumber or a CardNumber. When neither is
+///     set, the operation is refused with ValidationFailed.
+///   - Effective register scope. When the register is off at the
+///     effective scope, the operation is refused with
+///     ConfigurationMissing and no row is written.
+///
+/// Scope resolution per §9.6:
+///
+///   - Schedule-sourced occurrence: Branch.UsesAttendanceRegister of
+///     the branch in the occurrence's time slot, then the global
+///     AttendanceRegisterEnabled. Event does not participate.
+///   - Event-sourced occurrence: Event.UsesAttendanceRegister, then
+///     the global AttendanceRegisterEnabled. Branch does not
+///     participate.
+///
+/// Idempotent per (MemberId, OccurrenceId): a repeat invocation
+/// finds the existing row and returns it.
+///
+/// Specification: §13, §9.6, §9.1.7.
 /// </remarks>
 public sealed class RecordAttendanceService : IRecordAttendanceService
 {
+    private const string AttendanceRegisterEnabledKey = "AttendanceRegisterEnabled";
+
     private readonly MknDbContext _db;
     private readonly TimeProvider _clock;
 
@@ -30,83 +49,133 @@ public sealed class RecordAttendanceService : IRecordAttendanceService
         RecordAttendanceCommand command,
         CancellationToken cancellationToken = default)
     {
-        try
+        var member = await _db.Members
+            .FirstOrDefaultAsync(m => m.MemberId == command.MemberId, cancellationToken);
+
+        if (member is null)
         {
-            // Validate the pair's referents exist. §13 requires the
-            // member and the occurrence to be real rows; nothing else
-            // about either is consulted.
-            var memberExists = await _db.Members
-                .AnyAsync(m => m.MemberId == command.MemberId, cancellationToken);
+            return Failure($"Member {command.MemberId} does not exist.");
+        }
 
-            if (!memberExists)
-            {
-                return new RecordAttendanceResult
-                {
-                    Status = "Failure",
-                    Recorded = false,
-                    RecordId = 0,
-                    ErrorDetail = $"Member {command.MemberId} does not exist.",
-                };
-            }
+        var occurrence = await _db.ServiceOccurrences
+            .FirstOrDefaultAsync(o => o.OccurrenceId == command.OccurrenceId, cancellationToken);
 
-            var occurrenceExists = await _db.ServiceOccurrences
-                .AnyAsync(o => o.OccurrenceId == command.OccurrenceId, cancellationToken);
+        if (occurrence is null)
+        {
+            return Failure($"ServiceOccurrence {command.OccurrenceId} does not exist.");
+        }
 
-            if (!occurrenceExists)
-            {
-                return new RecordAttendanceResult
-                {
-                    Status = "Failure",
-                    Recorded = false,
-                    RecordId = 0,
-                    ErrorDetail = $"ServiceOccurrence {command.OccurrenceId} does not exist.",
-                };
-            }
+        // §9.1.7: a member is tracked only if they hold a
+        // ReceiptNumber or a CardNumber.
+        if (string.IsNullOrWhiteSpace(member.ReceiptNumber)
+            && string.IsNullOrWhiteSpace(member.CardNumber))
+        {
+            return Failure(
+                $"Member {command.MemberId} does not hold a ReceiptNumber or CardNumber; "
+                + "the member is not eligible for the attendance register.");
+        }
 
-            // Idempotency: existing row for this pair is returned
-            // unchanged. §13.1.2.
-            var existing = await _db.AttendanceRecords
-                .FirstOrDefaultAsync(a => a.MemberId == command.MemberId
-                    && a.OccurrenceId == command.OccurrenceId,
-                    cancellationToken);
+        // §9.6: resolve the effective register scope.
+        var globalSetting = await _db.SystemSettings
+            .FirstOrDefaultAsync(s => s.Key == AttendanceRegisterEnabledKey,
+                cancellationToken);
 
-            if (existing is not null)
-            {
-                return new RecordAttendanceResult
-                {
-                    Status = "Success",
-                    Recorded = false,
-                    RecordId = existing.RecordId,
-                };
-            }
+        if (globalSetting?.Value is null)
+        {
+            return Failure(
+                $"Required setting '{AttendanceRegisterEnabledKey}' is not configured.");
+        }
 
-            var record = new AttendanceRecord
-            {
-                MemberId = command.MemberId,
-                OccurrenceId = command.OccurrenceId,
-                Timestamp = _clock.GetUtcNow(),
-                Source = "Manual",
-            };
+        if (!bool.TryParse(globalSetting.Value, out var globalRegisterEnabled))
+        {
+            return Failure(
+                $"Setting '{AttendanceRegisterEnabledKey}' must be 'true' or 'false'.");
+        }
 
-            _db.AttendanceRecords.Add(record);
-            await _db.SaveChangesAsync(cancellationToken);
+        var effective = await ResolveEffectiveRegisterScopeAsync(
+            occurrence, globalRegisterEnabled, cancellationToken);
 
+        if (!effective)
+        {
+            return Failure(
+                "The attendance register is off at the effective scope for this occurrence.");
+        }
+
+        // §13.1.2: idempotent per pair.
+        var existing = await _db.AttendanceRecords
+            .FirstOrDefaultAsync(a => a.MemberId == command.MemberId
+                && a.OccurrenceId == command.OccurrenceId,
+                cancellationToken);
+
+        if (existing is not null)
+        {
             return new RecordAttendanceResult
             {
                 Status = "Success",
-                Recorded = true,
-                RecordId = record.RecordId,
-            };
-        }
-        catch (Exception ex)
-        {
-            return new RecordAttendanceResult
-            {
-                Status = "Failure",
                 Recorded = false,
-                RecordId = 0,
-                ErrorDetail = ex.Message,
+                RecordId = existing.RecordId,
             };
         }
+
+        var record = new AttendanceRecord
+        {
+            MemberId = command.MemberId,
+            OccurrenceId = command.OccurrenceId,
+            Timestamp = _clock.GetUtcNow(),
+            Source = "Manual",
+        };
+
+        _db.AttendanceRecords.Add(record);
+        await _db.SaveChangesAsync(cancellationToken);
+
+        return new RecordAttendanceResult
+        {
+            Status = "Success",
+            Recorded = true,
+            RecordId = record.RecordId,
+        };
     }
+
+    private async Task<bool> ResolveEffectiveRegisterScopeAsync(
+        ServiceOccurrence occurrence,
+        bool globalRegisterEnabled,
+        CancellationToken cancellationToken)
+    {
+        // Schedule-sourced: branch override, then global.
+        if (occurrence.ScheduleId is int scheduleId)
+        {
+            var branchOverride = await _db.ServiceSchedules
+                .Where(s => s.ScheduleId == scheduleId)
+                .Select(s => s.TimeSlot.Branch.UsesAttendanceRegister)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            return branchOverride ?? globalRegisterEnabled;
+        }
+
+        // Event-sourced: event override, then global.
+        if (occurrence.EventId is int eventId)
+        {
+            var eventOverride = await _db.Events
+                .Where(e => e.EventId == eventId)
+                .Select(e => e.UsesAttendanceRegister)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            return eventOverride ?? globalRegisterEnabled;
+        }
+
+        // An occurrence with neither source violates B18; but the
+        // check constraint forbids it, and the code does not add
+        // behaviour to handle an impossible state. Fall back to the
+        // global setting.
+        return globalRegisterEnabled;
+    }
+
+    private static RecordAttendanceResult Failure(string detail) =>
+        new()
+        {
+            Status = "Failure",
+            Recorded = false,
+            RecordId = 0,
+            ErrorDetail = detail,
+        };
 }
