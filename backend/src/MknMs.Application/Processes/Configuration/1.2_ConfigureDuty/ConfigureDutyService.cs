@@ -25,10 +25,14 @@ public interface IConfigureDutyService
 public sealed class ConfigureDutyService : IConfigureDutyService
 {
     private readonly MknDbContext _db;
+    private readonly IConfigurationLifecycleService _lifecycle;
 
-    public ConfigureDutyService(MknDbContext db)
+    public ConfigureDutyService(
+        MknDbContext db,
+        IConfigurationLifecycleService lifecycle)
     {
         _db = db;
+        _lifecycle = lifecycle;
     }
 
     public async Task<IReadOnlyList<Duty>> ListAsync(bool includeInactive = false, CancellationToken cancellationToken = default)
@@ -95,6 +99,26 @@ public sealed class ConfigureDutyService : IConfigureDutyService
 
         entity.IsActive = false;
         await _db.SaveChangesAsync(cancellationToken);
+
+        var audit = await _lifecycle.RecordAsync(new ConfigurationLifecycleEvent
+        {
+            EntityType = nameof(Duty),
+            EntityId = entity.DutyId,
+            EntityName = entity.Name,
+            Action = ConfigurationLifecycleActions.Deactivate,
+            InitiatedByAdminId = actingAdminId,
+            ApprovedByAdminId = actingAdminId,
+            ConsequencesPreviewed =
+                "Duty deactivated; existing references are unaffected.",
+            ConsequencesOccurred =
+                "Duty deactivated; existing references are unaffected.",
+        }, cancellationToken);
+
+        if (!audit.IsSuccess)
+        {
+            return ConfigurationResult<Duty>.Failure(audit.Error!);
+        }
+
         return ConfigurationResult<Duty>.Success(entity);
     }
 }

@@ -43,10 +43,14 @@ public interface IConfigureServiceDefinitionService
 public sealed class ConfigureServiceDefinitionService : IConfigureServiceDefinitionService
 {
     private readonly MknDbContext _db;
+    private readonly IConfigurationLifecycleService _lifecycle;
 
-    public ConfigureServiceDefinitionService(MknDbContext db)
+    public ConfigureServiceDefinitionService(
+        MknDbContext db,
+        IConfigurationLifecycleService lifecycle)
     {
         _db = db;
+        _lifecycle = lifecycle;
     }
 
     public async Task<IReadOnlyList<ServiceDefinition>> ListAsync(
@@ -178,6 +182,26 @@ public sealed class ConfigureServiceDefinitionService : IConfigureServiceDefinit
 
         entity.IsActive = false;
         await _db.SaveChangesAsync(cancellationToken);
+
+        var audit = await _lifecycle.RecordAsync(new ConfigurationLifecycleEvent
+        {
+            EntityType = nameof(ServiceDefinition),
+            EntityId = entity.ServiceDefId,
+            EntityName = entity.Name,
+            Action = ConfigurationLifecycleActions.Deactivate,
+            InitiatedByAdminId = actingAdminId,
+            ApprovedByAdminId = actingAdminId,
+            ConsequencesPreviewed =
+                "Service definition deactivated; existing references are unaffected.",
+            ConsequencesOccurred =
+                "Service definition deactivated; existing references are unaffected.",
+        }, cancellationToken);
+
+        if (!audit.IsSuccess)
+        {
+            return ConfigurationResult<ServiceDefinition>.Failure(audit.Error!);
+        }
+
         return ConfigurationResult<ServiceDefinition>.Success(entity);
     }
 }

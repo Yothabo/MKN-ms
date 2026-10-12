@@ -25,10 +25,14 @@ public interface IConfigureRoleService
 public sealed class ConfigureRoleService : IConfigureRoleService
 {
     private readonly MknDbContext _db;
+    private readonly IConfigurationLifecycleService _lifecycle;
 
-    public ConfigureRoleService(MknDbContext db)
+    public ConfigureRoleService(
+        MknDbContext db,
+        IConfigurationLifecycleService lifecycle)
     {
         _db = db;
+        _lifecycle = lifecycle;
     }
 
     public async Task<IReadOnlyList<Role>> ListAsync(bool includeInactive = false, CancellationToken cancellationToken = default)
@@ -95,6 +99,26 @@ public sealed class ConfigureRoleService : IConfigureRoleService
 
         entity.IsActive = false;
         await _db.SaveChangesAsync(cancellationToken);
+
+        var audit = await _lifecycle.RecordAsync(new ConfigurationLifecycleEvent
+        {
+            EntityType = nameof(Role),
+            EntityId = entity.RoleId,
+            EntityName = entity.Name,
+            Action = ConfigurationLifecycleActions.Deactivate,
+            InitiatedByAdminId = actingAdminId,
+            ApprovedByAdminId = actingAdminId,
+            ConsequencesPreviewed =
+                "Role deactivated; existing references are unaffected.",
+            ConsequencesOccurred =
+                "Role deactivated; existing references are unaffected.",
+        }, cancellationToken);
+
+        if (!audit.IsSuccess)
+        {
+            return ConfigurationResult<Role>.Failure(audit.Error!);
+        }
+
         return ConfigurationResult<Role>.Success(entity);
     }
 }

@@ -71,10 +71,14 @@ public interface IConfigureServiceDutyAndScheduleService
 public sealed class ConfigureServiceDutyAndScheduleService : IConfigureServiceDutyAndScheduleService
 {
     private readonly MknDbContext _db;
+    private readonly IConfigurationLifecycleService _lifecycle;
 
-    public ConfigureServiceDutyAndScheduleService(MknDbContext db)
+    public ConfigureServiceDutyAndScheduleService(
+        MknDbContext db,
+        IConfigurationLifecycleService lifecycle)
     {
         _db = db;
+        _lifecycle = lifecycle;
     }
 
     // ---------------------------------------------------------------------
@@ -207,6 +211,26 @@ public sealed class ConfigureServiceDutyAndScheduleService : IConfigureServiceDu
 
         entity.IsActive = false;
         await _db.SaveChangesAsync(cancellationToken);
+
+        var audit = await _lifecycle.RecordAsync(new ConfigurationLifecycleEvent
+        {
+            EntityType = nameof(ServiceDefinitionDuty),
+            EntityId = entity.ServiceDefId,
+            EntityName = $"ServiceDef {entity.ServiceDefId} / Duty {entity.DutyId}",
+            Action = ConfigurationLifecycleActions.Deactivate,
+            InitiatedByAdminId = actingAdminId,
+            ApprovedByAdminId = actingAdminId,
+            ConsequencesPreviewed =
+                "Service duty deactivated; existing occurrences are unaffected.",
+            ConsequencesOccurred =
+                "Service duty deactivated; existing occurrences are unaffected.",
+        }, cancellationToken);
+
+        if (!audit.IsSuccess)
+        {
+            return ConfigurationResult<ServiceDefinitionDuty>.Failure(audit.Error!);
+        }
+
         return ConfigurationResult<ServiceDefinitionDuty>.Success(entity);
     }
 
@@ -341,6 +365,26 @@ public sealed class ConfigureServiceDutyAndScheduleService : IConfigureServiceDu
 
         entity.IsActive = false;
         await _db.SaveChangesAsync(cancellationToken);
+
+        var audit = await _lifecycle.RecordAsync(new ConfigurationLifecycleEvent
+        {
+            EntityType = nameof(ServiceSchedule),
+            EntityId = entity.ScheduleId,
+            EntityName = $"Schedule {entity.ScheduleId}",
+            Action = ConfigurationLifecycleActions.Deactivate,
+            InitiatedByAdminId = actingAdminId,
+            ApprovedByAdminId = actingAdminId,
+            ConsequencesPreviewed =
+                "Service schedule deactivated; existing occurrences are unaffected.",
+            ConsequencesOccurred =
+                "Service schedule deactivated; existing occurrences are unaffected.",
+        }, cancellationToken);
+
+        if (!audit.IsSuccess)
+        {
+            return ConfigurationResult<ServiceSchedule>.Failure(audit.Error!);
+        }
+
         return ConfigurationResult<ServiceSchedule>.Success(entity);
     }
 }

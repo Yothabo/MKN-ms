@@ -35,10 +35,14 @@ public interface IConfigureBranchService
 public sealed class ConfigureBranchService : IConfigureBranchService
 {
     private readonly MknDbContext _db;
+    private readonly IConfigurationLifecycleService _lifecycle;
 
-    public ConfigureBranchService(MknDbContext db)
+    public ConfigureBranchService(
+        MknDbContext db,
+        IConfigurationLifecycleService lifecycle)
     {
         _db = db;
+        _lifecycle = lifecycle;
     }
 
     public async Task<IReadOnlyList<Branch>> ListAsync(bool includeInactive = false, CancellationToken cancellationToken = default)
@@ -125,6 +129,26 @@ public sealed class ConfigureBranchService : IConfigureBranchService
 
         entity.IsActive = false;
         await _db.SaveChangesAsync(cancellationToken);
+
+        var audit = await _lifecycle.RecordAsync(new ConfigurationLifecycleEvent
+        {
+            EntityType = nameof(Branch),
+            EntityId = entity.BranchId,
+            EntityName = entity.Name,
+            Action = ConfigurationLifecycleActions.Deactivate,
+            InitiatedByAdminId = actingAdminId,
+            ApprovedByAdminId = actingAdminId,
+            ConsequencesPreviewed =
+                "Branch deactivated; existing references are unaffected.",
+            ConsequencesOccurred =
+                "Branch deactivated; existing references are unaffected.",
+        }, cancellationToken);
+
+        if (!audit.IsSuccess)
+        {
+            return ConfigurationResult<Branch>.Failure(audit.Error!);
+        }
+
         return ConfigurationResult<Branch>.Success(entity);
     }
 }

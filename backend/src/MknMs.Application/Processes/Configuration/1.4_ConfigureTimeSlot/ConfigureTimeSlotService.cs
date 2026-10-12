@@ -45,10 +45,14 @@ public sealed class ConfigureTimeSlotService : IConfigureTimeSlotService
     };
 
     private readonly MknDbContext _db;
+    private readonly IConfigurationLifecycleService _lifecycle;
 
-    public ConfigureTimeSlotService(MknDbContext db)
+    public ConfigureTimeSlotService(
+        MknDbContext db,
+        IConfigurationLifecycleService lifecycle)
     {
         _db = db;
+        _lifecycle = lifecycle;
     }
 
     public async Task<IReadOnlyList<BranchTimeSlot>> ListAsync(
@@ -160,6 +164,26 @@ public sealed class ConfigureTimeSlotService : IConfigureTimeSlotService
 
         entity.IsActive = false;
         await _db.SaveChangesAsync(cancellationToken);
+
+        var audit = await _lifecycle.RecordAsync(new ConfigurationLifecycleEvent
+        {
+            EntityType = nameof(BranchTimeSlot),
+            EntityId = entity.TimeSlotId,
+            EntityName = $"{entity.DayOfWeek} {entity.TimeSlotId}",
+            Action = ConfigurationLifecycleActions.Deactivate,
+            InitiatedByAdminId = actingAdminId,
+            ApprovedByAdminId = actingAdminId,
+            ConsequencesPreviewed =
+                "Time slot deactivated; existing references are unaffected.",
+            ConsequencesOccurred =
+                "Time slot deactivated; existing references are unaffected.",
+        }, cancellationToken);
+
+        if (!audit.IsSuccess)
+        {
+            return ConfigurationResult<BranchTimeSlot>.Failure(audit.Error!);
+        }
+
         return ConfigurationResult<BranchTimeSlot>.Success(entity);
     }
 }
