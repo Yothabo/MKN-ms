@@ -1,13 +1,26 @@
+
 namespace MknMs.Application.Processes.Configuration.ManageEvent;
 
 /// <summary>
 /// Subprocess of 8.0 — Manage Event.
 /// </summary>
 /// <remarks>
-/// Creates, edits, deactivates, and lists Event rows. Type and Location
-/// are free text. May span multiple days.
+/// Creates, edits, deactivates, and lists Event rows, and manages the
+/// EventBranch set for each Event. Type is free text. May span
+/// multiple days — StartDate and EndDate are both fields.
 ///
-/// Specification: §4 (Event), §9.1.11.
+/// HostBranchId is the branch at which the event is held. The Event
+/// carries no Location field; the host branch expresses where the
+/// event is held. AttendingBranchIds is the set of branches
+/// attending; it is independent of the host and may be empty. The
+/// host need not appear in the attendee set (§4, B20).
+///
+/// UsesAttendanceRegister, when set, overrides the global attendance
+/// register state for the event's own occurrences. Null means no
+/// override.
+///
+/// Specification: §4 (Event, Event Branch), §9.1.11, §15.8.8,
+/// §15.8.9.
 /// </remarks>
 public interface IManageEventService
 {
@@ -17,12 +30,18 @@ public interface IManageEventService
 
     Task<Event?> GetAsync(int eventId, CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<EventBranch>> ListBranchesAsync(
+        int eventId,
+        CancellationToken cancellationToken = default);
+
     Task<ConfigurationResult<Event>> CreateAsync(
         string name,
         DateOnly startDate,
         DateOnly endDate,
-        string location,
         string type,
+        int hostBranchId,
+        IReadOnlyList<int>? attendingBranchIds,
+        bool? usesAttendanceRegister,
         CancellationToken cancellationToken = default);
 
     Task<ConfigurationResult<Event>> UpdateAsync(
@@ -30,8 +49,10 @@ public interface IManageEventService
         string name,
         DateOnly startDate,
         DateOnly endDate,
-        string location,
         string type,
+        int hostBranchId,
+        IReadOnlyList<int>? attendingBranchIds,
+        bool? usesAttendanceRegister,
         CancellationToken cancellationToken = default);
 
     Task<ConfigurationResult<Event>> DeactivateAsync(
@@ -52,7 +73,7 @@ public sealed class ManageEventService : IManageEventService
         bool includeInactive = false,
         CancellationToken cancellationToken = default)
     {
-        var query = _db.Events.AsQueryable();
+        var query = _db.Events.Where(e => !e.IsDeleted);
         if (!includeInactive)
         {
             query = query.Where(e => e.IsActive);
@@ -65,15 +86,29 @@ public sealed class ManageEventService : IManageEventService
         return await _db.Events.FirstOrDefaultAsync(e => e.EventId == eventId, cancellationToken);
     }
 
+    public async Task<IReadOnlyList<EventBranch>> ListBranchesAsync(
+        int eventId,
+        CancellationToken cancellationToken = default)
+    {
+        return await _db.EventBranches
+            .Where(b => b.EventId == eventId)
+            .OrderBy(b => b.BranchId)
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<ConfigurationResult<Event>> CreateAsync(
         string name,
         DateOnly startDate,
         DateOnly endDate,
-        string location,
         string type,
+        int hostBranchId,
+        IReadOnlyList<int>? attendingBranchIds,
+        bool? usesAttendanceRegister,
         CancellationToken cancellationToken = default)
     {
-        var validation = Validate(name, startDate, endDate, location, type);
+        var validation = await ValidateAsync(
+            name, startDate, endDate, type, hostBranchId,
+            attendingBranchIds, cancellationToken);
         if (validation is not null)
         {
             return ConfigurationResult<Event>.Failure(validation);
@@ -84,12 +119,18 @@ public sealed class ManageEventService : IManageEventService
             Name = name.Trim(),
             StartDate = startDate,
             EndDate = endDate,
-            Location = location.Trim(),
             Type = type.Trim(),
+            HostBranchId = hostBranchId,
+            UsesAttendanceRegister = usesAttendanceRegister,
             IsActive = true,
+            IsDeleted = false,
         };
         _db.Events.Add(entity);
         await _db.SaveChangesAsync(cancellationToken);
+
+        await ReplaceAttendingBranchesAsync(
+            entity.EventId, attendingBranchIds, cancellationToken);
+
         return ConfigurationResult<Event>.Success(entity);
     }
 
@@ -98,11 +139,15 @@ public sealed class ManageEventService : IManageEventService
         string name,
         DateOnly startDate,
         DateOnly endDate,
-        string location,
         string type,
+        int hostBranchId,
+        IReadOnlyList<int>? attendingBranchIds,
+        bool? usesAttendanceRegister,
         CancellationToken cancellationToken = default)
     {
-        var validation = Validate(name, startDate, endDate, location, type);
+        var validation = await ValidateAsync(
+            name, startDate, endDate, type, hostBranchId,
+            attendingBranchIds, cancellationToken);
         if (validation is not null)
         {
             return ConfigurationResult<Event>.Failure(validation);
@@ -117,9 +162,14 @@ public sealed class ManageEventService : IManageEventService
         entity.Name = name.Trim();
         entity.StartDate = startDate;
         entity.EndDate = endDate;
-        entity.Location = location.Trim();
         entity.Type = type.Trim();
+        entity.HostBranchId = hostBranchId;
+        entity.UsesAttendanceRegister = usesAttendanceRegister;
         await _db.SaveChangesAsync(cancellationToken);
+
+        await ReplaceAttendingBranchesAsync(
+            eventId, attendingBranchIds, cancellationToken);
+
         return ConfigurationResult<Event>.Success(entity);
     }
 
@@ -144,20 +194,47 @@ public sealed class ManageEventService : IManageEventService
         return ConfigurationResult<Event>.Success(entity);
     }
 
-    private static ConfigurationError? Validate(
+    // -----------------------------------------------------------------
+    // Helpers
+    // -----------------------------------------------------------------
+
+    private async Task ReplaceAttendingBranchesAsync(
+        int eventId,
+        IReadOnlyList<int>? attendingBranchIds,
+        CancellationToken cancellationToken)
+    {
+        var existing = await _db.EventBranches
+            .Where(b => b.EventId == eventId)
+            .ToListAsync(cancellationToken);
+        _db.EventBranches.RemoveRange(existing);
+
+        if (attendingBranchIds is not null)
+        {
+            foreach (var branchId in attendingBranchIds.Distinct())
+            {
+                _db.EventBranches.Add(new EventBranch
+                {
+                    EventId = eventId,
+                    BranchId = branchId,
+                });
+            }
+        }
+
+        await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task<ConfigurationError?> ValidateAsync(
         string name,
         DateOnly startDate,
         DateOnly endDate,
-        string location,
-        string type)
+        string type,
+        int hostBranchId,
+        IReadOnlyList<int>? attendingBranchIds,
+        CancellationToken cancellationToken)
     {
         if (!ConfigurationValidation.IsValidName(name))
         {
             return new ConfigurationError(ConfigurationErrorCodes.InvalidValue, "Name is required.");
-        }
-        if (!ConfigurationValidation.IsValidName(location))
-        {
-            return new ConfigurationError(ConfigurationErrorCodes.InvalidValue, "Location is required.");
         }
         if (!ConfigurationValidation.IsValidName(type))
         {
@@ -168,6 +245,31 @@ public sealed class ManageEventService : IManageEventService
             return new ConfigurationError(ConfigurationErrorCodes.InvalidValue,
                 "EndDate cannot be before StartDate.");
         }
+
+        var host = await _db.Branches
+            .FirstOrDefaultAsync(b => b.BranchId == hostBranchId, cancellationToken);
+        if (host is null)
+        {
+            return new ConfigurationError(ConfigurationErrorCodes.ReferencedEntityMissing,
+                "Host branch does not exist.");
+        }
+
+        if (attendingBranchIds is not null && attendingBranchIds.Count > 0)
+        {
+            var ids = attendingBranchIds.Distinct().ToList();
+            var found = await _db.Branches
+                .Where(b => ids.Contains(b.BranchId))
+                .Select(b => b.BranchId)
+                .ToListAsync(cancellationToken);
+
+            var missing = ids.Except(found).ToList();
+            if (missing.Count > 0)
+            {
+                return new ConfigurationError(ConfigurationErrorCodes.ReferencedEntityMissing,
+                    $"Attending branches do not exist: {string.Join(", ", missing)}.");
+            }
+        }
+
         return null;
     }
 }

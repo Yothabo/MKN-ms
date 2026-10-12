@@ -443,8 +443,10 @@ public static class ConfigurationEndpoints
                 request.Name,
                 DateOnly.Parse(request.StartDate),
                 DateOnly.Parse(request.EndDate),
-                request.Location,
                 request.Type,
+                request.HostBranchId,
+                request.AttendingBranchIds,
+                request.UsesAttendanceRegister,
                 cancellationToken)));
 
         routes.MapDelete("/api/config/8.0/events/{id:int}", async (
@@ -673,8 +675,10 @@ public sealed record CreateEventRequest
     public required string Name { get; init; }
     public required string StartDate { get; init; }
     public required string EndDate { get; init; }
-    public required string Location { get; init; }
     public required string Type { get; init; }
+    public required int HostBranchId { get; init; }
+    public IReadOnlyList<int>? AttendingBranchIds { get; init; }
+    public bool? UsesAttendanceRegister { get; init; }
 }
 
 public sealed record CreateProgramRequest
