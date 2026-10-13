@@ -58,6 +58,9 @@ public interface IManageEventService
     Task<ConfigurationResult<Event>> DeactivateAsync(
         int eventId,
         int actingAdminId,
+        int approvedByAdminId,
+        bool consequencesAcknowledged,
+        string? reason = null,
         CancellationToken cancellationToken = default);
 }
 
@@ -181,6 +184,9 @@ public sealed class ManageEventService : IManageEventService
     public async Task<ConfigurationResult<Event>> DeactivateAsync(
         int eventId,
         int actingAdminId,
+        int approvedByAdminId,
+        bool consequencesAcknowledged,
+        string? reason = null,
         CancellationToken cancellationToken = default)
     {
         var entity = await _db.Events.FirstOrDefaultAsync(e => e.EventId == eventId, cancellationToken);
@@ -195,6 +201,14 @@ public sealed class ManageEventService : IManageEventService
                 new ConfigurationError(ConfigurationErrorCodes.AlreadyInactive, "Event is already inactive."));
         }
 
+        if (!consequencesAcknowledged)
+        {
+            return ConfigurationResult<Event>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.ValidationFailed,
+                    "The consequences of this deactivation must be acknowledged."));
+        }
+
         entity.IsActive = false;
 
         var audit = await _lifecycle.RecordAsync(new ConfigurationLifecycleEvent
@@ -203,8 +217,9 @@ public sealed class ManageEventService : IManageEventService
             EntityId = entity.EventId,
             EntityName = entity.Name,
             Action = ConfigurationLifecycleActions.Deactivate,
+            Reason = reason,
             InitiatedByAdminId = actingAdminId,
-            ApprovedByAdminId = actingAdminId,
+            ApprovedByAdminId = approvedByAdminId,
         }, cancellationToken);
 
         if (!audit.IsSuccess)

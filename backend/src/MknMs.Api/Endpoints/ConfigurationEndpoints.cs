@@ -338,10 +338,13 @@ public static class ConfigurationEndpoints
 
         routes.MapDelete("/api/config/2.0/rules/{id:int}", async (
             int id,
-            [FromBody] ActingAdminRequest request,
+            [FromBody] LifecycleActionRequest request,
             IConfigureDutyRulesService service,
             CancellationToken cancellationToken) =>
-            ToHttpResult(await service.DeactivateAsync(id, request.ActingAdminId, cancellationToken)));
+            ToHttpResult(await service.DeactivateAsync(
+                id, request.ActingAdminId, request.ApprovedByAdminId,
+                request.ConsequencesAcknowledged, request.Reason,
+                cancellationToken)));
     }
 
     // -----------------------------------------------------------------
@@ -490,10 +493,13 @@ public static class ConfigurationEndpoints
 
         routes.MapDelete("/api/config/8.0/events/{id:int}", async (
             int id,
-            [FromBody] ActingAdminRequest request,
+            [FromBody] LifecycleActionRequest request,
             IManageEventService service,
             CancellationToken cancellationToken) =>
-            ToHttpResult(await service.DeactivateAsync(id, request.ActingAdminId, cancellationToken)));
+            ToHttpResult(await service.DeactivateAsync(
+                id, request.ActingAdminId, request.ApprovedByAdminId,
+                request.ConsequencesAcknowledged, request.Reason,
+                cancellationToken)));
 
         // Program
         routes.MapGet("/api/config/8.0/events/{eventId:int}/program", async (

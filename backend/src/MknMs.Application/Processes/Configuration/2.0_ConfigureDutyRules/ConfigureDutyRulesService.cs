@@ -49,6 +49,9 @@ public interface IConfigureDutyRulesService
     Task<ConfigurationResult<DutyRule>> DeactivateAsync(
         int ruleId,
         int actingAdminId,
+        int approvedByAdminId,
+        bool consequencesAcknowledged,
+        string? reason = null,
         CancellationToken cancellationToken = default);
 }
 
@@ -221,6 +224,9 @@ public sealed class ConfigureDutyRulesService : IConfigureDutyRulesService
     public async Task<ConfigurationResult<DutyRule>> DeactivateAsync(
         int ruleId,
         int actingAdminId,
+        int approvedByAdminId,
+        bool consequencesAcknowledged,
+        string? reason = null,
         CancellationToken cancellationToken = default)
     {
         var entity = await _db.DutyRules
@@ -237,6 +243,14 @@ public sealed class ConfigureDutyRulesService : IConfigureDutyRulesService
                     "Duty rule is already inactive."));
         }
 
+        if (!consequencesAcknowledged)
+        {
+            return ConfigurationResult<DutyRule>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.ValidationFailed,
+                    "The consequences of this deactivation must be acknowledged."));
+        }
+
         entity.IsActive = false;
 
         var audit = await _lifecycle.RecordAsync(new ConfigurationLifecycleEvent
@@ -245,8 +259,9 @@ public sealed class ConfigureDutyRulesService : IConfigureDutyRulesService
             EntityId = entity.RuleId,
             EntityName = $"Rule {entity.RuleId}",
             Action = ConfigurationLifecycleActions.Deactivate,
+            Reason = reason,
             InitiatedByAdminId = actingAdminId,
-            ApprovedByAdminId = actingAdminId,
+            ApprovedByAdminId = approvedByAdminId,
         }, cancellationToken);
 
         if (!audit.IsSuccess)
