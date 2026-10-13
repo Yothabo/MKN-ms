@@ -181,6 +181,16 @@ public static class ConfigurationEndpoints
                 request.ConsequencesAcknowledged, request.Reason,
                 cancellationToken)));
 
+        routes.MapPost("/api/config/1.0/duties/{id:int}/soft-delete", async (
+            int id,
+            [FromBody] LifecycleActionRequest request,
+            IConfigureDutyService service,
+            CancellationToken cancellationToken) =>
+            ToHttpResult(await service.SoftDeleteAsync(
+                id, request.ActingAdminId, request.ApprovedByAdminId,
+                request.ConsequencesAcknowledged, request.Reason ?? string.Empty,
+                cancellationToken)));
+
         // 1.3 Branch
         routes.MapGet("/api/config/1.0/branches", async (
             bool? includeInactive,
