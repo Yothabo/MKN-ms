@@ -70,6 +70,15 @@ public sealed record ConfigurationLifecycleEvent
 
     public string? Reason { get; init; }
 
+    /// <summary>
+    /// The cascade's description of the dependent changes the soft
+    /// delete is about to apply. Set by the caller for a soft delete
+    /// after ConfigurationCascadeService.ApplyAsync has prepared the
+    /// dependent changes. Null for a deactivate, or for a soft delete
+    /// whose entity has no cascade.
+    /// </summary>
+    public string? ConsequencesText { get; init; }
+
     public required int InitiatedByAdminId { get; init; }
 
     public required int ApprovedByAdminId { get; init; }
@@ -202,9 +211,15 @@ public sealed class ConfigurationLifecycleService : IConfigurationLifecycleServi
             ? "soft-deleted"
             : "deactivated";
 
-        var consequence = e.Action == ConfigurationLifecycleActions.SoftDelete
-            ? "Dependent references and rows are unaffected at this phase."
-            : "Existing references are unaffected.";
+        // For a soft delete whose cascade has already run, the
+        // cascade's own description of what it prepared is the
+        // faithful preview. For a deactivate, or a soft delete with
+        // no cascade, the generic statement is used.
+        var consequence = !string.IsNullOrWhiteSpace(e.ConsequencesText)
+            ? e.ConsequencesText!
+            : e.Action == ConfigurationLifecycleActions.SoftDelete
+                ? "No dependent changes apply."
+                : "Existing references are unaffected.";
 
         return $"{e.EntityType} '{e.EntityName}' (id {e.EntityId}) will be "
             + $"{verb}. {consequence}";

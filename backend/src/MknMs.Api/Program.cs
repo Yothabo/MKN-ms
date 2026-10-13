@@ -107,6 +107,7 @@ builder.Services.AddScoped<IAttendanceRuleEngineService, AttendanceRuleEngineSer
 // Configuration lifecycle — audit writer shared across every
 // configuration process.
 builder.Services.AddScoped<IConfigurationLifecycleService, ConfigurationLifecycleService>();
+builder.Services.AddScoped<IConfigurationCascadeService, ConfigurationCascadeService>();
 
 // Standard API services.
 builder.Services.AddEndpointsApiExplorer();
