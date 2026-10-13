@@ -111,6 +111,9 @@ public sealed class ConfigurationCascadeService : IConfigurationCascadeService
             case nameof(ServiceSchedule):
                 return await ApplyServiceScheduleCascadeAsync(entityId, cancellationToken);
 
+            case nameof(AttributeType):
+                return await ApplyAttributeTypeCascadeAsync(entityId, cancellationToken);
+
             default:
                 return ConfigurationResult<CascadeOutcome>.Success(
                     CascadeOutcome.Applied("No dependent changes apply."));
@@ -470,5 +473,69 @@ public sealed class ConfigurationCascadeService : IConfigurationCascadeService
         return ConfigurationResult<CascadeOutcome>.Success(
             CascadeOutcome.Applied(
                 "Existing Service Occurrences are preserved; the schedule stops being eligible for future materialization."));
+    }
+
+    // -----------------------------------------------------------------
+    // AttributeType cascade (§9.7 row)
+    //
+    // MemberAttributeValue rows for this attribute are physically
+    // removed. Duty Rules whose CriteriaType = MemberAttribute and
+    // whose CriteriaValue names this attribute are soft-deleted.
+    //
+    // The MemberAttribute criterion's value grammar is
+    // 'AttributeTypeName=RequiredValue'. 'Names this attribute' means
+    // the part before the '=' equals the AttributeType's Name; the
+    // match parses the value, it does not substring-match.
+    // -----------------------------------------------------------------
+
+    private async Task<ConfigurationResult<CascadeOutcome>> ApplyAttributeTypeCascadeAsync(
+        int attributeTypeId,
+        CancellationToken cancellationToken)
+    {
+        var attribute = await _db.AttributeTypes
+            .FirstOrDefaultAsync(a => a.AttributeTypeId == attributeTypeId, cancellationToken);
+        if (attribute is null)
+        {
+            return ConfigurationResult<CascadeOutcome>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.NotFound,
+                    $"AttributeType {attributeTypeId} does not exist."));
+        }
+
+        // Physical removal of MemberAttributeValue rows.
+        var values = await _db.MemberAttributeValues
+            .Where(v => v.AttributeTypeId == attributeTypeId)
+            .ToListAsync(cancellationToken);
+        _db.MemberAttributeValues.RemoveRange(values);
+
+        // Soft delete of Duty Rules naming this attribute. Load every
+        // MemberAttribute-criterion rule and filter in memory after
+        // parsing the value.
+        var candidates = await _db.DutyRules
+            .Where(r => r.CriteriaType == "MemberAttribute" && !r.IsDeleted)
+            .ToListAsync(cancellationToken);
+
+        var rulesToDelete = candidates
+            .Where(r =>
+            {
+                var idx = r.CriteriaValue.IndexOf('=');
+                if (idx <= 0) return false;
+                var namePart = r.CriteriaValue.Substring(0, idx);
+                return namePart == attribute.Name;
+            })
+            .ToList();
+
+        foreach (var rule in rulesToDelete)
+        {
+            rule.IsDeleted = true;
+            rule.IsActive = false;
+        }
+
+        var text =
+            $"{values.Count} Member Attribute Value row(s) removed; "
+            + $"{rulesToDelete.Count} Duty Rule(s) soft-deleted.";
+
+        return ConfigurationResult<CascadeOutcome>.Success(
+            CascadeOutcome.Applied(text));
     }
 }

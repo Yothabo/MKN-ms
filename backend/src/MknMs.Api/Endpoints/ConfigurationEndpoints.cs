@@ -15,6 +15,7 @@ using MknMs.Application.Processes.Configuration.ManageEvent;
 using MknMs.Application.Processes.Configuration.ManageEventDuty;
 using MknMs.Application.Processes.Configuration.ManageIdentifierHistory;
 using MknMs.Application.Processes.Configuration.ManageMemberRecord;
+using MknMs.Application.Processes.Configuration.ManageAttributeType;
 using MknMs.Application.Processes.Configuration.ManageMemberStatus;
 using MknMs.Application.Processes.Configuration.ManageProgram;
 using MknMs.Application.Processes.Configuration.ManageProgramItem;
@@ -43,6 +44,7 @@ public static class ConfigurationEndpoints
         MapManageEventsAndPrograms(routes);
         MapManageAttendanceRule(routes);
         MapManageMemberStatus(routes);
+        MapManageAttributeType(routes);
         return routes;
     }
 
@@ -636,6 +638,23 @@ public static class ConfigurationEndpoints
             int id,
             [FromBody] LifecycleActionRequest request,
             IManageMemberStatusService service,
+            CancellationToken cancellationToken) =>
+            ToHttpResult(await service.SoftDeleteAsync(
+                id, request.ActingAdminId, request.ApprovedByAdminId,
+                request.ConsequencesAcknowledged, request.Reason ?? string.Empty,
+                cancellationToken)));
+    }
+
+    // -----------------------------------------------------------------
+    // 3.5 Manage Attribute Type
+    // -----------------------------------------------------------------
+
+    private static void MapManageAttributeType(IEndpointRouteBuilder routes)
+    {
+        routes.MapPost("/api/config/3.5/attribute-types/{id:int}/soft-delete", async (
+            int id,
+            [FromBody] LifecycleActionRequest request,
+            IManageAttributeTypeService service,
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.SoftDeleteAsync(
                 id, request.ActingAdminId, request.ApprovedByAdminId,
