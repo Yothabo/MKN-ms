@@ -26,19 +26,30 @@ public interface IConfigureRoleService
         bool consequencesAcknowledged,
         string? reason = null,
         CancellationToken cancellationToken = default);
+
+    Task<ConfigurationResult<Role>> SoftDeleteAsync(
+        int roleId,
+        int actingAdminId,
+        int approvedByAdminId,
+        bool consequencesAcknowledged,
+        string reason,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class ConfigureRoleService : IConfigureRoleService
 {
     private readonly MknDbContext _db;
     private readonly IConfigurationLifecycleService _lifecycle;
+    private readonly IConfigurationCascadeService _cascade;
 
     public ConfigureRoleService(
         MknDbContext db,
-        IConfigurationLifecycleService lifecycle)
+        IConfigurationLifecycleService lifecycle,
+        IConfigurationCascadeService cascade)
     {
         _db = db;
         _lifecycle = lifecycle;
+        _cascade = cascade;
     }
 
     public async Task<IReadOnlyList<Role>> ListAsync(bool includeInactive = false, CancellationToken cancellationToken = default)
@@ -125,6 +136,86 @@ public sealed class ConfigureRoleService : IConfigureRoleService
             EntityName = entity.Name,
             Action = ConfigurationLifecycleActions.Deactivate,
             Reason = reason,
+            InitiatedByAdminId = actingAdminId,
+            ApprovedByAdminId = approvedByAdminId,
+        }, cancellationToken);
+
+        if (!audit.IsSuccess)
+        {
+            return ConfigurationResult<Role>.Failure(audit.Error!);
+        }
+
+        await _db.SaveChangesAsync(cancellationToken);
+        return ConfigurationResult<Role>.Success(entity);
+    }
+
+    public async Task<ConfigurationResult<Role>> SoftDeleteAsync(
+        int roleId,
+        int actingAdminId,
+        int approvedByAdminId,
+        bool consequencesAcknowledged,
+        string reason,
+        CancellationToken cancellationToken = default)
+    {
+        if (!ConfigurationValidation.IsValidName(reason))
+        {
+            return ConfigurationResult<Role>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.InvalidValue,
+                    "Reason is required for soft delete."));
+        }
+
+        var entity = await _db.Roles
+            .FirstOrDefaultAsync(r => r.RoleId == roleId, cancellationToken);
+        if (entity is null)
+        {
+            throw new EntityNotFoundException(nameof(Role), roleId);
+        }
+
+        if (entity.IsDeleted)
+        {
+            return ConfigurationResult<Role>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.AlreadyInactive,
+                    "Role is already soft-deleted."));
+        }
+
+        if (!consequencesAcknowledged)
+        {
+            return ConfigurationResult<Role>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.ValidationFailed,
+                    "The consequences of this soft delete must be acknowledged."));
+        }
+
+        // Apply the cascade rules before touching the parent. If the
+        // cascade blocks, nothing is changed.
+        var cascade = await _cascade.ApplyAsync(
+            nameof(Role), roleId, cancellationToken);
+        if (!cascade.IsSuccess)
+        {
+            return ConfigurationResult<Role>.Failure(cascade.Error!);
+        }
+
+        if (cascade.Value!.IsBlocked)
+        {
+            return ConfigurationResult<Role>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.LifecycleViolation,
+                    cascade.Value.BlockedReason ?? "Soft delete is blocked."));
+        }
+
+        entity.IsDeleted = true;
+        entity.IsActive = false;
+
+        var audit = await _lifecycle.RecordAsync(new ConfigurationLifecycleEvent
+        {
+            EntityType = nameof(Role),
+            EntityId = entity.RoleId,
+            EntityName = entity.Name,
+            Action = ConfigurationLifecycleActions.SoftDelete,
+            Reason = reason,
+            ConsequencesText = cascade.Value.ConsequencesText,
             InitiatedByAdminId = actingAdminId,
             ApprovedByAdminId = approvedByAdminId,
         }, cancellationToken);
