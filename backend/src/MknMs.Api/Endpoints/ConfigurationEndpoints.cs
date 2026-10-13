@@ -355,6 +355,16 @@ public static class ConfigurationEndpoints
                 id, request.ActingAdminId, request.ApprovedByAdminId,
                 request.ConsequencesAcknowledged, request.Reason,
                 cancellationToken)));
+
+        routes.MapPost("/api/config/1.0/service-schedules/{id:int}/soft-delete", async (
+            int id,
+            [FromBody] LifecycleActionRequest request,
+            IConfigureServiceDutyAndScheduleService service,
+            CancellationToken cancellationToken) =>
+            ToHttpResult(await service.SoftDeleteScheduleAsync(
+                id, request.ActingAdminId, request.ApprovedByAdminId,
+                request.ConsequencesAcknowledged, request.Reason ?? string.Empty,
+                cancellationToken)));
     }
 
     // -----------------------------------------------------------------

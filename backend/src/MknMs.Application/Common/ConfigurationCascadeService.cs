@@ -108,6 +108,9 @@ public sealed class ConfigurationCascadeService : IConfigurationCascadeService
             case nameof(ServiceDefinition):
                 return await ApplyServiceDefinitionCascadeAsync(entityId, cancellationToken);
 
+            case nameof(ServiceSchedule):
+                return await ApplyServiceScheduleCascadeAsync(entityId, cancellationToken);
+
             default:
                 return ConfigurationResult<CascadeOutcome>.Success(
                     CascadeOutcome.Applied("No dependent changes apply."));
@@ -439,5 +442,33 @@ public sealed class ConfigurationCascadeService : IConfigurationCascadeService
 
         return ConfigurationResult<CascadeOutcome>.Success(
             CascadeOutcome.Applied("No dependent changes apply."));
+    }
+
+    // -----------------------------------------------------------------
+    // ServiceSchedule cascade (§9.7 row)
+    //
+    // No block. No dependent removal. Existing ServiceOccurrence rows
+    // are preserved. The schedule stops being eligible for future
+    // materialization — that effect is enforced by the materializer's
+    // read filter, not by this cascade.
+    // -----------------------------------------------------------------
+
+    private async Task<ConfigurationResult<CascadeOutcome>> ApplyServiceScheduleCascadeAsync(
+        int scheduleId,
+        CancellationToken cancellationToken)
+    {
+        var schedule = await _db.ServiceSchedules
+            .FirstOrDefaultAsync(s => s.ScheduleId == scheduleId, cancellationToken);
+        if (schedule is null)
+        {
+            return ConfigurationResult<CascadeOutcome>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.NotFound,
+                    $"ServiceSchedule {scheduleId} does not exist."));
+        }
+
+        return ConfigurationResult<CascadeOutcome>.Success(
+            CascadeOutcome.Applied(
+                "Existing Service Occurrences are preserved; the schedule stops being eligible for future materialization."));
     }
 }

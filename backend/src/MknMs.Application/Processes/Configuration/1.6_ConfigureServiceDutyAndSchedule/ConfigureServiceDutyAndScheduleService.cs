@@ -72,19 +72,30 @@ public interface IConfigureServiceDutyAndScheduleService
         bool consequencesAcknowledged,
         string? reason = null,
         CancellationToken cancellationToken = default);
+
+    Task<ConfigurationResult<ServiceSchedule>> SoftDeleteScheduleAsync(
+        int scheduleId,
+        int actingAdminId,
+        int approvedByAdminId,
+        bool consequencesAcknowledged,
+        string reason,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class ConfigureServiceDutyAndScheduleService : IConfigureServiceDutyAndScheduleService
 {
     private readonly MknDbContext _db;
     private readonly IConfigurationLifecycleService _lifecycle;
+    private readonly IConfigurationCascadeService _cascade;
 
     public ConfigureServiceDutyAndScheduleService(
         MknDbContext db,
-        IConfigurationLifecycleService lifecycle)
+        IConfigurationLifecycleService lifecycle,
+        IConfigurationCascadeService cascade)
     {
         _db = db;
         _lifecycle = lifecycle;
+        _cascade = cascade;
     }
 
     // ---------------------------------------------------------------------
@@ -395,6 +406,84 @@ public sealed class ConfigureServiceDutyAndScheduleService : IConfigureServiceDu
             EntityName = $"Schedule {entity.ScheduleId}",
             Action = ConfigurationLifecycleActions.Deactivate,
             Reason = reason,
+            InitiatedByAdminId = actingAdminId,
+            ApprovedByAdminId = approvedByAdminId,
+        }, cancellationToken);
+
+        if (!audit.IsSuccess)
+        {
+            return ConfigurationResult<ServiceSchedule>.Failure(audit.Error!);
+        }
+
+        await _db.SaveChangesAsync(cancellationToken);
+        return ConfigurationResult<ServiceSchedule>.Success(entity);
+    }
+
+    public async Task<ConfigurationResult<ServiceSchedule>> SoftDeleteScheduleAsync(
+        int scheduleId,
+        int actingAdminId,
+        int approvedByAdminId,
+        bool consequencesAcknowledged,
+        string reason,
+        CancellationToken cancellationToken = default)
+    {
+        if (!ConfigurationValidation.IsValidName(reason))
+        {
+            return ConfigurationResult<ServiceSchedule>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.InvalidValue,
+                    "Reason is required for soft delete."));
+        }
+
+        var entity = await _db.ServiceSchedules
+            .FirstOrDefaultAsync(s => s.ScheduleId == scheduleId, cancellationToken);
+        if (entity is null)
+        {
+            throw new EntityNotFoundException(nameof(ServiceSchedule), scheduleId);
+        }
+
+        if (entity.IsDeleted)
+        {
+            return ConfigurationResult<ServiceSchedule>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.AlreadyInactive,
+                    "Schedule is already soft-deleted."));
+        }
+
+        if (!consequencesAcknowledged)
+        {
+            return ConfigurationResult<ServiceSchedule>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.ValidationFailed,
+                    "The consequences of this soft delete must be acknowledged."));
+        }
+
+        var cascade = await _cascade.ApplyAsync(
+            nameof(ServiceSchedule), scheduleId, cancellationToken);
+        if (!cascade.IsSuccess)
+        {
+            return ConfigurationResult<ServiceSchedule>.Failure(cascade.Error!);
+        }
+
+        if (cascade.Value!.IsBlocked)
+        {
+            return ConfigurationResult<ServiceSchedule>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.LifecycleViolation,
+                    cascade.Value.BlockedReason ?? "Soft delete is blocked."));
+        }
+
+        entity.IsDeleted = true;
+        entity.IsActive = false;
+
+        var audit = await _lifecycle.RecordAsync(new ConfigurationLifecycleEvent
+        {
+            EntityType = nameof(ServiceSchedule),
+            EntityId = entity.ScheduleId,
+            EntityName = $"Schedule {entity.ScheduleId}",
+            Action = ConfigurationLifecycleActions.SoftDelete,
+            Reason = reason,
+            ConsequencesText = cascade.Value.ConsequencesText,
             InitiatedByAdminId = actingAdminId,
             ApprovedByAdminId = approvedByAdminId,
         }, cancellationToken);

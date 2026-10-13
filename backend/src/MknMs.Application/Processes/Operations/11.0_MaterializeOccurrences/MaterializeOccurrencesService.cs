@@ -145,8 +145,11 @@ public sealed class MaterializeOccurrencesService : IMaterializeOccurrencesServi
 
             var activeSchedules = await _db.ServiceSchedules
                 .Where(s => s.IsActive
+                    && !s.IsDeleted
                     && s.ServiceDefinition.IsActive
-                    && s.TimeSlot.IsActive)
+                    && !s.ServiceDefinition.IsDeleted
+                    && s.TimeSlot.IsActive
+                    && !s.TimeSlot.IsDeleted)
                 .Select(s => new ScheduleForMaterialization
                 {
                     ScheduleId = s.ScheduleId,
