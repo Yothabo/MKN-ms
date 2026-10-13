@@ -124,8 +124,7 @@ public class FailingDefectTests : IAsyncLifetime
 
         var memberStatus = new MemberStatus
         {
-            Name = "Active", IsRosterable = true, IsDefault = true,
-            IsActive = true, IsDeleted = false,
+            Name = "Active", IsRosterable = true, IsDefault = true, IsDeleted = false,
         };
         _db.MemberStatuses.Add(memberStatus);
         await _db.SaveChangesAsync();
@@ -139,7 +138,6 @@ public class FailingDefectTests : IAsyncLifetime
             Phone = phone, Email = null,
             BranchId = branch.BranchId, RoleId = role.RoleId,
             MemberStatusId = memberStatus.MemberStatusId,
-            IsActive = true,
         };
 
         var alex = NewMember("Alex", "+27-000-0000");
@@ -157,7 +155,6 @@ public class FailingDefectTests : IAsyncLifetime
             BranchId = branch.BranchId,
             DayOfWeek = "Sunday",
             TimeOfDayId = _db.TimeOfDays.Local.First().TimeOfDayId,
-            IsActive = true,
         };
         _db.BranchTimeSlots.Add(slot);
         await _db.SaveChangesAsync();
@@ -167,7 +164,6 @@ public class FailingDefectTests : IAsyncLifetime
             Name = "Service",
             ServiceTypeId = _db.ServiceTypes.Local.First().ServiceTypeId,
             OwningBranchId = null,
-            IsActive = true,
         };
         _db.ServiceDefinitions.Add(definition);
         await _db.SaveChangesAsync();
@@ -177,7 +173,6 @@ public class FailingDefectTests : IAsyncLifetime
             ServiceDefId = definition.ServiceDefId,
             DutyId = duty.DutyId,
             RequiredSlotCount = 1,
-            IsActive = true,
         });
 
         var schedule = new ServiceSchedule
@@ -185,7 +180,6 @@ public class FailingDefectTests : IAsyncLifetime
             ServiceDefId = definition.ServiceDefId,
             TimeSlotId = slot.TimeSlotId,
             StartTime = new TimeOnly(9, 0),
-            IsActive = true,
         };
         _db.ServiceSchedules.Add(schedule);
         await _db.SaveChangesAsync();

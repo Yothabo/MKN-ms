@@ -31,7 +31,6 @@ internal static class TestSeed
             Name = "Active",
             IsRosterable = true,
             IsDefault = true,
-            IsActive = true,
             IsDeleted = false,
         };
         db.MemberStatuses.Add(status);

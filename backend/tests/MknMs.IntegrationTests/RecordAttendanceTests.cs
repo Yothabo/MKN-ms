@@ -99,7 +99,7 @@ public class RecordAttendanceTests : IAsyncLifetime
             Phone = "+27-000-0000", Email = null,
             ReceiptNumber = "R-0001",
             BranchId = branch.BranchId, RoleId = role.RoleId,
-            MemberStatusId = statusId, IsActive = true,
+            MemberStatusId = statusId,
         };
         _db.Members.Add(member);
         await _db.SaveChangesAsync();
@@ -109,7 +109,6 @@ public class RecordAttendanceTests : IAsyncLifetime
             BranchId = branch.BranchId,
             DayOfWeek = "Sunday",
             TimeOfDayId = timeOfDay.TimeOfDayId,
-            IsActive = true,
         };
         _db.BranchTimeSlots.Add(slot);
         await _db.SaveChangesAsync();
@@ -119,7 +118,6 @@ public class RecordAttendanceTests : IAsyncLifetime
             Name = "Sunday Service",
             ServiceTypeId = serviceType.ServiceTypeId,
             OwningBranchId = null,
-            IsActive = true,
         };
         _db.ServiceDefinitions.Add(definition);
         await _db.SaveChangesAsync();
@@ -129,7 +127,6 @@ public class RecordAttendanceTests : IAsyncLifetime
             ServiceDefId = definition.ServiceDefId,
             TimeSlotId = slot.TimeSlotId,
             StartTime = new TimeOnly(9, 0),
-            IsActive = true,
         };
         _db.ServiceSchedules.Add(schedule);
         await _db.SaveChangesAsync();

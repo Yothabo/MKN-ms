@@ -53,27 +53,23 @@ public class ConfigureRoleServiceTests : IAsyncLifetime
     {
         var defaultRole = new Role
         {
-            Name = "Member", IsDefault = true,
-            IsActive = true, IsDeleted = false,
+            Name = "Member", IsDefault = true, IsDeleted = false,
         };
         var otherRole = new Role
         {
-            Name = "Coordinator",
-            IsActive = true, IsDeleted = false,
+            Name = "Coordinator", IsDeleted = false,
         };
         var branch = new Branch
         {
-            Name = "B", Location = "L", IsActive = true, IsDeleted = false,
+            Name = "B", Location = "L", IsDeleted = false,
         };
         var status = new MemberStatus
         {
-            Name = "Active", IsRosterable = true, IsDefault = true,
-            IsActive = true, IsDeleted = false,
+            Name = "Active", IsRosterable = true, IsDefault = true, IsDeleted = false,
         };
         var tier = new PermissionTier
         {
-            Name = "Full Admin", IsDefault = true,
-            IsActive = true, IsDeleted = false,
+            Name = "Full Admin", IsDefault = true, IsDeleted = false,
         };
 
         _db.Roles.Add(defaultRole);
@@ -91,7 +87,7 @@ public class ConfigureRoleServiceTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Other",
             Phone = "+27-0", Email = null,
             BranchId = branch.BranchId, RoleId = otherRole.RoleId,
-            MemberStatusId = status.MemberStatusId, IsActive = true,
+            MemberStatusId = status.MemberStatusId,
         };
         _db.Members.Add(member);
         await _db.SaveChangesAsync();
@@ -100,7 +96,6 @@ public class ConfigureRoleServiceTests : IAsyncLifetime
         {
             MemberId = member.MemberId,
             PermissionTierId = tier.PermissionTierId,
-            IsActive = true,
         };
         _db.Admins.Add(admin);
         await _db.SaveChangesAsync();

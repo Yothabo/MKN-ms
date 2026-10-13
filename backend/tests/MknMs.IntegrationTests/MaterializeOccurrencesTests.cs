@@ -196,7 +196,6 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
             BranchId = branch.BranchId,
             DayOfWeek = "Sunday",
             TimeOfDayId = timeOfDay.TimeOfDayId,
-            IsActive = true,
         };
 
         _db.BranchTimeSlots.Add(slot);
@@ -207,7 +206,6 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
             Name = "Sunday Service",
             ServiceTypeId = serviceType.ServiceTypeId,
             OwningBranchId = null,
-            IsActive = true,
         };
 
         _db.ServiceDefinitions.Add(definition);
@@ -218,7 +216,6 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
             ServiceDefId = definition.ServiceDefId,
             TimeSlotId = slot.TimeSlotId,
             StartTime = new TimeOnly(9, 0),
-            IsActive = true,
         };
 
         _db.ServiceSchedules.Add(schedule);

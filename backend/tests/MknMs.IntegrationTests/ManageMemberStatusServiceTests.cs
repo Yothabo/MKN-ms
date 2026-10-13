@@ -61,20 +61,17 @@ public class ManageMemberStatusServiceTests : IAsyncLifetime
     {
         var defaultStatus = new MemberStatus
         {
-            Name = "Active", IsRosterable = true, IsDefault = true,
-            IsActive = true, IsDeleted = false,
+            Name = "Active", IsRosterable = true, IsDefault = true, IsDeleted = false,
         };
         var otherStatus = new MemberStatus
         {
-            Name = "Inactive", IsRosterable = false, IsDefault = false,
-            IsActive = true, IsDeleted = false,
+            Name = "Inactive", IsRosterable = false, IsDefault = false, IsDeleted = false,
         };
-        var role = new Role { Name = "R", IsDefault = true, IsActive = true, IsDeleted = false };
-        var branch = new Branch { Name = "B", Location = "L", IsActive = true, IsDeleted = false };
+        var role = new Role { Name = "R", IsDefault = true, IsDeleted = false };
+        var branch = new Branch { Name = "B", Location = "L", IsDeleted = false };
         var tier = new PermissionTier
         {
-            Name = "Full Admin", IsDefault = true,
-            IsActive = true, IsDeleted = false,
+            Name = "Full Admin", IsDefault = true, IsDeleted = false,
         };
 
         _db.MemberStatuses.Add(defaultStatus);
@@ -92,7 +89,7 @@ public class ManageMemberStatusServiceTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Other",
             Phone = "+27-0", Email = null,
             BranchId = branch.BranchId, RoleId = role.RoleId,
-            MemberStatusId = otherStatus.MemberStatusId, IsActive = true,
+            MemberStatusId = otherStatus.MemberStatusId,
         };
         _db.Members.Add(member);
         await _db.SaveChangesAsync();
@@ -101,7 +98,6 @@ public class ManageMemberStatusServiceTests : IAsyncLifetime
         {
             MemberId = member.MemberId,
             PermissionTierId = tier.PermissionTierId,
-            IsActive = true,
         };
         _db.Admins.Add(admin);
         await _db.SaveChangesAsync();
@@ -115,7 +111,6 @@ public class ManageMemberStatusServiceTests : IAsyncLifetime
             OutcomeType = "SetStatus",
             OutcomeStatusId = otherStatus.MemberStatusId,
             Enabled = true,
-            IsActive = true,
             IsDeleted = false,
         };
         // A rule whose scope criterion names the deleted status.
@@ -127,7 +122,6 @@ public class ManageMemberStatusServiceTests : IAsyncLifetime
             OutcomeType = "Notify",
             OutcomeStatusId = null,
             Enabled = true,
-            IsActive = true,
             IsDeleted = false,
         };
         _db.AttendanceRules.Add(outcomeRule);
@@ -247,22 +241,19 @@ public class ManageMemberStatusServiceTests : IAsyncLifetime
     {
         // A rule scoped to status 13 must not be removed when status 3
         // is deleted.
-        var role = new Role { Name = "R", IsDefault = true, IsActive = true, IsDeleted = false };
-        var branch = new Branch { Name = "B", Location = "L", IsActive = true, IsDeleted = false };
+        var role = new Role { Name = "R", IsDefault = true, IsDeleted = false };
+        var branch = new Branch { Name = "B", Location = "L", IsDeleted = false };
         var defaultStatus = new MemberStatus
         {
-            Name = "Active", IsRosterable = true, IsDefault = true,
-            IsActive = true, IsDeleted = false,
+            Name = "Active", IsRosterable = true, IsDefault = true, IsDeleted = false,
         };
         var other = new MemberStatus
         {
-            Name = "Other", IsRosterable = false, IsDefault = false,
-            IsActive = true, IsDeleted = false,
+            Name = "Other", IsRosterable = false, IsDefault = false, IsDeleted = false,
         };
         var tier = new PermissionTier
         {
-            Name = "Full Admin", IsDefault = true,
-            IsActive = true, IsDeleted = false,
+            Name = "Full Admin", IsDefault = true, IsDeleted = false,
         };
         _db.Roles.Add(role);
         _db.Branches.Add(branch);
@@ -279,7 +270,7 @@ public class ManageMemberStatusServiceTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Other",
             Phone = "+27-1", Email = null,
             BranchId = branch.BranchId, RoleId = role.RoleId,
-            MemberStatusId = defaultStatus.MemberStatusId, IsActive = true,
+            MemberStatusId = defaultStatus.MemberStatusId,
         };
         _db.Members.Add(adminMember);
         await _db.SaveChangesAsync();
@@ -288,7 +279,6 @@ public class ManageMemberStatusServiceTests : IAsyncLifetime
         {
             MemberId = adminMember.MemberId,
             PermissionTierId = tier.PermissionTierId,
-            IsActive = true,
         };
         _db.Admins.Add(admin);
         await _db.SaveChangesAsync();
@@ -299,7 +289,6 @@ public class ManageMemberStatusServiceTests : IAsyncLifetime
             TriggerType = "Manual",
             OutcomeType = "Notify",
             Enabled = true,
-            IsActive = true,
             IsDeleted = false,
         };
         _db.AttendanceRules.Add(rule);

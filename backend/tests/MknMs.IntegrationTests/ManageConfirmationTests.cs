@@ -163,7 +163,7 @@ public class ManageConfirmationTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Other",
             Phone = "+27-000-0000", Email = null,
             BranchId = branch.BranchId, RoleId = coordinator.RoleId,
-            MemberStatusId = statusId, IsActive = true,
+            MemberStatusId = statusId,
         };
         var beatrice = new Member
         {
@@ -173,7 +173,7 @@ public class ManageConfirmationTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Female",
             Phone = "+27-000-0001", Email = null,
             BranchId = branch.BranchId, RoleId = steward.RoleId,
-            MemberStatusId = statusId, IsActive = true,
+            MemberStatusId = statusId,
         };
         var dana = new Member
         {
@@ -183,7 +183,7 @@ public class ManageConfirmationTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Female",
             Phone = "+27-000-0003", Email = null,
             BranchId = branch.BranchId, RoleId = steward.RoleId,
-            MemberStatusId = statusId, IsActive = true,
+            MemberStatusId = statusId,
         };
         _db.Members.Add(alex);
         _db.Members.Add(beatrice);
@@ -203,7 +203,6 @@ public class ManageConfirmationTests : IAsyncLifetime
             BranchId = branch.BranchId,
             DayOfWeek = "Sunday",
             TimeOfDayId = _db.TimeOfDays.Local.First().TimeOfDayId,
-            IsActive = true,
         };
         _db.BranchTimeSlots.Add(slot);
         await _db.SaveChangesAsync();
@@ -213,7 +212,6 @@ public class ManageConfirmationTests : IAsyncLifetime
             Name = "Sunday Service",
             ServiceTypeId = _db.ServiceTypes.Local.First().ServiceTypeId,
             OwningBranchId = null,
-            IsActive = true,
         };
         _db.ServiceDefinitions.Add(definition);
         await _db.SaveChangesAsync();
@@ -223,14 +221,12 @@ public class ManageConfirmationTests : IAsyncLifetime
             ServiceDefId = definition.ServiceDefId,
             DutyId = welcomeDuty.DutyId,
             RequiredSlotCount = 1,
-            IsActive = true,
         });
         _db.ServiceDefinitionDuties.Add(new ServiceDefinitionDuty
         {
             ServiceDefId = definition.ServiceDefId,
             DutyId = readingDuty.DutyId,
             RequiredSlotCount = 1,
-            IsActive = true,
         });
         await _db.SaveChangesAsync();
 
@@ -239,7 +235,6 @@ public class ManageConfirmationTests : IAsyncLifetime
             ServiceDefId = definition.ServiceDefId,
             TimeSlotId = slot.TimeSlotId,
             StartTime = new TimeOnly(9, 0),
-            IsActive = true,
         };
         _db.ServiceSchedules.Add(schedule);
         await _db.SaveChangesAsync();
@@ -250,7 +245,6 @@ public class ManageConfirmationTests : IAsyncLifetime
             TierOrder = 1,
             CriteriaType = "Role",
             CriteriaValue = "Steward",
-            IsActive = true,
         });
         await _db.SaveChangesAsync();
 

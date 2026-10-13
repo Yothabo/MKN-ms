@@ -51,19 +51,17 @@ public class ConfigureDutyServiceTests : IAsyncLifetime
 
     private async Task<(int dutyId, int adminId)> SeedAsync()
     {
-        var role = new Role { Name = "R", IsDefault = true, IsActive = true, IsDeleted = false };
-        var branch = new Branch { Name = "B", Location = "L", IsActive = true, IsDeleted = false };
+        var role = new Role { Name = "R", IsDefault = true, IsDeleted = false };
+        var branch = new Branch { Name = "B", Location = "L", IsDeleted = false };
         var status = new MemberStatus
         {
-            Name = "Active", IsRosterable = true, IsDefault = true,
-            IsActive = true, IsDeleted = false,
+            Name = "Active", IsRosterable = true, IsDefault = true, IsDeleted = false,
         };
         var tier = new PermissionTier
         {
-            Name = "Full Admin", IsDefault = true,
-            IsActive = true, IsDeleted = false,
+            Name = "Full Admin", IsDefault = true, IsDeleted = false,
         };
-        var duty = new Duty { Name = "Reading", IsActive = true, IsDeleted = false };
+        var duty = new Duty { Name = "Reading", IsDeleted = false };
 
         _db.Roles.Add(role);
         _db.Branches.Add(branch);
@@ -80,7 +78,7 @@ public class ConfigureDutyServiceTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Other",
             Phone = "+27-0", Email = null,
             BranchId = branch.BranchId, RoleId = role.RoleId,
-            MemberStatusId = status.MemberStatusId, IsActive = true,
+            MemberStatusId = status.MemberStatusId,
         };
         _db.Members.Add(member);
         await _db.SaveChangesAsync();
@@ -89,7 +87,6 @@ public class ConfigureDutyServiceTests : IAsyncLifetime
         {
             MemberId = member.MemberId,
             PermissionTierId = tier.PermissionTierId,
-            IsActive = true,
         };
         _db.Admins.Add(admin);
         await _db.SaveChangesAsync();
@@ -134,8 +131,7 @@ public class ConfigureDutyServiceTests : IAsyncLifetime
 
         var definition = new ServiceDefinition
         {
-            Name = "S", ServiceTypeId = serviceType.ServiceTypeId,
-            IsActive = true, IsDeleted = false,
+            Name = "S", ServiceTypeId = serviceType.ServiceTypeId, IsDeleted = false,
         };
         _db.ServiceDefinitions.Add(definition);
         await _db.SaveChangesAsync();
@@ -145,7 +141,6 @@ public class ConfigureDutyServiceTests : IAsyncLifetime
             ServiceDefId = definition.ServiceDefId,
             DutyId = duty,
             RequiredSlotCount = 1,
-            IsActive = true,
             IsDeleted = false,
         });
         await _db.SaveChangesAsync();

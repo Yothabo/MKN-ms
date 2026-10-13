@@ -59,21 +59,19 @@ public class ManageAttributeTypeServiceTests : IAsyncLifetime
 
     private async Task<Fixture> SeedAsync()
     {
-        var role = new Role { Name = "R", IsDefault = true, IsActive = true, IsDeleted = false };
-        var branch = new Branch { Name = "B", Location = "L", IsActive = true, IsDeleted = false };
+        var role = new Role { Name = "R", IsDefault = true, IsDeleted = false };
+        var branch = new Branch { Name = "B", Location = "L", IsDeleted = false };
         var status = new MemberStatus
         {
-            Name = "Active", IsRosterable = true, IsDefault = true,
-            IsActive = true, IsDeleted = false,
+            Name = "Active", IsRosterable = true, IsDefault = true, IsDeleted = false,
         };
         var tier = new PermissionTier
         {
-            Name = "Full Admin", IsDefault = true,
-            IsActive = true, IsDeleted = false,
+            Name = "Full Admin", IsDefault = true, IsDeleted = false,
         };
-        var attr = new AttributeType { Name = "Purity", IsActive = true, IsDeleted = false };
-        var otherAttr = new AttributeType { Name = "Pur", IsActive = true, IsDeleted = false };
-        var duty = new Duty { Name = "Reading", IsActive = true, IsDeleted = false };
+        var attr = new AttributeType { Name = "Purity", IsDeleted = false };
+        var otherAttr = new AttributeType { Name = "Pur", IsDeleted = false };
+        var duty = new Duty { Name = "Reading", IsDeleted = false };
 
         _db.Roles.Add(role);
         _db.Branches.Add(branch);
@@ -92,7 +90,7 @@ public class ManageAttributeTypeServiceTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Other",
             Phone = "+27-0", Email = null,
             BranchId = branch.BranchId, RoleId = role.RoleId,
-            MemberStatusId = status.MemberStatusId, IsActive = true,
+            MemberStatusId = status.MemberStatusId,
         };
         _db.Members.Add(member);
         await _db.SaveChangesAsync();
@@ -101,7 +99,6 @@ public class ManageAttributeTypeServiceTests : IAsyncLifetime
         {
             MemberId = member.MemberId,
             PermissionTierId = tier.PermissionTierId,
-            IsActive = true,
         };
         _db.Admins.Add(admin);
         await _db.SaveChangesAsync();
@@ -133,7 +130,6 @@ public class ManageAttributeTypeServiceTests : IAsyncLifetime
             TierOrder = 1,
             CriteriaType = "MemberAttribute",
             CriteriaValue = "Purity=Pure",
-            IsActive = true,
             IsDeleted = false,
         };
         // A DutyRule whose value starts with "Pur" — substring-wise
@@ -144,7 +140,6 @@ public class ManageAttributeTypeServiceTests : IAsyncLifetime
             TierOrder = 2,
             CriteriaType = "MemberAttribute",
             CriteriaValue = "Pur=SomeValue",
-            IsActive = true,
             IsDeleted = false,
         };
         _db.DutyRules.Add(matchingRule);

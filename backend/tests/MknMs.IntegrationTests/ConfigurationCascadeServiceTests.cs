@@ -52,13 +52,12 @@ public class ConfigurationCascadeServiceTests : IAsyncLifetime
 
     private async Task<(int branchId, int statusId, int roleId)> SeedBasicsAsync()
     {
-        var role = new Role { Name = "Coordinator", IsActive = true, IsDeleted = false };
-        var defaultRole = new Role { Name = "Member", IsDefault = true, IsActive = true, IsDeleted = false };
-        var branch = new Branch { Name = "B", Location = "L", IsActive = true, IsDeleted = false };
+        var role = new Role { Name = "Coordinator", IsDeleted = false };
+        var defaultRole = new Role { Name = "Member", IsDefault = true, IsDeleted = false };
+        var branch = new Branch { Name = "B", Location = "L", IsDeleted = false };
         var status = new MemberStatus
         {
-            Name = "Active", IsRosterable = true, IsDefault = true,
-            IsActive = true, IsDeleted = false,
+            Name = "Active", IsRosterable = true, IsDefault = true, IsDeleted = false,
         };
 
         _db.Roles.Add(role);
@@ -99,7 +98,7 @@ public class ConfigurationCascadeServiceTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Other",
             Phone = "+27-0", Email = null,
             BranchId = branchId, RoleId = roleId,
-            MemberStatusId = statusId, IsActive = true,
+            MemberStatusId = statusId,
         };
         _db.Members.Add(member);
 
@@ -109,10 +108,9 @@ public class ConfigurationCascadeServiceTests : IAsyncLifetime
             TierOrder = 1,
             CriteriaType = "Role",
             CriteriaValue = "Coordinator",
-            IsActive = true,
             IsDeleted = false,
         };
-        var duty = new Duty { Name = "Reading", IsActive = true, IsDeleted = false };
+        var duty = new Duty { Name = "Reading", IsDeleted = false };
         _db.Duties.Add(duty);
         await _db.SaveChangesAsync();
 
@@ -137,7 +135,7 @@ public class ConfigurationCascadeServiceTests : IAsyncLifetime
     [Fact]
     public async Task Role_NonDefault_WithoutDefaultRole_FailsConfigurationMissing()
     {
-        var role = new Role { Name = "Only", IsActive = true, IsDeleted = false };
+        var role = new Role { Name = "Only", IsDeleted = false };
         _db.Roles.Add(role);
         await _db.SaveChangesAsync();
 
@@ -153,7 +151,7 @@ public class ConfigurationCascadeServiceTests : IAsyncLifetime
     {
         var (_, _, _) = await SeedBasicsAsync();
 
-        var duty = new Duty { Name = "Reading", IsActive = true, IsDeleted = false };
+        var duty = new Duty { Name = "Reading", IsDeleted = false };
         _db.Duties.Add(duty);
 
         var serviceType = new ServiceType { Name = "Regular" };
@@ -162,8 +160,7 @@ public class ConfigurationCascadeServiceTests : IAsyncLifetime
 
         var definition = new ServiceDefinition
         {
-            Name = "S", ServiceTypeId = serviceType.ServiceTypeId,
-            IsActive = true, IsDeleted = false,
+            Name = "S", ServiceTypeId = serviceType.ServiceTypeId, IsDeleted = false,
         };
         _db.ServiceDefinitions.Add(definition);
         await _db.SaveChangesAsync();
@@ -173,7 +170,6 @@ public class ConfigurationCascadeServiceTests : IAsyncLifetime
             ServiceDefId = definition.ServiceDefId,
             DutyId = duty.DutyId,
             RequiredSlotCount = 1,
-            IsActive = true,
             IsDeleted = false,
         });
         await _db.SaveChangesAsync();
@@ -191,7 +187,7 @@ public class ConfigurationCascadeServiceTests : IAsyncLifetime
     {
         await SeedBasicsAsync();
 
-        var duty = new Duty { Name = "Unused", IsActive = true, IsDeleted = false };
+        var duty = new Duty { Name = "Unused", IsDeleted = false };
         _db.Duties.Add(duty);
         await _db.SaveChangesAsync();
 
@@ -228,7 +224,7 @@ public class ConfigurationCascadeServiceTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Other",
             Phone = "+27-0", Email = null,
             BranchId = branchId, RoleId = roleId,
-            MemberStatusId = statusId, IsActive = true,
+            MemberStatusId = statusId,
         };
         _db.Members.Add(member);
         await _db.SaveChangesAsync();

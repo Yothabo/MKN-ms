@@ -62,19 +62,30 @@ public interface IManageEventService
         bool consequencesAcknowledged,
         string? reason = null,
         CancellationToken cancellationToken = default);
+
+    Task<ConfigurationResult<Event>> SoftDeleteAsync(
+        int eventId,
+        int actingAdminId,
+        int approvedByAdminId,
+        bool consequencesAcknowledged,
+        string reason,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class ManageEventService : IManageEventService
 {
     private readonly MknDbContext _db;
     private readonly IConfigurationLifecycleService _lifecycle;
+    private readonly IConfigurationCascadeService _cascade;
 
     public ManageEventService(
         MknDbContext db,
-        IConfigurationLifecycleService lifecycle)
+        IConfigurationLifecycleService lifecycle,
+        IConfigurationCascadeService cascade)
     {
         _db = db;
         _lifecycle = lifecycle;
+        _cascade = cascade;
     }
 
     public async Task<IReadOnlyList<Event>> ListAsync(
@@ -218,6 +229,84 @@ public sealed class ManageEventService : IManageEventService
             EntityName = entity.Name,
             Action = ConfigurationLifecycleActions.Deactivate,
             Reason = reason,
+            InitiatedByAdminId = actingAdminId,
+            ApprovedByAdminId = approvedByAdminId,
+        }, cancellationToken);
+
+        if (!audit.IsSuccess)
+        {
+            return ConfigurationResult<Event>.Failure(audit.Error!);
+        }
+
+        await _db.SaveChangesAsync(cancellationToken);
+        return ConfigurationResult<Event>.Success(entity);
+    }
+
+    public async Task<ConfigurationResult<Event>> SoftDeleteAsync(
+        int eventId,
+        int actingAdminId,
+        int approvedByAdminId,
+        bool consequencesAcknowledged,
+        string reason,
+        CancellationToken cancellationToken = default)
+    {
+        if (!ConfigurationValidation.IsValidName(reason))
+        {
+            return ConfigurationResult<Event>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.InvalidValue,
+                    "Reason is required for soft delete."));
+        }
+
+        var entity = await _db.Events
+            .FirstOrDefaultAsync(e => e.EventId == eventId, cancellationToken);
+        if (entity is null)
+        {
+            throw new EntityNotFoundException(nameof(Event), eventId);
+        }
+
+        if (entity.IsDeleted)
+        {
+            return ConfigurationResult<Event>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.AlreadyInactive,
+                    "Event is already soft-deleted."));
+        }
+
+        if (!consequencesAcknowledged)
+        {
+            return ConfigurationResult<Event>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.ValidationFailed,
+                    "The consequences of this soft delete must be acknowledged."));
+        }
+
+        var cascade = await _cascade.ApplyAsync(
+            nameof(Event), eventId, cancellationToken);
+        if (!cascade.IsSuccess)
+        {
+            return ConfigurationResult<Event>.Failure(cascade.Error!);
+        }
+
+        if (cascade.Value!.IsBlocked)
+        {
+            return ConfigurationResult<Event>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.LifecycleViolation,
+                    cascade.Value.BlockedReason ?? "Soft delete is blocked."));
+        }
+
+        entity.IsDeleted = true;
+        entity.IsActive = false;
+
+        var audit = await _lifecycle.RecordAsync(new ConfigurationLifecycleEvent
+        {
+            EntityType = nameof(Event),
+            EntityId = entity.EventId,
+            EntityName = entity.Name,
+            Action = ConfigurationLifecycleActions.SoftDelete,
+            Reason = reason,
+            ConsequencesText = cascade.Value.ConsequencesText,
             InitiatedByAdminId = actingAdminId,
             ApprovedByAdminId = approvedByAdminId,
         }, cancellationToken);

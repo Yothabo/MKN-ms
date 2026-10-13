@@ -93,7 +93,7 @@ public class SpecComplianceTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Other",
             Phone = "+27-000-0000", Email = null,
             BranchId = branch.BranchId, RoleId = role.RoleId,
-            MemberStatusId = statusId, IsActive = true,
+            MemberStatusId = statusId,
         };
         _db.Members.Add(alex);
         await _db.SaveChangesAsync();
@@ -107,7 +107,6 @@ public class SpecComplianceTests : IAsyncLifetime
             BranchId = branch.BranchId,
             DayOfWeek = "Sunday",
             TimeOfDayId = _db.TimeOfDays.Local.First().TimeOfDayId,
-            IsActive = true,
         };
         _db.BranchTimeSlots.Add(slot);
         await _db.SaveChangesAsync();
@@ -117,7 +116,6 @@ public class SpecComplianceTests : IAsyncLifetime
             Name = "Service",
             ServiceTypeId = _db.ServiceTypes.Local.First().ServiceTypeId,
             OwningBranchId = null,
-            IsActive = true,
         };
         _db.ServiceDefinitions.Add(definition);
         await _db.SaveChangesAsync();
@@ -127,7 +125,6 @@ public class SpecComplianceTests : IAsyncLifetime
             ServiceDefId = definition.ServiceDefId,
             DutyId = duty.DutyId,
             RequiredSlotCount = 1,
-            IsActive = true,
         });
 
         var schedule = new ServiceSchedule
@@ -135,7 +132,6 @@ public class SpecComplianceTests : IAsyncLifetime
             ServiceDefId = definition.ServiceDefId,
             TimeSlotId = slot.TimeSlotId,
             StartTime = new TimeOnly(9, 0),
-            IsActive = true,
         };
         _db.ServiceSchedules.Add(schedule);
         await _db.SaveChangesAsync();
@@ -259,7 +255,6 @@ public class SpecComplianceTests : IAsyncLifetime
             BranchId = otherBranch.BranchId,
             DayOfWeek = "Sunday",
             TimeOfDayId = _db.TimeOfDays.Local.First().TimeOfDayId,
-            IsActive = true,
         };
         _db.BranchTimeSlots.Add(otherSlot);
         await _db.SaveChangesAsync();
@@ -269,7 +264,6 @@ public class SpecComplianceTests : IAsyncLifetime
             Name = "Other Service",
             ServiceTypeId = _db.ServiceTypes.Local.First().ServiceTypeId,
             OwningBranchId = null,
-            IsActive = true,
         };
         _db.ServiceDefinitions.Add(otherDefinition);
         await _db.SaveChangesAsync();
@@ -279,7 +273,6 @@ public class SpecComplianceTests : IAsyncLifetime
             ServiceDefId = otherDefinition.ServiceDefId,
             TimeSlotId = otherSlot.TimeSlotId,
             StartTime = new TimeOnly(9, 0),
-            IsActive = true,
         };
         _db.ServiceSchedules.Add(otherSchedule);
         await _db.SaveChangesAsync();
@@ -324,7 +317,6 @@ public class SpecComplianceTests : IAsyncLifetime
             TierOrder = 1,
             CriteriaType = "BranchAttendanceRecency",
             CriteriaValue = "30",
-            IsActive = true,
         });
         await _db.SaveChangesAsync();
 
@@ -374,7 +366,6 @@ public class SpecComplianceTests : IAsyncLifetime
             TierOrder = 1,
             CriteriaType = "BranchAttendanceRecency",
             CriteriaValue = "30",
-            IsActive = true,
         });
         await _db.SaveChangesAsync();
 

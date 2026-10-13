@@ -95,7 +95,7 @@ public class CreateManualAssignmentTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Female",
             Phone = "+27-000-0000", Email = null,
             BranchId = branch.BranchId, RoleId = role.RoleId,
-            MemberStatusId = statusId, IsActive = true,
+            MemberStatusId = statusId,
         };
         var ineligible = new Member
         {
@@ -105,7 +105,7 @@ public class CreateManualAssignmentTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Female",
             Phone = "+27-000-0001", Email = null,
             BranchId = branch.BranchId, RoleId = role.RoleId,
-            MemberStatusId = statusId, IsActive = true,
+            MemberStatusId = statusId,
         };
         _db.Members.Add(eligible);
         _db.Members.Add(ineligible);
@@ -124,7 +124,6 @@ public class CreateManualAssignmentTests : IAsyncLifetime
             BranchId = branch.BranchId,
             DayOfWeek = "Sunday",
             TimeOfDayId = timeOfDay.TimeOfDayId,
-            IsActive = true,
         };
         _db.BranchTimeSlots.Add(slot);
         await _db.SaveChangesAsync();
@@ -134,7 +133,6 @@ public class CreateManualAssignmentTests : IAsyncLifetime
             Name = "Sunday Service",
             ServiceTypeId = serviceType.ServiceTypeId,
             OwningBranchId = null,
-            IsActive = true,
         };
         _db.ServiceDefinitions.Add(definition);
         await _db.SaveChangesAsync();
@@ -144,7 +142,6 @@ public class CreateManualAssignmentTests : IAsyncLifetime
             ServiceDefId = definition.ServiceDefId,
             DutyId = duty.DutyId,
             RequiredSlotCount = 1,
-            IsActive = true,
         });
         await _db.SaveChangesAsync();
 
@@ -153,7 +150,6 @@ public class CreateManualAssignmentTests : IAsyncLifetime
             ServiceDefId = definition.ServiceDefId,
             TimeSlotId = slot.TimeSlotId,
             StartTime = new TimeOnly(9, 0),
-            IsActive = true,
         };
         _db.ServiceSchedules.Add(schedule);
         await _db.SaveChangesAsync();
@@ -167,7 +163,6 @@ public class CreateManualAssignmentTests : IAsyncLifetime
                 TierOrder = 1,
                 CriteriaType = "EligibilityFlag",
                 CriteriaValue = duty.DutyId.ToString(),
-                IsActive = true,
             });
             await _db.SaveChangesAsync();
 
@@ -198,7 +193,6 @@ public class CreateManualAssignmentTests : IAsyncLifetime
                 TierOrder = 1,
                 CriteriaType = "Role",
                 CriteriaValue = "Steward",
-                IsActive = true,
             });
             await _db.SaveChangesAsync();
         }

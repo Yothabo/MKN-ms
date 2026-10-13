@@ -108,7 +108,7 @@ public class DispatchNotificationTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Other",
             Phone = "+27-000-0000", Email = null,
             BranchId = branch.BranchId, RoleId = role.RoleId,
-            MemberStatusId = statusId, IsActive = true,
+            MemberStatusId = statusId,
         };
         _db.Members.Add(member);
         await _db.SaveChangesAsync();
@@ -118,7 +118,6 @@ public class DispatchNotificationTests : IAsyncLifetime
             BranchId = branch.BranchId,
             DayOfWeek = "Sunday",
             TimeOfDayId = timeOfDay.TimeOfDayId,
-            IsActive = true,
         };
         _db.BranchTimeSlots.Add(slot);
         await _db.SaveChangesAsync();
@@ -128,7 +127,6 @@ public class DispatchNotificationTests : IAsyncLifetime
             Name = "Sunday Service",
             ServiceTypeId = serviceType.ServiceTypeId,
             OwningBranchId = null,
-            IsActive = true,
         };
         _db.ServiceDefinitions.Add(definition);
         await _db.SaveChangesAsync();
@@ -138,7 +136,6 @@ public class DispatchNotificationTests : IAsyncLifetime
             ServiceDefId = definition.ServiceDefId,
             TimeSlotId = slot.TimeSlotId,
             StartTime = new TimeOnly(9, 30),
-            IsActive = true,
         };
         _db.ServiceSchedules.Add(schedule);
         await _db.SaveChangesAsync();

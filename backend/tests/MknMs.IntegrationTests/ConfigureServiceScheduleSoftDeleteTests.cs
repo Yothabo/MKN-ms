@@ -55,17 +55,15 @@ public class ConfigureServiceScheduleSoftDeleteTests : IAsyncLifetime
 
     private async Task<(int scheduleId, int adminId)> SeedAsync()
     {
-        var role = new Role { Name = "R", IsDefault = true, IsActive = true, IsDeleted = false };
-        var branch = new Branch { Name = "B", Location = "L", IsActive = true, IsDeleted = false };
+        var role = new Role { Name = "R", IsDefault = true, IsDeleted = false };
+        var branch = new Branch { Name = "B", Location = "L", IsDeleted = false };
         var status = new MemberStatus
         {
-            Name = "Active", IsRosterable = true, IsDefault = true,
-            IsActive = true, IsDeleted = false,
+            Name = "Active", IsRosterable = true, IsDefault = true, IsDeleted = false,
         };
         var tier = new PermissionTier
         {
-            Name = "Full Admin", IsDefault = true,
-            IsActive = true, IsDeleted = false,
+            Name = "Full Admin", IsDefault = true, IsDeleted = false,
         };
         var tod = new TimeOfDay { Name = "Morning" };
         var st = new ServiceType { Name = "Regular" };
@@ -98,7 +96,7 @@ public class ConfigureServiceScheduleSoftDeleteTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Other",
             Phone = "+27-1", Email = null,
             BranchId = branch.BranchId, RoleId = role.RoleId,
-            MemberStatusId = status.MemberStatusId, IsActive = true,
+            MemberStatusId = status.MemberStatusId,
         };
         _db.Members.Add(adminMember);
         await _db.SaveChangesAsync();
@@ -107,7 +105,6 @@ public class ConfigureServiceScheduleSoftDeleteTests : IAsyncLifetime
         {
             MemberId = adminMember.MemberId,
             PermissionTierId = tier.PermissionTierId,
-            IsActive = true,
         };
         _db.Admins.Add(admin);
 
@@ -116,7 +113,6 @@ public class ConfigureServiceScheduleSoftDeleteTests : IAsyncLifetime
             BranchId = branch.BranchId,
             DayOfWeek = "Sunday",
             TimeOfDayId = tod.TimeOfDayId,
-            IsActive = true,
             IsDeleted = false,
         };
         _db.BranchTimeSlots.Add(slot);
@@ -124,8 +120,7 @@ public class ConfigureServiceScheduleSoftDeleteTests : IAsyncLifetime
 
         var def = new ServiceDefinition
         {
-            Name = "S", ServiceTypeId = st.ServiceTypeId,
-            IsActive = true, IsDeleted = false,
+            Name = "S", ServiceTypeId = st.ServiceTypeId, IsDeleted = false,
         };
         _db.ServiceDefinitions.Add(def);
         await _db.SaveChangesAsync();
@@ -135,7 +130,6 @@ public class ConfigureServiceScheduleSoftDeleteTests : IAsyncLifetime
             ServiceDefId = def.ServiceDefId,
             TimeSlotId = slot.TimeSlotId,
             StartTime = new TimeOnly(9, 0),
-            IsActive = true,
             IsDeleted = false,
         };
         _db.ServiceSchedules.Add(schedule);

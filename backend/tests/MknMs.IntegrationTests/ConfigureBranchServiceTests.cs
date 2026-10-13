@@ -50,18 +50,16 @@ public class ConfigureBranchServiceTests : IAsyncLifetime
 
     private async Task<(int branchId, int adminId)> SeedAsync(bool withMember = false)
     {
-        var role = new Role { Name = "R", IsDefault = true, IsActive = true, IsDeleted = false };
-        var branch = new Branch { Name = "B", Location = "L", IsActive = true, IsDeleted = false };
-        var otherBranch = new Branch { Name = "B2", Location = "L2", IsActive = true, IsDeleted = false };
+        var role = new Role { Name = "R", IsDefault = true, IsDeleted = false };
+        var branch = new Branch { Name = "B", Location = "L", IsDeleted = false };
+        var otherBranch = new Branch { Name = "B2", Location = "L2", IsDeleted = false };
         var status = new MemberStatus
         {
-            Name = "Active", IsRosterable = true, IsDefault = true,
-            IsActive = true, IsDeleted = false,
+            Name = "Active", IsRosterable = true, IsDefault = true, IsDeleted = false,
         };
         var tier = new PermissionTier
         {
-            Name = "Full Admin", IsDefault = true,
-            IsActive = true, IsDeleted = false,
+            Name = "Full Admin", IsDefault = true, IsDeleted = false,
         };
         var timeOfDay = new TimeOfDay { Name = "Morning" };
 
@@ -81,7 +79,7 @@ public class ConfigureBranchServiceTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Other",
             Phone = "+27-1", Email = null,
             BranchId = otherBranch.BranchId, RoleId = role.RoleId,
-            MemberStatusId = status.MemberStatusId, IsActive = true,
+            MemberStatusId = status.MemberStatusId,
         };
         _db.Members.Add(adminMember);
         await _db.SaveChangesAsync();
@@ -90,7 +88,6 @@ public class ConfigureBranchServiceTests : IAsyncLifetime
         {
             MemberId = adminMember.MemberId,
             PermissionTierId = tier.PermissionTierId,
-            IsActive = true,
         };
         _db.Admins.Add(admin);
         await _db.SaveChangesAsync();
@@ -105,7 +102,7 @@ public class ConfigureBranchServiceTests : IAsyncLifetime
                 MembershipStage = "Full", Gender = "Other",
                 Phone = "+27-2", Email = null,
                 BranchId = branch.BranchId, RoleId = role.RoleId,
-                MemberStatusId = status.MemberStatusId, IsActive = true,
+                MemberStatusId = status.MemberStatusId,
             };
             _db.Members.Add(extra);
             await _db.SaveChangesAsync();
@@ -117,7 +114,6 @@ public class ConfigureBranchServiceTests : IAsyncLifetime
             BranchId = branch.BranchId,
             DayOfWeek = "Sunday",
             TimeOfDayId = timeOfDay.TimeOfDayId,
-            IsActive = true,
             IsDeleted = false,
         });
         _db.BranchTimeSlots.Add(new BranchTimeSlot
@@ -125,7 +121,6 @@ public class ConfigureBranchServiceTests : IAsyncLifetime
             BranchId = branch.BranchId,
             DayOfWeek = "Wednesday",
             TimeOfDayId = timeOfDay.TimeOfDayId,
-            IsActive = true,
             IsDeleted = false,
         });
         await _db.SaveChangesAsync();

@@ -141,7 +141,7 @@ public class EvaluateFillStatusTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Other",
             Phone = "+27-000-0000", Email = null,
             BranchId = branch.BranchId, RoleId = role.RoleId,
-            MemberStatusId = statusId, IsActive = true,
+            MemberStatusId = statusId,
         };
         var m2 = new Member
         {
@@ -151,7 +151,7 @@ public class EvaluateFillStatusTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Female",
             Phone = "+27-000-0001", Email = null,
             BranchId = branch.BranchId, RoleId = role.RoleId,
-            MemberStatusId = statusId, IsActive = true,
+            MemberStatusId = statusId,
         };
         _db.Members.Add(m1);
         _db.Members.Add(m2);
@@ -162,7 +162,6 @@ public class EvaluateFillStatusTests : IAsyncLifetime
             BranchId = branch.BranchId,
             DayOfWeek = "Sunday",
             TimeOfDayId = timeOfDay.TimeOfDayId,
-            IsActive = true,
         };
         _db.BranchTimeSlots.Add(slot);
         await _db.SaveChangesAsync();
@@ -172,7 +171,6 @@ public class EvaluateFillStatusTests : IAsyncLifetime
             Name = "Sunday Service",
             ServiceTypeId = serviceType.ServiceTypeId,
             OwningBranchId = null,
-            IsActive = true,
         };
         _db.ServiceDefinitions.Add(definition);
         await _db.SaveChangesAsync();
@@ -184,7 +182,6 @@ public class EvaluateFillStatusTests : IAsyncLifetime
             ServiceDefId = definition.ServiceDefId,
             DutyId = duty.DutyId,
             RequiredSlotCount = 2,
-            IsActive = true,
         });
         await _db.SaveChangesAsync();
 
@@ -193,7 +190,6 @@ public class EvaluateFillStatusTests : IAsyncLifetime
             ServiceDefId = definition.ServiceDefId,
             TimeSlotId = slot.TimeSlotId,
             StartTime = new TimeOnly(9, 0),
-            IsActive = true,
         };
         _db.ServiceSchedules.Add(schedule);
         await _db.SaveChangesAsync();

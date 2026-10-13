@@ -19,7 +19,6 @@ public class EventDutyConfiguration : IEntityTypeConfiguration<EventDuty>
         builder.HasKey(e => e.EventDutyId);
 
         builder.Property(e => e.ProgramItemId).IsRequired();
-        builder.Property(e => e.Label).IsRequired().HasMaxLength(200);
         builder.Property(e => e.DutyId).IsRequired();
         builder.Property(e => e.ServiceDefId);
         builder.Property(e => e.AssignedMemberId).IsRequired();

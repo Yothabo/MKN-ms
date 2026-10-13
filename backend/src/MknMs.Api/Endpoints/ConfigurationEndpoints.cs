@@ -565,6 +565,16 @@ public static class ConfigurationEndpoints
                 request.ConsequencesAcknowledged, request.Reason,
                 cancellationToken)));
 
+        routes.MapPost("/api/config/8.0/events/{id:int}/soft-delete", async (
+            int id,
+            [FromBody] LifecycleActionRequest request,
+            IManageEventService service,
+            CancellationToken cancellationToken) =>
+            ToHttpResult(await service.SoftDeleteAsync(
+                id, request.ActingAdminId, request.ApprovedByAdminId,
+                request.ConsequencesAcknowledged, request.Reason ?? string.Empty,
+                cancellationToken)));
+
         // Program
         routes.MapGet("/api/config/8.0/events/{eventId:int}/program", async (
             int eventId,

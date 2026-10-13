@@ -127,7 +127,7 @@ public class HttpSurfaceTests : IClassFixture<WebApplicationFactory<Program>>, I
             MembershipStage = "Full", Gender = "Other",
             Phone = "+27-000-0000", Email = "alex@example.com",
             BranchId = branch.BranchId, RoleId = role.RoleId,
-            MemberStatusId = statusId, IsActive = true,
+            MemberStatusId = statusId,
         };
         _db.Members.Add(member);
         await _db.SaveChangesAsync();
@@ -145,7 +145,6 @@ public class HttpSurfaceTests : IClassFixture<WebApplicationFactory<Program>>, I
             BranchId = branch.BranchId,
             DayOfWeek = "Sunday",
             TimeOfDayId = timeOfDay.TimeOfDayId,
-            IsActive = true,
         };
         _db.BranchTimeSlots.Add(slot);
         await _db.SaveChangesAsync();
@@ -155,7 +154,6 @@ public class HttpSurfaceTests : IClassFixture<WebApplicationFactory<Program>>, I
             Name = "Sunday Service",
             ServiceTypeId = serviceType.ServiceTypeId,
             OwningBranchId = null,
-            IsActive = true,
         };
         _db.ServiceDefinitions.Add(definition);
         await _db.SaveChangesAsync();
@@ -165,7 +163,6 @@ public class HttpSurfaceTests : IClassFixture<WebApplicationFactory<Program>>, I
             ServiceDefId = definition.ServiceDefId,
             DutyId = duty.DutyId,
             RequiredSlotCount = 1,
-            IsActive = true,
         });
 
         var schedule = new ServiceSchedule
@@ -173,7 +170,6 @@ public class HttpSurfaceTests : IClassFixture<WebApplicationFactory<Program>>, I
             ServiceDefId = definition.ServiceDefId,
             TimeSlotId = slot.TimeSlotId,
             StartTime = new TimeOnly(9, 0),
-            IsActive = true,
         };
         _db.ServiceSchedules.Add(schedule);
         await _db.SaveChangesAsync();

@@ -34,7 +34,6 @@ public class MemberConfiguration : IEntityTypeConfiguration<Member>
         builder.Property(e => e.BranchId).IsRequired();
         builder.Property(e => e.RoleId).IsRequired();
         builder.Property(e => e.MemberStatusId).IsRequired();
-        builder.Property(e => e.IsActive).IsRequired();
 
         builder.HasOne(e => e.Branch)
             .WithMany()

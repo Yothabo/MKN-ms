@@ -53,21 +53,19 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
     {
         var role = new MknMs.Domain.D1_RoleDuty.Role
         {
-            Name = "R", IsActive = true, IsDeleted = false,
+            Name = "R", IsDeleted = false,
         };
         var branch = new MknMs.Domain.D3_BranchTimeSlotService.Branch
         {
-            Name = "B", Location = "L", IsActive = true, IsDeleted = false,
+            Name = "B", Location = "L", IsDeleted = false,
         };
         var status = new MknMs.Domain.D4_Member.MemberStatus
         {
-            Name = "Active", IsRosterable = true, IsDefault = true,
-            IsActive = true, IsDeleted = false,
+            Name = "Active", IsRosterable = true, IsDefault = true, IsDeleted = false,
         };
         var tier = new MknMs.Domain.D10_ConfigLookups.PermissionTier
         {
-            Name = "Full Admin", IsDefault = true,
-            IsActive = true, IsDeleted = false,
+            Name = "Full Admin", IsDefault = true, IsDeleted = false,
         };
 
         _db.Roles.Add(role);
@@ -84,7 +82,7 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Other",
             Phone = "+27-0", Email = null,
             BranchId = branch.BranchId, RoleId = role.RoleId,
-            MemberStatusId = status.MemberStatusId, IsActive = true,
+            MemberStatusId = status.MemberStatusId,
         };
         var m2 = new MknMs.Domain.D4_Member.Member
         {
@@ -94,7 +92,7 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Other",
             Phone = "+27-1", Email = null,
             BranchId = branch.BranchId, RoleId = role.RoleId,
-            MemberStatusId = status.MemberStatusId, IsActive = true,
+            MemberStatusId = status.MemberStatusId,
         };
         _db.Members.Add(m1);
         _db.Members.Add(m2);
@@ -104,13 +102,11 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
         {
             MemberId = m1.MemberId,
             PermissionTierId = tier.PermissionTierId,
-            IsActive = true,
         };
         var a2 = new MknMs.Domain.D4_Member.Admin
         {
             MemberId = m2.MemberId,
             PermissionTierId = tier.PermissionTierId,
-            IsActive = true,
         };
         _db.Admins.Add(a1);
         _db.Admins.Add(a2);
@@ -254,7 +250,6 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
             RequiresApprovalForDeactivate = false,
             RequiresReasonForDelete = true,
             RequiresReasonForDeactivate = false,
-            IsActive = true,
             IsDeleted = false,
         });
         await _db.SaveChangesAsync();
@@ -281,7 +276,6 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
             RequiresApprovalForDeactivate = false,
             RequiresReasonForDelete = false,
             RequiresReasonForDeactivate = true,
-            IsActive = true,
             IsDeleted = false,
         });
         await _db.SaveChangesAsync();
@@ -308,7 +302,6 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
             RequiresApprovalForDeactivate = true,
             RequiresReasonForDelete = false,
             RequiresReasonForDeactivate = false,
-            IsActive = true,
             IsDeleted = false,
         });
         await _db.SaveChangesAsync();
@@ -342,7 +335,6 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
             RequiredDeactivatePermissionTierId = tierId,
             RequiresReasonForDelete = false,
             RequiresReasonForDeactivate = false,
-            IsActive = true,
             IsDeleted = false,
         });
         await _db.SaveChangesAsync();
@@ -364,7 +356,6 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
         {
             Name = "Other",
             IsDefault = false,
-            IsActive = true,
             IsDeleted = false,
         };
         _db.PermissionTiers.Add(otherTier);
@@ -378,7 +369,6 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
             RequiredDeactivatePermissionTierId = otherTier.PermissionTierId,
             RequiresReasonForDelete = false,
             RequiresReasonForDeactivate = false,
-            IsActive = true,
             IsDeleted = false,
         });
         await _db.SaveChangesAsync();
@@ -404,7 +394,6 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
             RequiresApprovalForDeactivate = false,
             RequiresReasonForDelete = true,
             RequiresReasonForDeactivate = false,
-            IsActive = true,
             IsDeleted = false,
         });
         await _db.SaveChangesAsync();

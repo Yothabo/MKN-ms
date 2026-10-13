@@ -1123,10 +1123,6 @@ namespace MknMs.Infrastructure.Migrations
                         .HasColumnType("character varying(50)")
                         .HasColumnName("gender");
 
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_active");
-
                     b.Property<DateOnly>("JoinDate")
                         .HasColumnType("date")
                         .HasColumnName("join_date");
@@ -1514,12 +1510,6 @@ namespace MknMs.Infrastructure.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_deleted");
 
-                    b.Property<string>("Location")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
-                        .HasColumnName("location");
-
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -1595,12 +1585,6 @@ namespace MknMs.Infrastructure.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean")
                         .HasColumnName("is_deleted");
-
-                    b.Property<string>("Label")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("label");
 
                     b.Property<int>("ProgramItemId")
                         .HasColumnType("integer")

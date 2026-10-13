@@ -221,7 +221,7 @@ public class GenerateAssignmentTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Other",
             Phone = "+27-000-0000", Email = null,
             BranchId = branch.BranchId, RoleId = coordinator.RoleId,
-            MemberStatusId = statusId, IsActive = true,
+            MemberStatusId = statusId,
         };
         var beatrice = new Member
         {
@@ -231,7 +231,7 @@ public class GenerateAssignmentTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Female",
             Phone = "+27-000-0001", Email = null,
             BranchId = branch.BranchId, RoleId = steward.RoleId,
-            MemberStatusId = statusId, IsActive = true,
+            MemberStatusId = statusId,
         };
         var dana = new Member
         {
@@ -241,7 +241,7 @@ public class GenerateAssignmentTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Female",
             Phone = "+27-000-0003", Email = null,
             BranchId = branch.BranchId, RoleId = steward.RoleId,
-            MemberStatusId = statusId, IsActive = true,
+            MemberStatusId = statusId,
         };
         _db.Members.Add(alex);
         _db.Members.Add(beatrice);
@@ -264,7 +264,6 @@ public class GenerateAssignmentTests : IAsyncLifetime
             BranchId = branch.BranchId,
             DayOfWeek = "Sunday",
             TimeOfDayId = timeOfDay.TimeOfDayId,
-            IsActive = true,
         };
         _db.BranchTimeSlots.Add(slot);
         await _db.SaveChangesAsync();
@@ -274,7 +273,6 @@ public class GenerateAssignmentTests : IAsyncLifetime
             Name = "Sunday Service",
             ServiceTypeId = serviceType.ServiceTypeId,
             OwningBranchId = null,
-            IsActive = true,
         };
         _db.ServiceDefinitions.Add(definition);
         await _db.SaveChangesAsync();
@@ -285,14 +283,12 @@ public class GenerateAssignmentTests : IAsyncLifetime
             ServiceDefId = definition.ServiceDefId,
             DutyId = welcomeDuty.DutyId,
             RequiredSlotCount = 1,
-            IsActive = true,
         });
         _db.ServiceDefinitionDuties.Add(new ServiceDefinitionDuty
         {
             ServiceDefId = definition.ServiceDefId,
             DutyId = readingDuty.DutyId,
             RequiredSlotCount = 1,
-            IsActive = true,
         });
 
         // The schedule.
@@ -301,7 +297,6 @@ public class GenerateAssignmentTests : IAsyncLifetime
             ServiceDefId = definition.ServiceDefId,
             TimeSlotId = slot.TimeSlotId,
             StartTime = new TimeOnly(9, 0),
-            IsActive = true,
         };
         _db.ServiceSchedules.Add(schedule);
         await _db.SaveChangesAsync();
@@ -313,7 +308,6 @@ public class GenerateAssignmentTests : IAsyncLifetime
             TierOrder = 1,
             CriteriaType = "Role",
             CriteriaValue = "Coordinator",
-            IsActive = true,
         });
         _db.DutyRules.Add(new DutyRule
         {
@@ -321,7 +315,6 @@ public class GenerateAssignmentTests : IAsyncLifetime
             TierOrder = 1,
             CriteriaType = "Role",
             CriteriaValue = "Steward",
-            IsActive = true,
         });
         await _db.SaveChangesAsync();
 
@@ -505,7 +498,6 @@ public class GenerateAssignmentTests : IAsyncLifetime
             TierOrder = 1,
             CriteriaType = "Role",
             CriteriaValue = "Coordinator",
-            IsActive = true,
         });
         _db.DutyRules.Add(new DutyRule
         {
@@ -513,7 +505,6 @@ public class GenerateAssignmentTests : IAsyncLifetime
             TierOrder = 2,
             CriteriaType = "Role",
             CriteriaValue = "Steward",
-            IsActive = true,
         });
         await _db.SaveChangesAsync();
 
@@ -546,7 +537,6 @@ public class GenerateAssignmentTests : IAsyncLifetime
             TierOrder = 1,
             CriteriaType = "Role",
             CriteriaValue = "Steward",
-            IsActive = true,
         });
         _db.DutyRules.Add(new DutyRule
         {
@@ -554,7 +544,6 @@ public class GenerateAssignmentTests : IAsyncLifetime
             TierOrder = 1,
             CriteriaType = "Gender",
             CriteriaValue = "Female",
-            IsActive = true,
         });
         await _db.SaveChangesAsync();
 
@@ -587,7 +576,6 @@ public class GenerateAssignmentTests : IAsyncLifetime
             TierOrder = 1,
             CriteriaType = "Role",
             CriteriaValue = "Steward",
-            IsActive = true,
         });
         _db.DutyRules.Add(new DutyRule
         {
@@ -595,7 +583,6 @@ public class GenerateAssignmentTests : IAsyncLifetime
             TierOrder = 1,
             CriteriaType = "Gender",
             CriteriaValue = "Male",
-            IsActive = true,
         });
         await _db.SaveChangesAsync();
 
@@ -657,7 +644,6 @@ public class GenerateAssignmentTests : IAsyncLifetime
             TierOrder = 1,
             CriteriaType = "BranchAttendanceRecency",
             CriteriaValue = "30",
-            IsActive = true,
         });
         await _db.SaveChangesAsync();
 
@@ -695,7 +681,6 @@ public class GenerateAssignmentTests : IAsyncLifetime
             TierOrder = 1,
             CriteriaType = "BranchAttendanceRecency",
             CriteriaValue = "30",
-            IsActive = true,
         });
         await _db.SaveChangesAsync();
 

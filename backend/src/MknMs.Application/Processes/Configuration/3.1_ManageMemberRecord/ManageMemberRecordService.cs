@@ -134,7 +134,6 @@ public sealed class ManageMemberRecordService : IManageMemberRecordService
             BranchId = request.BranchId,
             RoleId = request.RoleId,
             MemberStatusId = request.MemberStatusId,
-            IsActive = true,
         };
         _db.Members.Add(entity);
         await _db.SaveChangesAsync(cancellationToken);

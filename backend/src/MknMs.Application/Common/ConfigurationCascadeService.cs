@@ -114,6 +114,9 @@ public sealed class ConfigurationCascadeService : IConfigurationCascadeService
             case nameof(AttributeType):
                 return await ApplyAttributeTypeCascadeAsync(entityId, cancellationToken);
 
+            case nameof(Event):
+                return await ApplyEventCascadeAsync(entityId, cancellationToken);
+
             default:
                 return ConfigurationResult<CascadeOutcome>.Success(
                     CascadeOutcome.Applied("No dependent changes apply."));
@@ -534,6 +537,74 @@ public sealed class ConfigurationCascadeService : IConfigurationCascadeService
         var text =
             $"{values.Count} Member Attribute Value row(s) removed; "
             + $"{rulesToDelete.Count} Duty Rule(s) soft-deleted.";
+
+        return ConfigurationResult<CascadeOutcome>.Success(
+            CascadeOutcome.Applied(text));
+    }
+
+    // -----------------------------------------------------------------
+    // Event cascade (§9.7 row)
+    //
+    // Referencing Program and EventDuty rows are physically removed.
+    // Existing event-sourced ServiceOccurrence rows are preserved.
+    //
+    // Removing a Program requires removing its ProgramItem children
+    // and the EventDuty rows that reference them, by FK chain. §9.7
+    // names the Program and EventDuty removals; the ProgramItem
+    // removal is implied by the FK and applied here.
+    //
+    // Removal order: every EventDuty (by Event and by ProgramItem),
+    // then every ProgramItem, then every Program.
+    // -----------------------------------------------------------------
+
+    private async Task<ConfigurationResult<CascadeOutcome>> ApplyEventCascadeAsync(
+        int eventId,
+        CancellationToken cancellationToken)
+    {
+        var evt = await _db.Events
+            .FirstOrDefaultAsync(e => e.EventId == eventId, cancellationToken);
+        if (evt is null)
+        {
+            return ConfigurationResult<CascadeOutcome>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.NotFound,
+                    $"Event {eventId} does not exist."));
+        }
+
+        // Programs under this event and their items.
+        var programs = await _db.Programs
+            .Where(p => p.EventId == eventId)
+            .ToListAsync(cancellationToken);
+
+        var programIds = programs.Select(p => p.ProgramId).ToList();
+
+        var programItems = programIds.Count == 0
+            ? new List<ProgramItem>()
+            : await _db.ProgramItems
+                .Where(i => programIds.Contains(i.ProgramId))
+                .ToListAsync(cancellationToken);
+
+        var programItemIds = programItems.Select(i => i.ItemId).ToList();
+
+        // EventDuty rows referencing any of those ProgramItems. The
+        // EventDuty entity has no EventId; its Event association is
+        // via ProgramItem.Program.
+        var eventDuties = programItemIds.Count == 0
+            ? new List<EventDuty>()
+            : await _db.EventDuties
+                .Where(d => programItemIds.Contains(d.ProgramItemId))
+                .ToListAsync(cancellationToken);
+
+        // Remove in dependency order.
+        _db.EventDuties.RemoveRange(eventDuties);
+        _db.ProgramItems.RemoveRange(programItems);
+        _db.Programs.RemoveRange(programs);
+
+        var text =
+            $"{programs.Count} Program(s) removed; "
+            + $"{programItems.Count} Program Item(s) removed; "
+            + $"{eventDuties.Count} Event Duty row(s) removed; "
+            + "event-sourced Service Occurrences preserved.";
 
         return ConfigurationResult<CascadeOutcome>.Success(
             CascadeOutcome.Applied(text));

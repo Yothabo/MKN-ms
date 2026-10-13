@@ -79,29 +79,25 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
     {
         var serviceType = new ServiceType { Name = "Regular" };
         var timeOfDay = new TimeOfDay { Name = "Morning" };
-        var role = new Role { Name = "Member", IsActive = true, IsDeleted = false };
+        var role = new Role { Name = "Member", IsDeleted = false };
         var branch = new Branch
         {
             Name = "Main",
             Location = "Main Street",
-            IsActive = true,
             IsDeleted = false,
             UsesAttendanceRegister = null,
         };
         var defaultStatus = new MemberStatus
         {
-            Name = "Active", IsRosterable = true, IsDefault = true,
-            IsActive = true, IsDeleted = false,
+            Name = "Active", IsRosterable = true, IsDefault = true, IsDeleted = false,
         };
         var otherStatus = new MemberStatus
         {
-            Name = "Inactive", IsRosterable = false, IsDefault = false,
-            IsActive = true, IsDeleted = false,
+            Name = "Inactive", IsRosterable = false, IsDefault = false, IsDeleted = false,
         };
         var tier = new PermissionTier
         {
-            Name = "Full Admin", IsDefault = true,
-            IsActive = true, IsDeleted = false,
+            Name = "Full Admin", IsDefault = true, IsDeleted = false,
         };
 
         _db.ServiceTypes.Add(serviceType);
@@ -137,7 +133,6 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
             BranchId = branch.BranchId,
             RoleId = role.RoleId,
             MemberStatusId = defaultStatus.MemberStatusId,
-            IsActive = true,
         };
         _db.Members.Add(member);
         await _db.SaveChangesAsync();
@@ -146,7 +141,6 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
         {
             MemberId = member.MemberId,
             PermissionTierId = tier.PermissionTierId,
-            IsActive = true,
         };
         _db.Admins.Add(admin);
         await _db.SaveChangesAsync();
@@ -178,7 +172,6 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
                 BranchId = f.BranchId,
                 DayOfWeek = "Sunday",
                 TimeOfDayId = timeOfDayId,
-                IsActive = true,
             };
             _db.BranchTimeSlots.Add(slot);
             await _db.SaveChangesAsync();
@@ -192,7 +185,6 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
             Name = "Svc",
             ServiceTypeId = serviceTypeId,
             OwningBranchId = null,
-            IsActive = true,
         };
         _db.ServiceDefinitions.Add(definition);
         await _db.SaveChangesAsync();
@@ -202,7 +194,6 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
             ServiceDefId = definition.ServiceDefId,
             TimeSlotId = slot.TimeSlotId,
             StartTime = new TimeOnly(9, 0),
-            IsActive = true,
         };
         _db.ServiceSchedules.Add(schedule);
         await _db.SaveChangesAsync();
@@ -253,7 +244,6 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
             OutcomeType = outcomeType,
             OutcomeStatusId = outcomeStatusId,
             Enabled = enabled,
-            IsActive = true,
             IsDeleted = false,
         };
         _db.AttendanceRules.Add(rule);
