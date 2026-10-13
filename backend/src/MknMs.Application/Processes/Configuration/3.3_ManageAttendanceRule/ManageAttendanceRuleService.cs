@@ -58,10 +58,17 @@ public interface IManageAttendanceRuleService
 
     Task<ConfigurationResult<AttendanceRule>> DeactivateAsync(
         int ruleId,
+        int actingAdminId,
+        int approvedByAdminId,
+        bool consequencesAcknowledged,
+        string? reason = null,
         CancellationToken cancellationToken = default);
 
     Task<ConfigurationResult<AttendanceRule>> SoftDeleteAsync(
         int ruleId,
+        int actingAdminId,
+        int approvedByAdminId,
+        bool consequencesAcknowledged,
         string reason,
         CancellationToken cancellationToken = default);
 }
@@ -125,10 +132,14 @@ public sealed class ManageAttendanceRuleService : IManageAttendanceRuleService
     };
 
     private readonly MknDbContext _db;
+    private readonly IConfigurationLifecycleService _lifecycle;
 
-    public ManageAttendanceRuleService(MknDbContext db)
+    public ManageAttendanceRuleService(
+        MknDbContext db,
+        IConfigurationLifecycleService lifecycle)
     {
         _db = db;
+        _lifecycle = lifecycle;
     }
 
     public async Task<IReadOnlyList<AttendanceRule>> ListAsync(
@@ -288,6 +299,10 @@ public sealed class ManageAttendanceRuleService : IManageAttendanceRuleService
 
     public async Task<ConfigurationResult<AttendanceRule>> DeactivateAsync(
         int ruleId,
+        int actingAdminId,
+        int approvedByAdminId,
+        bool consequencesAcknowledged,
+        string? reason = null,
         CancellationToken cancellationToken = default)
     {
         var entity = await _db.AttendanceRules
@@ -304,13 +319,41 @@ public sealed class ManageAttendanceRuleService : IManageAttendanceRuleService
                     "Attendance Rule is already inactive."));
         }
 
+        if (!consequencesAcknowledged)
+        {
+            return ConfigurationResult<AttendanceRule>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.ValidationFailed,
+                    "The consequences of this deactivation must be acknowledged."));
+        }
+
         entity.IsActive = false;
+
+        var audit = await _lifecycle.RecordAsync(new ConfigurationLifecycleEvent
+        {
+            EntityType = nameof(AttendanceRule),
+            EntityId = entity.AttendanceRuleId,
+            EntityName = entity.Name,
+            Action = ConfigurationLifecycleActions.Deactivate,
+            Reason = reason,
+            InitiatedByAdminId = actingAdminId,
+            ApprovedByAdminId = approvedByAdminId,
+        }, cancellationToken);
+
+        if (!audit.IsSuccess)
+        {
+            return ConfigurationResult<AttendanceRule>.Failure(audit.Error!);
+        }
+
         await _db.SaveChangesAsync(cancellationToken);
         return ConfigurationResult<AttendanceRule>.Success(entity);
     }
 
     public async Task<ConfigurationResult<AttendanceRule>> SoftDeleteAsync(
         int ruleId,
+        int actingAdminId,
+        int approvedByAdminId,
+        bool consequencesAcknowledged,
         string reason,
         CancellationToken cancellationToken = default)
     {
@@ -335,6 +378,14 @@ public sealed class ManageAttendanceRuleService : IManageAttendanceRuleService
                     "Attendance Rule is already soft-deleted."));
         }
 
+        if (!consequencesAcknowledged)
+        {
+            return ConfigurationResult<AttendanceRule>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.ValidationFailed,
+                    "The consequences of this soft delete must be acknowledged."));
+        }
+
         entity.IsDeleted = true;
         entity.IsActive = false;
 
@@ -342,6 +393,22 @@ public sealed class ManageAttendanceRuleService : IManageAttendanceRuleService
             .Where(s => s.AttendanceRuleId == ruleId)
             .ToListAsync(cancellationToken);
         _db.AttendanceRuleScopes.RemoveRange(scopes);
+
+        var audit = await _lifecycle.RecordAsync(new ConfigurationLifecycleEvent
+        {
+            EntityType = nameof(AttendanceRule),
+            EntityId = entity.AttendanceRuleId,
+            EntityName = entity.Name,
+            Action = ConfigurationLifecycleActions.SoftDelete,
+            Reason = reason,
+            InitiatedByAdminId = actingAdminId,
+            ApprovedByAdminId = approvedByAdminId,
+        }, cancellationToken);
+
+        if (!audit.IsSuccess)
+        {
+            return ConfigurationResult<AttendanceRule>.Failure(audit.Error!);
+        }
 
         await _db.SaveChangesAsync(cancellationToken);
         return ConfigurationResult<AttendanceRule>.Success(entity);

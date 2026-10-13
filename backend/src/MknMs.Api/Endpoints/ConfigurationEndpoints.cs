@@ -622,16 +622,23 @@ public static class ConfigurationEndpoints
 
         routes.MapPost("/api/config/3.3/attendance-rules/{id:int}/deactivate", async (
             int id,
+            [FromBody] LifecycleActionRequest request,
             IManageAttendanceRuleService service,
             CancellationToken cancellationToken) =>
-            ToHttpResult(await service.DeactivateAsync(id, cancellationToken)));
+            ToHttpResult(await service.DeactivateAsync(
+                id, request.ActingAdminId, request.ApprovedByAdminId,
+                request.ConsequencesAcknowledged, request.Reason,
+                cancellationToken)));
 
         routes.MapPost("/api/config/3.3/attendance-rules/{id:int}/soft-delete", async (
             int id,
-            [FromBody] SoftDeleteAttendanceRuleRequest request,
+            [FromBody] LifecycleActionRequest request,
             IManageAttendanceRuleService service,
             CancellationToken cancellationToken) =>
-            ToHttpResult(await service.SoftDeleteAsync(id, request.Reason, cancellationToken)));
+            ToHttpResult(await service.SoftDeleteAsync(
+                id, request.ActingAdminId, request.ApprovedByAdminId,
+                request.ConsequencesAcknowledged, request.Reason ?? string.Empty,
+                cancellationToken)));
     }
 }
 
@@ -765,11 +772,6 @@ public sealed record LifecycleActionRequest
 public sealed record SetMemberStatusRequest
 {
     public required int MemberStatusId { get; init; }
-}
-
-public sealed record SoftDeleteAttendanceRuleRequest
-{
-    public required string Reason { get; init; }
 }
 
 public sealed record CreateEventDutyRequest
