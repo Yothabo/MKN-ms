@@ -15,6 +15,7 @@ using MknMs.Application.Processes.Configuration.ManageEvent;
 using MknMs.Application.Processes.Configuration.ManageEventDuty;
 using MknMs.Application.Processes.Configuration.ManageIdentifierHistory;
 using MknMs.Application.Processes.Configuration.ManageMemberRecord;
+using MknMs.Application.Processes.Configuration.ManageMemberStatus;
 using MknMs.Application.Processes.Configuration.ManageProgram;
 using MknMs.Application.Processes.Configuration.ManageProgramItem;
 
@@ -41,6 +42,7 @@ public static class ConfigurationEndpoints
         MapManageEligibility(routes);
         MapManageEventsAndPrograms(routes);
         MapManageAttendanceRule(routes);
+        MapManageMemberStatus(routes);
         return routes;
     }
 
@@ -582,6 +584,23 @@ public static class ConfigurationEndpoints
             IManageEventDutyService service,
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.RemoveAsync(id, cancellationToken)));
+    }
+
+    // -----------------------------------------------------------------
+    // 3.4 Manage Member Status
+    // -----------------------------------------------------------------
+
+    private static void MapManageMemberStatus(IEndpointRouteBuilder routes)
+    {
+        routes.MapPost("/api/config/3.4/member-statuses/{id:int}/soft-delete", async (
+            int id,
+            [FromBody] LifecycleActionRequest request,
+            IManageMemberStatusService service,
+            CancellationToken cancellationToken) =>
+            ToHttpResult(await service.SoftDeleteAsync(
+                id, request.ActingAdminId, request.ApprovedByAdminId,
+                request.ConsequencesAcknowledged, request.Reason ?? string.Empty,
+                cancellationToken)));
     }
 
     // -----------------------------------------------------------------

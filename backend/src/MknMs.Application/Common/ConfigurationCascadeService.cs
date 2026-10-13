@@ -96,6 +96,9 @@ public sealed class ConfigurationCascadeService : IConfigurationCascadeService
             case nameof(Duty):
                 return await ApplyDutyCascadeAsync(entityId, cancellationToken);
 
+            case nameof(MemberStatus):
+                return await ApplyMemberStatusCascadeAsync(entityId, cancellationToken);
+
             default:
                 return ConfigurationResult<CascadeOutcome>.Success(
                     CascadeOutcome.Applied("No dependent changes apply."));
@@ -190,5 +193,108 @@ public sealed class ConfigurationCascadeService : IConfigurationCascadeService
 
         return ConfigurationResult<CascadeOutcome>.Success(
             CascadeOutcome.Applied("No dependent changes apply."));
+    }
+
+    // -----------------------------------------------------------------
+    // MemberStatus cascade (§9.7 row)
+    //
+    // Blocked if the MemberStatus is the default. Otherwise, members
+    // holding the status fall back to the default status, and:
+    //
+    //   - AttendanceRule rows whose OutcomeStatusId names this
+    //     status are physically removed.
+    //   - AttendanceRuleScope rows whose criteria name this status
+    //     are physically removed.
+    //
+    // §9.7 uses the word "removed" for these dependents, in
+    // contrast to "deleted" for the Role cascade's dependent
+    // DutyRules. The two verbs are deliberate; the dependent rows
+    // are removed from persistence.
+    // -----------------------------------------------------------------
+
+    private async Task<ConfigurationResult<CascadeOutcome>> ApplyMemberStatusCascadeAsync(
+        int memberStatusId,
+        CancellationToken cancellationToken)
+    {
+        var status = await _db.MemberStatuses
+            .FirstOrDefaultAsync(s => s.MemberStatusId == memberStatusId, cancellationToken);
+        if (status is null)
+        {
+            return ConfigurationResult<CascadeOutcome>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.NotFound,
+                    $"MemberStatus {memberStatusId} does not exist."));
+        }
+
+        if (status.IsDefault)
+        {
+            return ConfigurationResult<CascadeOutcome>.Success(
+                CascadeOutcome.Blocked(
+                    "The default Member Status cannot be soft-deleted."));
+        }
+
+        var defaultStatus = await _db.MemberStatuses
+            .FirstOrDefaultAsync(s => s.IsDefault && !s.IsDeleted, cancellationToken);
+        if (defaultStatus is null)
+        {
+            return ConfigurationResult<CascadeOutcome>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.ConfigurationMissing,
+                    "No default Member Status is configured; the fallback target cannot be resolved."));
+        }
+
+        // 1. Member fallback.
+        var affectedMembers = await _db.Members
+            .Where(m => m.MemberStatusId == memberStatusId)
+            .ToListAsync(cancellationToken);
+        foreach (var member in affectedMembers)
+        {
+            member.MemberStatusId = defaultStatus.MemberStatusId;
+        }
+
+        // 2. AttendanceRule rows whose OutcomeStatusId names this
+        //    status.
+        var affectedRules = await _db.AttendanceRules
+            .Where(r => r.OutcomeStatusId == memberStatusId)
+            .ToListAsync(cancellationToken);
+
+        // 3. AttendanceRuleScope rows to remove. Two groups:
+        //    - scope rows belonging to the affected rules, above;
+        //    - scope rows on any rule whose MemberStatus criterion
+        //      names this status id.
+        var ruleIds = affectedRules.Select(r => r.AttendanceRuleId).ToList();
+
+        var scopeRowsByRule = await _db.AttendanceRuleScopes
+            .Where(s => ruleIds.Contains(s.AttendanceRuleId))
+            .ToListAsync(cancellationToken);
+
+        // The MemberStatus criterion's value is a comma-separated
+        // list of MemberStatusIDs. Parse, do not substring match.
+        var allScopeRows = await _db.AttendanceRuleScopes
+            .Where(s => s.CriteriaType == "MemberStatus")
+            .ToListAsync(cancellationToken);
+
+        var statusIdText = memberStatusId.ToString();
+        var scopeRowsByCriterion = allScopeRows
+            .Where(s => s.CriteriaValue
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Any(v => v == statusIdText))
+            .ToList();
+
+        var scopeRowsToRemove = scopeRowsByRule
+            .Concat(scopeRowsByCriterion)
+            .DistinctBy(s => new { s.AttendanceRuleId, s.CriteriaType, s.CriteriaValue })
+            .ToList();
+
+        _db.AttendanceRuleScopes.RemoveRange(scopeRowsToRemove);
+        _db.AttendanceRules.RemoveRange(affectedRules);
+
+        var text =
+            $"{affectedMembers.Count} member(s) fell back to the default Member Status; "
+            + $"{affectedRules.Count} Attendance Rule(s) removed; "
+            + $"{scopeRowsToRemove.Count} Attendance Rule Scope row(s) removed.";
+
+        return ConfigurationResult<CascadeOutcome>.Success(
+            CascadeOutcome.Applied(text));
     }
 }
