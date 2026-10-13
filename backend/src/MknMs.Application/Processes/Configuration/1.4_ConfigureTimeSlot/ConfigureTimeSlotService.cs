@@ -41,6 +41,14 @@ public interface IConfigureTimeSlotService
         bool consequencesAcknowledged,
         string? reason = null,
         CancellationToken cancellationToken = default);
+
+    Task<ConfigurationResult<BranchTimeSlot>> SoftDeleteAsync(
+        int timeSlotId,
+        int actingAdminId,
+        int approvedByAdminId,
+        bool consequencesAcknowledged,
+        string reason,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class ConfigureTimeSlotService : IConfigureTimeSlotService
@@ -52,13 +60,16 @@ public sealed class ConfigureTimeSlotService : IConfigureTimeSlotService
 
     private readonly MknDbContext _db;
     private readonly IConfigurationLifecycleService _lifecycle;
+    private readonly IConfigurationCascadeService _cascade;
 
     public ConfigureTimeSlotService(
         MknDbContext db,
-        IConfigurationLifecycleService lifecycle)
+        IConfigurationLifecycleService lifecycle,
+        IConfigurationCascadeService cascade)
     {
         _db = db;
         _lifecycle = lifecycle;
+        _cascade = cascade;
     }
 
     public async Task<IReadOnlyList<BranchTimeSlot>> ListAsync(
@@ -190,6 +201,84 @@ public sealed class ConfigureTimeSlotService : IConfigureTimeSlotService
             EntityName = $"{entity.DayOfWeek} {entity.TimeSlotId}",
             Action = ConfigurationLifecycleActions.Deactivate,
             Reason = reason,
+            InitiatedByAdminId = actingAdminId,
+            ApprovedByAdminId = approvedByAdminId,
+        }, cancellationToken);
+
+        if (!audit.IsSuccess)
+        {
+            return ConfigurationResult<BranchTimeSlot>.Failure(audit.Error!);
+        }
+
+        await _db.SaveChangesAsync(cancellationToken);
+        return ConfigurationResult<BranchTimeSlot>.Success(entity);
+    }
+
+    public async Task<ConfigurationResult<BranchTimeSlot>> SoftDeleteAsync(
+        int timeSlotId,
+        int actingAdminId,
+        int approvedByAdminId,
+        bool consequencesAcknowledged,
+        string reason,
+        CancellationToken cancellationToken = default)
+    {
+        if (!ConfigurationValidation.IsValidName(reason))
+        {
+            return ConfigurationResult<BranchTimeSlot>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.InvalidValue,
+                    "Reason is required for soft delete."));
+        }
+
+        var entity = await _db.BranchTimeSlots
+            .FirstOrDefaultAsync(t => t.TimeSlotId == timeSlotId, cancellationToken);
+        if (entity is null)
+        {
+            throw new EntityNotFoundException(nameof(BranchTimeSlot), timeSlotId);
+        }
+
+        if (entity.IsDeleted)
+        {
+            return ConfigurationResult<BranchTimeSlot>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.AlreadyInactive,
+                    "Time slot is already soft-deleted."));
+        }
+
+        if (!consequencesAcknowledged)
+        {
+            return ConfigurationResult<BranchTimeSlot>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.ValidationFailed,
+                    "The consequences of this soft delete must be acknowledged."));
+        }
+
+        var cascade = await _cascade.ApplyAsync(
+            nameof(BranchTimeSlot), timeSlotId, cancellationToken);
+        if (!cascade.IsSuccess)
+        {
+            return ConfigurationResult<BranchTimeSlot>.Failure(cascade.Error!);
+        }
+
+        if (cascade.Value!.IsBlocked)
+        {
+            return ConfigurationResult<BranchTimeSlot>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.LifecycleViolation,
+                    cascade.Value.BlockedReason ?? "Soft delete is blocked."));
+        }
+
+        entity.IsDeleted = true;
+        entity.IsActive = false;
+
+        var audit = await _lifecycle.RecordAsync(new ConfigurationLifecycleEvent
+        {
+            EntityType = nameof(BranchTimeSlot),
+            EntityId = entity.TimeSlotId,
+            EntityName = $"{entity.DayOfWeek} {entity.TimeSlotId}",
+            Action = ConfigurationLifecycleActions.SoftDelete,
+            Reason = reason,
+            ConsequencesText = cascade.Value.ConsequencesText,
             InitiatedByAdminId = actingAdminId,
             ApprovedByAdminId = approvedByAdminId,
         }, cancellationToken);

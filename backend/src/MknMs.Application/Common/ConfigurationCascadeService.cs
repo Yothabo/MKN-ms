@@ -102,6 +102,9 @@ public sealed class ConfigurationCascadeService : IConfigurationCascadeService
             case nameof(Branch):
                 return await ApplyBranchCascadeAsync(entityId, cancellationToken);
 
+            case nameof(BranchTimeSlot):
+                return await ApplyBranchTimeSlotCascadeAsync(entityId, cancellationToken);
+
             default:
                 return ConfigurationResult<CascadeOutcome>.Success(
                     CascadeOutcome.Applied("No dependent changes apply."));
@@ -338,6 +341,51 @@ public sealed class ConfigurationCascadeService : IConfigurationCascadeService
         _db.BranchTimeSlots.RemoveRange(slots);
 
         var text = $"{slots.Count} Branch Time Slot row(s) removed.";
+        return ConfigurationResult<CascadeOutcome>.Success(
+            CascadeOutcome.Applied(text));
+    }
+
+    // -----------------------------------------------------------------
+    // BranchTimeSlot cascade (§9.7 row)
+    //
+    // Blocked if any active ServiceSchedule references the slot.
+    // Otherwise, inactive ServiceSchedule rows referencing the slot
+    // are physically removed. §9.7's wording — 'removed if they were
+    // already inactive' — gives both clauses distinct meaning: an
+    // active schedule blocks, and the otherwise case removes the
+    // inactive ones.
+    // -----------------------------------------------------------------
+
+    private async Task<ConfigurationResult<CascadeOutcome>> ApplyBranchTimeSlotCascadeAsync(
+        int timeSlotId,
+        CancellationToken cancellationToken)
+    {
+        var slot = await _db.BranchTimeSlots
+            .FirstOrDefaultAsync(s => s.TimeSlotId == timeSlotId, cancellationToken);
+        if (slot is null)
+        {
+            return ConfigurationResult<CascadeOutcome>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.NotFound,
+                    $"BranchTimeSlot {timeSlotId} does not exist."));
+        }
+
+        var activeSchedules = await _db.ServiceSchedules
+            .CountAsync(s => s.TimeSlotId == timeSlotId && s.IsActive, cancellationToken);
+        if (activeSchedules > 0)
+        {
+            return ConfigurationResult<CascadeOutcome>.Success(
+                CascadeOutcome.Blocked(
+                    $"BranchTimeSlot {timeSlotId} is referenced by "
+                    + $"{activeSchedules} active Service Schedule(s)."));
+        }
+
+        var inactiveSchedules = await _db.ServiceSchedules
+            .Where(s => s.TimeSlotId == timeSlotId && !s.IsActive)
+            .ToListAsync(cancellationToken);
+        _db.ServiceSchedules.RemoveRange(inactiveSchedules);
+
+        var text = $"{inactiveSchedules.Count} inactive Service Schedule row(s) removed.";
         return ConfigurationResult<CascadeOutcome>.Success(
             CascadeOutcome.Applied(text));
     }
