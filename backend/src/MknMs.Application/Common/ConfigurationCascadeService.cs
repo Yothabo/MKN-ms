@@ -99,6 +99,9 @@ public sealed class ConfigurationCascadeService : IConfigurationCascadeService
             case nameof(MemberStatus):
                 return await ApplyMemberStatusCascadeAsync(entityId, cancellationToken);
 
+            case nameof(Branch):
+                return await ApplyBranchCascadeAsync(entityId, cancellationToken);
+
             default:
                 return ConfigurationResult<CascadeOutcome>.Success(
                     CascadeOutcome.Applied("No dependent changes apply."));
@@ -294,6 +297,47 @@ public sealed class ConfigurationCascadeService : IConfigurationCascadeService
             + $"{affectedRules.Count} Attendance Rule(s) removed; "
             + $"{scopeRowsToRemove.Count} Attendance Rule Scope row(s) removed.";
 
+        return ConfigurationResult<CascadeOutcome>.Success(
+            CascadeOutcome.Applied(text));
+    }
+
+    // -----------------------------------------------------------------
+    // Branch cascade (§9.7 row)
+    //
+    // Blocked if any Member is assigned to the Branch. Otherwise the
+    // referencing BranchTimeSlot rows are physically removed. Event
+    // HostBranchId and EventBranch rows are preserved.
+    // -----------------------------------------------------------------
+
+    private async Task<ConfigurationResult<CascadeOutcome>> ApplyBranchCascadeAsync(
+        int branchId,
+        CancellationToken cancellationToken)
+    {
+        var branch = await _db.Branches
+            .FirstOrDefaultAsync(b => b.BranchId == branchId, cancellationToken);
+        if (branch is null)
+        {
+            return ConfigurationResult<CascadeOutcome>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.NotFound,
+                    $"Branch {branchId} does not exist."));
+        }
+
+        var memberCount = await _db.Members
+            .CountAsync(m => m.BranchId == branchId, cancellationToken);
+        if (memberCount > 0)
+        {
+            return ConfigurationResult<CascadeOutcome>.Success(
+                CascadeOutcome.Blocked(
+                    $"Branch {branchId} has {memberCount} Member(s) assigned to it."));
+        }
+
+        var slots = await _db.BranchTimeSlots
+            .Where(s => s.BranchId == branchId)
+            .ToListAsync(cancellationToken);
+        _db.BranchTimeSlots.RemoveRange(slots);
+
+        var text = $"{slots.Count} Branch Time Slot row(s) removed.";
         return ConfigurationResult<CascadeOutcome>.Success(
             CascadeOutcome.Applied(text));
     }
