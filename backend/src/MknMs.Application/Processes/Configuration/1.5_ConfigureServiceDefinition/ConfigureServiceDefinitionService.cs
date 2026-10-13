@@ -41,19 +41,30 @@ public interface IConfigureServiceDefinitionService
         bool consequencesAcknowledged,
         string? reason = null,
         CancellationToken cancellationToken = default);
+
+    Task<ConfigurationResult<ServiceDefinition>> SoftDeleteAsync(
+        int serviceDefId,
+        int actingAdminId,
+        int approvedByAdminId,
+        bool consequencesAcknowledged,
+        string reason,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class ConfigureServiceDefinitionService : IConfigureServiceDefinitionService
 {
     private readonly MknDbContext _db;
     private readonly IConfigurationLifecycleService _lifecycle;
+    private readonly IConfigurationCascadeService _cascade;
 
     public ConfigureServiceDefinitionService(
         MknDbContext db,
-        IConfigurationLifecycleService lifecycle)
+        IConfigurationLifecycleService lifecycle,
+        IConfigurationCascadeService cascade)
     {
         _db = db;
         _lifecycle = lifecycle;
+        _cascade = cascade;
     }
 
     public async Task<IReadOnlyList<ServiceDefinition>> ListAsync(
@@ -202,6 +213,84 @@ public sealed class ConfigureServiceDefinitionService : IConfigureServiceDefinit
             EntityName = entity.Name,
             Action = ConfigurationLifecycleActions.Deactivate,
             Reason = reason,
+            InitiatedByAdminId = actingAdminId,
+            ApprovedByAdminId = approvedByAdminId,
+        }, cancellationToken);
+
+        if (!audit.IsSuccess)
+        {
+            return ConfigurationResult<ServiceDefinition>.Failure(audit.Error!);
+        }
+
+        await _db.SaveChangesAsync(cancellationToken);
+        return ConfigurationResult<ServiceDefinition>.Success(entity);
+    }
+
+    public async Task<ConfigurationResult<ServiceDefinition>> SoftDeleteAsync(
+        int serviceDefId,
+        int actingAdminId,
+        int approvedByAdminId,
+        bool consequencesAcknowledged,
+        string reason,
+        CancellationToken cancellationToken = default)
+    {
+        if (!ConfigurationValidation.IsValidName(reason))
+        {
+            return ConfigurationResult<ServiceDefinition>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.InvalidValue,
+                    "Reason is required for soft delete."));
+        }
+
+        var entity = await _db.ServiceDefinitions
+            .FirstOrDefaultAsync(s => s.ServiceDefId == serviceDefId, cancellationToken);
+        if (entity is null)
+        {
+            throw new EntityNotFoundException(nameof(ServiceDefinition), serviceDefId);
+        }
+
+        if (entity.IsDeleted)
+        {
+            return ConfigurationResult<ServiceDefinition>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.AlreadyInactive,
+                    "Service definition is already soft-deleted."));
+        }
+
+        if (!consequencesAcknowledged)
+        {
+            return ConfigurationResult<ServiceDefinition>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.ValidationFailed,
+                    "The consequences of this soft delete must be acknowledged."));
+        }
+
+        var cascade = await _cascade.ApplyAsync(
+            nameof(ServiceDefinition), serviceDefId, cancellationToken);
+        if (!cascade.IsSuccess)
+        {
+            return ConfigurationResult<ServiceDefinition>.Failure(cascade.Error!);
+        }
+
+        if (cascade.Value!.IsBlocked)
+        {
+            return ConfigurationResult<ServiceDefinition>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.LifecycleViolation,
+                    cascade.Value.BlockedReason ?? "Soft delete is blocked."));
+        }
+
+        entity.IsDeleted = true;
+        entity.IsActive = false;
+
+        var audit = await _lifecycle.RecordAsync(new ConfigurationLifecycleEvent
+        {
+            EntityType = nameof(ServiceDefinition),
+            EntityId = entity.ServiceDefId,
+            EntityName = entity.Name,
+            Action = ConfigurationLifecycleActions.SoftDelete,
+            Reason = reason,
+            ConsequencesText = cascade.Value.ConsequencesText,
             InitiatedByAdminId = actingAdminId,
             ApprovedByAdminId = approvedByAdminId,
         }, cancellationToken);

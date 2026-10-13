@@ -105,6 +105,9 @@ public sealed class ConfigurationCascadeService : IConfigurationCascadeService
             case nameof(BranchTimeSlot):
                 return await ApplyBranchTimeSlotCascadeAsync(entityId, cancellationToken);
 
+            case nameof(ServiceDefinition):
+                return await ApplyServiceDefinitionCascadeAsync(entityId, cancellationToken);
+
             default:
                 return ConfigurationResult<CascadeOutcome>.Success(
                     CascadeOutcome.Applied("No dependent changes apply."));
@@ -388,5 +391,53 @@ public sealed class ConfigurationCascadeService : IConfigurationCascadeService
         var text = $"{inactiveSchedules.Count} inactive Service Schedule row(s) removed.";
         return ConfigurationResult<CascadeOutcome>.Success(
             CascadeOutcome.Applied(text));
+    }
+
+    // -----------------------------------------------------------------
+    // ServiceDefinition cascade (§9.7 row)
+    //
+    // Blocked if any ServiceSchedule, ProgramItem, EventDuty or
+    // DutyRule row references the definition. No otherwise clause:
+    // the cascade is the block check alone, and no dependent rows
+    // are touched on success.
+    // -----------------------------------------------------------------
+
+    private async Task<ConfigurationResult<CascadeOutcome>> ApplyServiceDefinitionCascadeAsync(
+        int serviceDefId,
+        CancellationToken cancellationToken)
+    {
+        var definition = await _db.ServiceDefinitions
+            .FirstOrDefaultAsync(s => s.ServiceDefId == serviceDefId, cancellationToken);
+        if (definition is null)
+        {
+            return ConfigurationResult<CascadeOutcome>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.NotFound,
+                    $"ServiceDefinition {serviceDefId} does not exist."));
+        }
+
+        var scheduleCount = await _db.ServiceSchedules
+            .CountAsync(s => s.ServiceDefId == serviceDefId, cancellationToken);
+        var programItemCount = await _db.ProgramItems
+            .CountAsync(p => p.ServiceDefId == serviceDefId, cancellationToken);
+        var eventDutyCount = await _db.EventDuties
+            .CountAsync(e => e.ServiceDefId == serviceDefId, cancellationToken);
+        var ruleCount = await _db.DutyRules
+            .CountAsync(r => r.ServiceDefId == serviceDefId, cancellationToken);
+
+        if (scheduleCount > 0 || programItemCount > 0
+            || eventDutyCount > 0 || ruleCount > 0)
+        {
+            return ConfigurationResult<CascadeOutcome>.Success(
+                CascadeOutcome.Blocked(
+                    $"ServiceDefinition {serviceDefId} is referenced by "
+                    + $"{scheduleCount} Service Schedule(s), "
+                    + $"{programItemCount} Program Item(s), "
+                    + $"{eventDutyCount} Event Duty row(s) and "
+                    + $"{ruleCount} Duty Rule(s)."));
+        }
+
+        return ConfigurationResult<CascadeOutcome>.Success(
+            CascadeOutcome.Applied("No dependent changes apply."));
     }
 }
