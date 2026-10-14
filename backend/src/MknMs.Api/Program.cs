@@ -94,6 +94,7 @@ builder.Services.AddScoped<IManageConfirmationService, ManageConfirmationService
 
 // 9.0 Dispatch Notification.
 builder.Services.AddScoped<IDispatchNotificationService, DispatchNotificationService>();
+builder.Services.AddScoped<IAuthorityNotificationSweepService, AuthorityNotificationSweepService>();
 
 // 10.0 Evaluate Fill Status.
 builder.Services.AddScoped<IEvaluateFillStatusService, EvaluateFillStatusService>();
