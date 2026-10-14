@@ -69,7 +69,8 @@ public class EvaluateFillStatusTests : IAsyncLifetime
 
     private async Task<Fixture> SeedFixtureAsync(
         bool includeRequiredSettings = true,
-        bool includeCancelledSetting = false)
+        bool includeCancelledSetting = false,
+        bool includeRequiredDuty = true)
     {
         var unfilled = new OutcomeState { Name = "Unfilled" };
         var partially = new OutcomeState { Name = "Partially Filled" };
@@ -177,13 +178,17 @@ public class EvaluateFillStatusTests : IAsyncLifetime
 
         // One duty, two required slots. This lets us exercise Unfilled
         // (0 active), Partially Filled (1 active), Filled (2 active).
-        _db.ServiceDefinitionDuties.Add(new ServiceDefinitionDuty
+        // The zero-duty case skips the row.
+        if (includeRequiredDuty)
         {
-            ServiceDefId = definition.ServiceDefId,
-            DutyId = duty.DutyId,
-            RequiredSlotCount = 2,
-        });
-        await _db.SaveChangesAsync();
+            _db.ServiceDefinitionDuties.Add(new ServiceDefinitionDuty
+            {
+                ServiceDefId = definition.ServiceDefId,
+                DutyId = duty.DutyId,
+                RequiredSlotCount = 2,
+            });
+            await _db.SaveChangesAsync();
+        }
 
         var schedule = new ServiceSchedule
         {
@@ -326,6 +331,27 @@ public class EvaluateFillStatusTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Evaluate_WithZeroRequiredDuties_ClassifiesAsFilled()
+    {
+        // Zero required duties. The effective required count is zero.
+        // The zero-duty rule (§10.1.2, §12.1.2) classifies the
+        // occurrence as Filled, because active (0) meets required (0).
+        var f = await SeedFixtureAsync(includeRequiredDuty: false);
+        var service = new EvaluateFillStatusService(_db);
+
+        var result = await service.RunAsync(new EvaluateFillStatusCommand
+        {
+            OccurrenceId = f.OccurrenceId,
+        });
+
+        result.Status.Should().Be("Success");
+        result.FilledCount.Should().Be(1);
+
+        var occ = await _db.ServiceOccurrences.FirstAsync(o => o.OccurrenceId == f.OccurrenceId);
+        occ.FillStatusId.Should().Be(f.FilledStateId);
+    }
+
+    [Fact]
     public async Task Evaluate_WithCancelledCurrentStatus_Skips()
     {
         var f = await SeedFixtureAsync(includeCancelledSetting: true);
@@ -350,6 +376,34 @@ public class EvaluateFillStatusTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Evaluate_WithCancelledSettingAbsent_NoExclusion()
+    {
+        // No OutcomeStateCancelledID setting. The cancelled state is
+        // not excluded; the occurrence is evaluated and the mechanical
+        // classification overwrites its current FillStatusId.
+        var f = await SeedFixtureAsync(includeCancelledSetting: false);
+
+        var occ = await _db.ServiceOccurrences.FirstAsync(o => o.OccurrenceId == f.OccurrenceId);
+        occ.FillStatusId = f.CancelledStateId;
+        await _db.SaveChangesAsync();
+
+        var service = new EvaluateFillStatusService(_db);
+
+        var result = await service.RunAsync(new EvaluateFillStatusCommand
+        {
+            OccurrenceId = f.OccurrenceId,
+        });
+
+        result.Status.Should().Be("Success");
+        result.OccurrencesEvaluated.Should().Be(1);
+        result.SkippedCancelledCount.Should().Be(0);
+        result.UnfilledCount.Should().Be(1);
+
+        var after = await _db.ServiceOccurrences.FirstAsync(o => o.OccurrenceId == f.OccurrenceId);
+        after.FillStatusId.Should().Be(f.UnfilledStateId);
+    }
+
+    [Fact]
     public async Task Evaluate_WithoutRequiredSetting_Fails()
     {
         var f = await SeedFixtureAsync(includeRequiredSettings: false);
@@ -363,6 +417,83 @@ public class EvaluateFillStatusTests : IAsyncLifetime
         result.Status.Should().Be("Failure");
         result.OccurrencesEvaluated.Should().Be(0);
         result.ErrorDetail.Should().Contain("OutcomeState");
+
+        var occ = await _db.ServiceOccurrences.FirstAsync(o => o.OccurrenceId == f.OccurrenceId);
+        occ.FillStatusId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Evaluate_WithoutUnfilledSetting_Fails()
+    {
+        // Only OutcomeStateUnfilledID removed; the other two remain.
+        // The whole run is refused, not just the affected occurrences.
+        var f = await SeedFixtureAsync();
+
+        var setting = await _db.SystemSettings
+            .FirstAsync(s => s.Key == "OutcomeStateUnfilledID");
+        _db.SystemSettings.Remove(setting);
+        await _db.SaveChangesAsync();
+
+        var service = new EvaluateFillStatusService(_db);
+
+        var result = await service.RunAsync(new EvaluateFillStatusCommand
+        {
+            OccurrenceId = f.OccurrenceId,
+        });
+
+        result.Status.Should().Be("Failure");
+        result.OccurrencesEvaluated.Should().Be(0);
+        result.ErrorDetail.Should().Contain("OutcomeStateUnfilledID");
+
+        var occ = await _db.ServiceOccurrences.FirstAsync(o => o.OccurrenceId == f.OccurrenceId);
+        occ.FillStatusId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Evaluate_WithoutPartiallyFilledSetting_Fails()
+    {
+        var f = await SeedFixtureAsync();
+
+        var setting = await _db.SystemSettings
+            .FirstAsync(s => s.Key == "OutcomeStatePartiallyFilledID");
+        _db.SystemSettings.Remove(setting);
+        await _db.SaveChangesAsync();
+
+        var service = new EvaluateFillStatusService(_db);
+
+        var result = await service.RunAsync(new EvaluateFillStatusCommand
+        {
+            OccurrenceId = f.OccurrenceId,
+        });
+
+        result.Status.Should().Be("Failure");
+        result.OccurrencesEvaluated.Should().Be(0);
+        result.ErrorDetail.Should().Contain("OutcomeStatePartiallyFilledID");
+
+        var occ = await _db.ServiceOccurrences.FirstAsync(o => o.OccurrenceId == f.OccurrenceId);
+        occ.FillStatusId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Evaluate_WithoutFilledSetting_Fails()
+    {
+        var f = await SeedFixtureAsync();
+
+        var setting = await _db.SystemSettings
+            .FirstAsync(s => s.Key == "OutcomeStateFilledID");
+        _db.SystemSettings.Remove(setting);
+        await _db.SaveChangesAsync();
+
+        var service = new EvaluateFillStatusService(_db);
+
+        var result = await service.RunAsync(new EvaluateFillStatusCommand
+        {
+            OccurrenceId = f.OccurrenceId,
+        });
+
+        result.Status.Should().Be("Failure");
+        result.OccurrencesEvaluated.Should().Be(0);
+        result.ErrorDetail.Should().Contain("OutcomeStateFilledID");
 
         var occ = await _db.ServiceOccurrences.FirstAsync(o => o.OccurrenceId == f.OccurrenceId);
         occ.FillStatusId.Should().BeNull();
@@ -386,12 +517,71 @@ public class EvaluateFillStatusTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Evaluate_SingleOccurrence_DoesNotTouchOtherOccurrences()
+    {
+        // A single-occurrence invocation must evaluate only that
+        // occurrence. A second occurrence with the same required duty
+        // is left untouched.
+        var f = await SeedFixtureAsync();
+
+        var scheduleId = await _db.ServiceOccurrences
+            .Where(o => o.OccurrenceId == f.OccurrenceId)
+            .Select(o => o.ScheduleId!.Value)
+            .FirstAsync();
+
+        var otherOccurrence = new ServiceOccurrence
+        {
+            ScheduleId = scheduleId,
+            EventId = null,
+            Date = new DateOnly(2026, 10, 18),
+            ServiceTypeId = null,
+            StartTime = null,
+            FillStatusId = null,
+            GeneratedBy = "System",
+            CreatedBy = null,
+            ChangedBy = null,
+        };
+        _db.ServiceOccurrences.Add(otherOccurrence);
+        await _db.SaveChangesAsync();
+
+        var service = new EvaluateFillStatusService(_db);
+        var result = await service.RunAsync(new EvaluateFillStatusCommand
+        {
+            OccurrenceId = f.OccurrenceId,
+        });
+
+        result.Status.Should().Be("Success");
+        result.OccurrencesEvaluated.Should().Be(1);
+
+        var untouched = await _db.ServiceOccurrences
+            .FirstAsync(o => o.OccurrenceId == otherOccurrence.OccurrenceId);
+        untouched.FillStatusId.Should().BeNull();
+    }
+
+    [Fact]
     public async Task Run_WithInvalidCommand_Fails()
     {
         await SeedFixtureAsync();
         var service = new EvaluateFillStatusService(_db);
 
         var result = await service.RunAsync(new EvaluateFillStatusCommand());
+
+        result.Status.Should().Be("Failure");
+        result.ErrorDetail.Should().Contain("Exactly one");
+    }
+
+    [Fact]
+    public async Task Run_WithBothOccurrenceAndRange_Fails()
+    {
+        var f = await SeedFixtureAsync();
+        var service = new EvaluateFillStatusService(_db);
+
+        var result = await service.RunAsync(new EvaluateFillStatusCommand
+        {
+            OccurrenceId = f.OccurrenceId,
+            FromDate = new DateOnly(2026, 10, 1),
+            ToDate = new DateOnly(2026, 10, 31),
+        });
 
         result.Status.Should().Be("Failure");
         result.ErrorDetail.Should().Contain("Exactly one");
