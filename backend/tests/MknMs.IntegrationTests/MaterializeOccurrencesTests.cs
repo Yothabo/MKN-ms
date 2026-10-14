@@ -49,7 +49,8 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
         await _db.Database.ExecuteSqlRawAsync(
             "TRUNCATE TABLE materializer_run, service_occurrence, service_occurrence_duty, " +
             "service_schedule, branch_time_slot, service_definition, service_type, " +
-            "time_of_day, branch, system_setting RESTART IDENTITY CASCADE;");
+            "time_of_day, branch, system_setting, member, admin, role, " +
+            "permission_tier, member_status RESTART IDENTITY CASCADE;");
 
         await TestSeed.EnsureRequiredSettingsAsync(_db);
     }
@@ -176,7 +177,8 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
         bool includeHorizonSetting = true,
         int horizonDays = 30,
         bool definitionActive = true,
-        bool slotActive = true)
+        bool slotActive = true,
+        string dayOfWeek = "Sunday")
     {
         if (includeHorizonSetting)
         {
@@ -200,7 +202,7 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
         var slot = new BranchTimeSlot
         {
             BranchId = branch.BranchId,
-            DayOfWeek = "Sunday",
+            DayOfWeek = dayOfWeek,
             TimeOfDayId = timeOfDay.TimeOfDayId,
             IsActive = slotActive,
         };
@@ -516,6 +518,7 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
         // Seed one candidate occurrence directly, with non-default
         // values that 11.0 would never write. If 11.0 touches the row,
         // these values change.
+        var adminId = await SeedAdminAsync();
         var seeded = new ServiceOccurrence
         {
             ScheduleId = scheduleId,
@@ -525,7 +528,7 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
             StartTime = new TimeOnly(9, 0),
             FillStatusId = null,
             GeneratedBy = "Administrator",
-            CreatedBy = await SeedAdminAsync(),
+            CreatedBy = adminId,
             ChangedBy = null,
         };
         _db.ServiceOccurrences.Add(seeded);
@@ -548,7 +551,7 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
             .FirstAsync(o => o.OccurrenceId == seeded.OccurrenceId);
 
         after.GeneratedBy.Should().Be("Administrator");
-        after.CreatedBy.Should().Be(seeded.CreatedBy);
+        after.CreatedBy.Should().Be(adminId);
         after.ChangedBy.Should().BeNull();
         after.Date.Should().Be(new DateOnly(2026, 10, 11));
     }
@@ -742,6 +745,102 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
 
         var run = await _db.MaterializerRuns.SingleAsync();
         run.Status.Should().Be("Success");
+    }
+
+    // -----------------------------------------------------------------
+    // Timezone behaviour
+    // -----------------------------------------------------------------
+
+    [Fact]
+    public async Task Run_WithNonUtcTimeZone_ResolvesTodayInConfiguredZone()
+    {
+        // 2026-10-11T22:30:00Z is Sunday in UTC, but 2026-10-12 (Monday)
+        // in Africa/Johannesburg (UTC+2). Seed a Monday slot. If 11.0
+        // resolved today in UTC, the zero-day horizon window would be
+        // [2026-10-11, 2026-10-11], no Monday, and zero occurrences
+        // would be created. Resolving today in Johannesburg yields a
+        // single occurrence on 2026-10-12. The result therefore
+        // demonstrates that materialization used the configured zone.
+        await SeedMinimalConfigurationAsync(horizonDays: 0, dayOfWeek: "Monday");
+
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 11, 22, 30, 0, TimeSpan.Zero));
+        var service = new MaterializeOccurrencesService(_db, clock);
+
+        var result = await service.RunAsync(new MaterializeOccurrencesCommand
+        {
+            TriggerType = "Scheduled",
+        });
+
+        result.Status.Should().Be("Success");
+        result.OccurrencesCreated.Should().Be(1);
+
+        var occurrences = await _db.ServiceOccurrences.ToListAsync();
+        occurrences.Should().HaveCount(1);
+        occurrences.Single().Date.Should().Be(new DateOnly(2026, 10, 12));
+
+        var run = await _db.MaterializerRuns.SingleAsync();
+        run.Status.Should().Be("Success");
+        run.OccurrencesCreated.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Run_WithUnrecognisedTimeZone_RecordsFailure()
+    {
+        await SeedMinimalConfigurationAsync();
+
+        var setting = await _db.SystemSettings
+            .FirstAsync(s => s.Key == "ApplicationTimeZone");
+        setting.Value = "Not/ARealTimeZone";
+        await _db.SaveChangesAsync();
+
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero));
+        var service = new MaterializeOccurrencesService(_db, clock);
+
+        var result = await service.RunAsync(new MaterializeOccurrencesCommand
+        {
+            TriggerType = "Scheduled",
+        });
+
+        result.Status.Should().Be("Failure");
+        result.OccurrencesCreated.Should().Be(0);
+        result.ErrorDetail.Should().NotBeNull();
+
+        var occurrences = await _db.ServiceOccurrences.CountAsync();
+        occurrences.Should().Be(0);
+
+        var run = await _db.MaterializerRuns.SingleAsync();
+        run.Status.Should().Be("Failure");
+        run.ErrorDetail.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task Run_WithTimeZoneSettingAbsent_RecordsFailure()
+    {
+        await SeedMinimalConfigurationAsync();
+
+        var setting = await _db.SystemSettings
+            .FirstAsync(s => s.Key == "ApplicationTimeZone");
+        _db.SystemSettings.Remove(setting);
+        await _db.SaveChangesAsync();
+
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero));
+        var service = new MaterializeOccurrencesService(_db, clock);
+
+        var result = await service.RunAsync(new MaterializeOccurrencesCommand
+        {
+            TriggerType = "Scheduled",
+        });
+
+        result.Status.Should().Be("Failure");
+        result.OccurrencesCreated.Should().Be(0);
+        result.ErrorDetail.Should().NotBeNull();
+
+        var occurrences = await _db.ServiceOccurrences.CountAsync();
+        occurrences.Should().Be(0);
+
+        var run = await _db.MaterializerRuns.SingleAsync();
+        run.Status.Should().Be("Failure");
+        run.ErrorDetail.Should().NotBeNull();
     }
 }
 
