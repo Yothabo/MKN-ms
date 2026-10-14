@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using MknMs.Application.Common;
 using MknMs.Application.Processes.Operations.CreateManualAssignment;
 using MknMs.Application.Processes.Operations.DispatchNotification;
 using MknMs.Domain.D10_ConfigLookups;
@@ -11,7 +12,6 @@ using MknMs.Domain.D4_Member;
 using MknMs.Domain.D6_Eligibility;
 using MknMs.Domain.D7_RosterAssignment;
 using MknMs.Persistence;
-using MknMs.Application.Common;
 using Xunit;
 
 namespace MknMs.IntegrationTests;
@@ -389,6 +389,98 @@ public class CreateManualAssignmentTests : IAsyncLifetime
         });
         missingAdmin.Status.Should().Be("Failure");
         missingAdmin.ErrorDetail.Should().Contain("Admin 9999");
+    }
+
+    [Fact]
+    public async Task Create_WithMissingDutyOccurrenceAndTargetStatus_Fails()
+    {
+        var f = await SeedFixtureAsync();
+        var service = new CreateManualAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
+
+        // Missing duty; all other referents valid.
+        var missingDuty = await service.RunAsync(new CreateManualAssignmentCommand
+        {
+            MemberId = f.EligibleMemberId,
+            DutyId = 9999,
+            OccurrenceId = f.OccurrenceId,
+            TargetStatusId = null,
+            ActingAdminId = f.AdminId,
+        });
+        missingDuty.Status.Should().Be("Failure");
+        missingDuty.ErrorDetail.Should().Contain("Duty 9999");
+
+        // Missing occurrence; all other referents valid.
+        var missingOccurrence = await service.RunAsync(new CreateManualAssignmentCommand
+        {
+            MemberId = f.EligibleMemberId,
+            DutyId = f.DutyId,
+            OccurrenceId = 9999,
+            TargetStatusId = null,
+            ActingAdminId = f.AdminId,
+        });
+        missingOccurrence.Status.Should().Be("Failure");
+        missingOccurrence.ErrorDetail.Should().Contain("ServiceOccurrence 9999");
+
+        // Missing target status; all other referents valid.
+        var missingStatus = await service.RunAsync(new CreateManualAssignmentCommand
+        {
+            MemberId = f.EligibleMemberId,
+            DutyId = f.DutyId,
+            OccurrenceId = f.OccurrenceId,
+            TargetStatusId = 9999,
+            ActingAdminId = f.AdminId,
+        });
+        missingStatus.Status.Should().Be("Failure");
+        missingStatus.ErrorDetail.Should().Contain("AssignmentStatus 9999");
+    }
+
+    [Fact]
+    public async Task Create_WithNonTerminalAssignmentOnOccurrence_Succeeds()
+    {
+        // §17.1 B4: manual assignment does not enforce the
+        // one-member-per-occurrence availability rule. A member who
+        // already holds a non-terminal assignment on the occurrence
+        // may be assigned to a second duty.
+        var f = await SeedFixtureAsync();
+
+        var secondDuty = new Duty { Name = "Welcome duty", IsActive = true };
+        _db.Duties.Add(secondDuty);
+        await _db.SaveChangesAsync();
+
+        var proposal = new AssignmentStatus { Name = "Proposed", IsTerminal = false };
+        _db.AssignmentStatuses.Add(proposal);
+        await _db.SaveChangesAsync();
+
+        // Seed a non-terminal assignment for the eligible member on
+        // the same occurrence, on a different duty.
+        _db.RosterAssignments.Add(new RosterAssignment
+        {
+            MemberId = f.EligibleMemberId,
+            DutyId = secondDuty.DutyId,
+            OccurrenceId = f.OccurrenceId,
+            AssignmentStatusId = proposal.AssignmentStatusId,
+            ApprovedBy = null,
+            AssignmentSource = "Automatic",
+            AssignedBy = null,
+            CreatedAt = _clock.GetUtcNow(),
+        });
+        await _db.SaveChangesAsync();
+
+        var service = new CreateManualAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
+
+        var result = await service.RunAsync(new CreateManualAssignmentCommand
+        {
+            MemberId = f.EligibleMemberId,
+            DutyId = f.DutyId,
+            OccurrenceId = f.OccurrenceId,
+            TargetStatusId = f.NonTerminalStatusId,
+            ActingAdminId = f.AdminId,
+        });
+
+        result.Status.Should().Be("Success");
+
+        var total = await _db.RosterAssignments.CountAsync();
+        total.Should().Be(2);
     }
 
     [Fact]
