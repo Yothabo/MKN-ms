@@ -13,6 +13,7 @@ using MknMs.Domain.D7_RosterAssignment;
 using MknMs.Persistence;
 using MknMs.Application.Common;
 using Xunit;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace MknMs.IntegrationTests;
 
@@ -251,7 +252,7 @@ public class FailingDefectTests : IAsyncLifetime
         declined.AssignmentStatusId = f.DeclinedStatusId;
         await _db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
+        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<GenerateAssignmentService>.Instance);
         var result = await service.RunAsync(new GenerateAssignmentCommand { OccurrenceId = f.OccurrenceId });
 
         result.Status.Should().Be("Success", result.ErrorDetail ?? "");
@@ -272,7 +273,7 @@ public class FailingDefectTests : IAsyncLifetime
     {
         var f = await SeedAsync(new DateOnly(2026, 10, 11), danaEligible: true);
 
-        var confirmation = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db));
+        var confirmation = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<ManageConfirmationService>.Instance);
 
         // Beatrice declines; the service replaces her with Dana.
         var declineResult = await confirmation.RunAsync(new ManageConfirmationCommand
@@ -318,7 +319,7 @@ public class FailingDefectTests : IAsyncLifetime
             danaEligible: true,
             assignmentAge: TimeSpan.FromHours(72));
 
-        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db));
+        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<ManageConfirmationService>.Instance);
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {

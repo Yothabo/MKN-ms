@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using MknMs.Application.Common;
 using MknMs.Application.Processes.Operations.DispatchNotification;
 using MknMs.Application.Processes.Operations.ManageConfirmation;
 using MknMs.Domain.D10_ConfigLookups;
@@ -11,8 +12,8 @@ using MknMs.Domain.D4_Member;
 using MknMs.Domain.D6_Eligibility;
 using MknMs.Domain.D7_RosterAssignment;
 using MknMs.Persistence;
-using MknMs.Application.Common;
 using Xunit;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace MknMs.IntegrationTests;
 
@@ -318,7 +319,7 @@ public class ManageConfirmationTests : IAsyncLifetime
     public async Task Confirm_TransitionsToInitialStatusWithoutReplacement()
     {
         var fixture = await SeedFixtureAsync();
-        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db));
+        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<ManageConfirmationService>.Instance);
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
@@ -343,7 +344,7 @@ public class ManageConfirmationTests : IAsyncLifetime
     public async Task Decline_WithTerminalStatus_AndCandidateAvailable_CreatesReplacement()
     {
         var fixture = await SeedFixtureAsync();
-        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db));
+        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<ManageConfirmationService>.Instance);
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
@@ -387,7 +388,7 @@ public class ManageConfirmationTests : IAsyncLifetime
         _db.Eligibilities.RemoveRange(danaEligibility);
         await _db.SaveChangesAsync();
 
-        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db));
+        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<ManageConfirmationService>.Instance);
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
@@ -422,7 +423,7 @@ public class ManageConfirmationTests : IAsyncLifetime
         });
         await _db.SaveChangesAsync();
 
-        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db));
+        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<ManageConfirmationService>.Instance);
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
@@ -448,7 +449,7 @@ public class ManageConfirmationTests : IAsyncLifetime
         assignment.CreatedAt = _clock.GetUtcNow().AddHours(-72);
         await _db.SaveChangesAsync();
 
-        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db));
+        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<ManageConfirmationService>.Instance);
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
@@ -468,7 +469,7 @@ public class ManageConfirmationTests : IAsyncLifetime
     public async Task Sweep_WithAssignmentInsideWindow_DoesNotTransition()
     {
         var fixture = await SeedFixtureAsync();
-        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db));
+        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<ManageConfirmationService>.Instance);
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
@@ -488,7 +489,7 @@ public class ManageConfirmationTests : IAsyncLifetime
     public async Task Confirm_WithoutInitialStatusSetting_Fails()
     {
         var fixture = await SeedFixtureAsync(includeInitialStatusSetting: false);
-        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db));
+        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<ManageConfirmationService>.Instance);
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
@@ -510,7 +511,7 @@ public class ManageConfirmationTests : IAsyncLifetime
         _db.SystemSettings.Remove(setting);
         await _db.SaveChangesAsync();
 
-        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db));
+        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<ManageConfirmationService>.Instance);
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
@@ -526,9 +527,8 @@ public class ManageConfirmationTests : IAsyncLifetime
     public async Task Run_WithInvalidCommand_Fails()
     {
         await SeedFixtureAsync();
-        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db));
+        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<ManageConfirmationService>.Instance);
 
-        // Confirm without an AssignmentId is invalid.
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
             Operation = ManageConfirmationOperation.Confirm,
@@ -543,15 +543,12 @@ public class ManageConfirmationTests : IAsyncLifetime
     {
         var fixture = await SeedFixtureAsync();
 
-        // Change InitialAssignmentStatusID to point at the Proposed
-        // status. A Confirm should now transition to Proposed, not
-        // Confirmed. This proves the service reads the setting.
         var setting = await _db.SystemSettings
             .FirstAsync(s => s.Key == "InitialAssignmentStatusID");
         setting.Value = fixture.ProposedStatusId.ToString();
         await _db.SaveChangesAsync();
 
-        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db));
+        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<ManageConfirmationService>.Instance);
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
@@ -564,5 +561,187 @@ public class ManageConfirmationTests : IAsyncLifetime
         var assignment = await _db.RosterAssignments
             .FirstAsync(a => a.AssignmentId == fixture.AssignmentId);
         assignment.AssignmentStatusId.Should().Be(fixture.ProposedStatusId);
+    }
+
+    [Fact]
+    public async Task Confirm_TerminalToNonTerminalWithRoom_Succeeds()
+    {
+        var fixture = await SeedFixtureAsync();
+
+        var assignment = await _db.RosterAssignments
+            .FirstAsync(a => a.AssignmentId == fixture.AssignmentId);
+        assignment.AssignmentStatusId = fixture.DeclinedStatusId;
+        await _db.SaveChangesAsync();
+
+        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<ManageConfirmationService>.Instance);
+
+        var result = await service.RunAsync(new ManageConfirmationCommand
+        {
+            Operation = ManageConfirmationOperation.Confirm,
+            AssignmentId = fixture.AssignmentId,
+        });
+
+        result.Status.Should().Be("Success");
+        result.AssignmentsTransitioned.Should().Be(1);
+
+        var after = await _db.RosterAssignments
+            .FirstAsync(a => a.AssignmentId == fixture.AssignmentId);
+        after.AssignmentStatusId.Should().Be(fixture.ConfirmedStatusId);
+
+        var liveCount = await _db.RosterAssignments
+            .Where(a => a.OccurrenceId == fixture.OccurrenceId
+                && a.DutyId == fixture.ReadingDutyId
+                && (a.AssignmentStatusId == null
+                    || !_db.AssignmentStatuses
+                        .Where(s => s.AssignmentStatusId == a.AssignmentStatusId)
+                        .Select(s => s.IsTerminal)
+                        .First()))
+            .CountAsync();
+
+        liveCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Confirm_TerminalToTerminal_NoCapacityCheck()
+    {
+        var fixture = await SeedFixtureAsync();
+
+        var assignment = await _db.RosterAssignments
+            .FirstAsync(a => a.AssignmentId == fixture.AssignmentId);
+        assignment.AssignmentStatusId = fixture.TimedOutStatusId;
+        await _db.SaveChangesAsync();
+
+        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<ManageConfirmationService>.Instance);
+
+        var result = await service.RunAsync(new ManageConfirmationCommand
+        {
+            Operation = ManageConfirmationOperation.Decline,
+            AssignmentId = fixture.AssignmentId,
+        });
+
+        result.Status.Should().Be("Success");
+        result.AssignmentsTransitioned.Should().Be(1);
+
+        var after = await _db.RosterAssignments
+            .FirstAsync(a => a.AssignmentId == fixture.AssignmentId);
+        after.AssignmentStatusId.Should().Be(fixture.DeclinedStatusId);
+    }
+
+    [Fact]
+    public async Task Decline_ExcludesMemberWhoPreviouslyTimedOutOnThisSlot()
+    {
+        var fixture = await SeedFixtureAsync();
+
+        _db.RosterAssignments.Add(new RosterAssignment
+        {
+            MemberId = fixture.DanaMemberId,
+            DutyId = fixture.ReadingDutyId,
+            OccurrenceId = fixture.OccurrenceId,
+            AssignmentStatusId = fixture.TimedOutStatusId,
+            ApprovedBy = null,
+            AssignmentSource = "Automatic",
+            AssignedBy = null,
+            CreatedAt = _clock.GetUtcNow(),
+        });
+        await _db.SaveChangesAsync();
+
+        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<ManageConfirmationService>.Instance);
+
+        var result = await service.RunAsync(new ManageConfirmationCommand
+        {
+            Operation = ManageConfirmationOperation.Decline,
+            AssignmentId = fixture.AssignmentId,
+        });
+
+        result.Status.Should().Be("Success");
+        result.ReplacementsCreated.Should().Be(0);
+        result.SlotsLeftVacant.Should().Be(1);
+
+        var danaTerminal = await _db.RosterAssignments
+            .CountAsync(a => a.MemberId == fixture.DanaMemberId
+                && a.DutyId == fixture.ReadingDutyId
+                && a.OccurrenceId == fixture.OccurrenceId);
+        danaTerminal.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Sweep_WithoutTimedOutStatusSetting_Fails()
+    {
+        var fixture = await SeedFixtureAsync();
+
+        var assignment = await _db.RosterAssignments
+            .FirstAsync(a => a.AssignmentId == fixture.AssignmentId);
+        assignment.CreatedAt = _clock.GetUtcNow().AddHours(-72);
+        await _db.SaveChangesAsync();
+
+        var setting = await _db.SystemSettings
+            .FirstAsync(s => s.Key == "TimedOutStatusID");
+        _db.SystemSettings.Remove(setting);
+        await _db.SaveChangesAsync();
+
+        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<ManageConfirmationService>.Instance);
+
+        var result = await service.RunAsync(new ManageConfirmationCommand
+        {
+            Operation = ManageConfirmationOperation.Sweep,
+        });
+
+        result.Status.Should().Be("Failure");
+        result.ErrorDetail.Should().Contain("TimedOutStatusID");
+
+        var after = await _db.RosterAssignments
+            .FirstAsync(a => a.AssignmentId == fixture.AssignmentId);
+        after.AssignmentStatusId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Decline_WithNonTerminalTargetStatus_DoesNotReResolve()
+    {
+        var fixture = await SeedFixtureAsync();
+
+        var setting = await _db.SystemSettings
+            .FirstAsync(s => s.Key == "DeclinedStatusID");
+        setting.Value = fixture.ProposedStatusId.ToString();
+        await _db.SaveChangesAsync();
+
+        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<ManageConfirmationService>.Instance);
+
+        var result = await service.RunAsync(new ManageConfirmationCommand
+        {
+            Operation = ManageConfirmationOperation.Decline,
+            AssignmentId = fixture.AssignmentId,
+        });
+
+        result.Status.Should().Be("Success");
+        result.AssignmentsTransitioned.Should().Be(1);
+        result.ReplacementsCreated.Should().Be(0);
+        result.SlotsLeftVacant.Should().Be(0);
+
+        var assignments = await _db.RosterAssignments.CountAsync();
+        assignments.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Decline_ReplacementNotificationFails_ReplacementCommitted()
+    {
+        var fixture = await SeedFixtureAsync();
+
+        var throwing = new ThrowingDispatchNotificationService();
+        var service = new ManageConfirmationService(_db, throwing, _clock, new OccurrenceLockService(_db), NullLogger<ManageConfirmationService>.Instance);
+
+        var result = await service.RunAsync(new ManageConfirmationCommand
+        {
+            Operation = ManageConfirmationOperation.Decline,
+            AssignmentId = fixture.AssignmentId,
+        });
+
+        result.Status.Should().Be("Success");
+        result.ReplacementsCreated.Should().Be(1);
+
+        var replacement = await _db.RosterAssignments
+            .Where(a => a.AssignmentId != fixture.AssignmentId)
+            .FirstAsync();
+        replacement.MemberId.Should().Be(fixture.DanaMemberId);
+        replacement.AssignmentStatusId.Should().BeNull();
     }
 }

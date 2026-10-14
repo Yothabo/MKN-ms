@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using MknMs.Application.Processes.Operations.DispatchNotification;
 using MknMs.Domain.D11_SystemSetting;
 
@@ -55,17 +56,20 @@ public sealed class ManageConfirmationService : IManageConfirmationService
     private readonly IDispatchNotificationService _notification;
     private readonly TimeProvider _clock;
     private readonly IOccurrenceLockService _occurrenceLock;
+    private readonly ILogger<ManageConfirmationService> _logger;
 
     public ManageConfirmationService(
         MknDbContext db,
         IDispatchNotificationService notification,
         TimeProvider clock,
-        IOccurrenceLockService occurrenceLock)
+        IOccurrenceLockService occurrenceLock,
+        ILogger<ManageConfirmationService> logger)
     {
         _db = db;
         _notification = notification;
         _clock = clock;
         _occurrenceLock = occurrenceLock;
+        _logger = logger;
     }
 
     public async Task<ManageConfirmationResult> RunAsync(
@@ -542,8 +546,23 @@ public sealed class ManageConfirmationService : IManageConfirmationService
         _db.RosterAssignments.Add(replacement);
         await _db.SaveChangesAsync(cancellationToken);
 
-        // 9.0 invoked only on replacement creation. Fire-and-forget.
-        await _notification.DispatchAssignmentNoticeAsync(replacement, cancellationToken);
+        // 9.0 invoked only on replacement creation. §11.1.8: the
+        // invocation is fire-and-forget; a failure does not roll back
+        // the replacement assignment. 7.0 catches the failure and
+        // logs it.
+        try
+        {
+            await _notification.DispatchAssignmentNoticeAsync(
+                replacement, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Notification dispatch failed for replacement assignment {AssignmentId}. "
+                + "The replacement is committed.",
+                replacement.AssignmentId);
+        }
 
         return true;
     }
