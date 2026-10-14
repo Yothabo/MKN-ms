@@ -10,9 +10,9 @@ namespace MknMs.IntegrationTests;
 /// Tests for QuartzSchedulerRegistration.
 /// </summary>
 /// <remarks>
-/// These tests cover the boundary MKN's code owns: that the four cron
+/// These tests cover the boundary MKN's code owns: that the six cron
 /// expressions are the intended values, that the registration method
-/// accepts a TimeZoneInfo and wires the four jobs without error, and
+/// accepts a TimeZoneInfo and wires the six jobs without error, and
 /// that the scheduler factory ends up registered in the container.
 ///
 /// They deliberately do not spin up the Quartz scheduler. Quartz's
@@ -23,7 +23,7 @@ namespace MknMs.IntegrationTests;
 /// verifies the scheduler honours InTimeZone. What MKN must verify is
 /// that it passes the correct timezone, which is what these tests do.
 ///
-/// Reference: §7, §10, §11, §12, §16.
+/// Reference: §7, §10, §11, §12, §13.6, §14.1.3, §16.
 /// </remarks>
 public class QuartzSchedulerRegistrationTests
 {
@@ -34,6 +34,8 @@ public class QuartzSchedulerRegistrationTests
         QuartzSchedulerRegistration.GenerateCron.Should().Be("0 0 3 * * ?");
         QuartzSchedulerRegistration.ConfirmationTimeoutCron.Should().Be("0 0 * * * ?");
         QuartzSchedulerRegistration.FillStatusSweepCron.Should().Be("0 30 * * * ?");
+        QuartzSchedulerRegistration.AttendanceRuleCron.Should().Be("0 0 4 * * ?");
+        QuartzSchedulerRegistration.AuthorityNotificationCron.Should().Be("0 15 * * * ?");
     }
 
     [Fact]
