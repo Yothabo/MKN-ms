@@ -1,4 +1,3 @@
-
 using MknMs.Application.Processes.Operations.DispatchNotification;
 
 namespace MknMs.Application.Processes.Operations.AttendanceRuleEngine;
@@ -67,101 +66,127 @@ public sealed class AttendanceRuleEngineService : IAttendanceRuleEngineService
                 + "RuleId and a positive ActingAdminId.");
         }
 
-        // §15.3.12: AttendanceRegisterEnabled is required. If it
-        // is absent, the engine refuses to run entirely.
-            var globalSetting = await _db.SystemSettings
-                .FirstOrDefaultAsync(s => s.Key == AttendanceRegisterEnabledKey,
+        // §13.6: the manual invocation carries the ActingAdminID of
+        // the administrator performing it, which resolves to an Admin
+        // row whose IsActive = true. A positive ID alone does not
+        // satisfy the requirement; the id must name a real, active
+        // administrator.
+        if (command.IsManual)
+        {
+            var actingAdmin = await _db.Admins
+                .FirstOrDefaultAsync(a => a.AdminId == command.ActingAdminId!.Value,
                     cancellationToken);
 
-            if (globalSetting?.Value is null)
-            {
-                return Failure(
-                    ConfigurationErrorCodes.ConfigurationMissing,
-                    $"Required setting '{AttendanceRegisterEnabledKey}' is not configured.");
-            }
-
-            if (!bool.TryParse(globalSetting.Value, out var globalRegisterEnabled))
-            {
-                return Failure(
-                    ConfigurationErrorCodes.ConfigurationInvalid,
-                    $"Setting '{AttendanceRegisterEnabledKey}' must be 'true' or 'false'.");
-            }
-
-            // Timezone: required. Absent or unrecognised → refuse.
-            var tzResult = await TimeZoneResolver.ResolveAsync(_db, cancellationToken);
-            if (!tzResult.IsSuccess)
-            {
-                return Failure(tzResult.ErrorCode!, tzResult.ErrorDetail!);
-            }
-
-            var today = TimeZoneResolver.ToDateInTimeZone(_clock.GetUtcNow(), tzResult.Zone!);
-
-            // Load the rules to evaluate.
-            var rules = await ResolveRulesAsync(command, cancellationToken);
-            if (rules is null)
+            if (actingAdmin is null)
             {
                 return Failure(
                     ConfigurationErrorCodes.NotFound,
-                    $"Attendance Rule {command.RuleId} does not exist, "
-                    + "is not enabled, or is not a Manual rule.");
+                    $"Admin {command.ActingAdminId} does not exist.");
             }
 
-            var rulesEvaluated = 0;
-            var membersEvaluated = 0;
-            var statusChangesApplied = 0;
-            var notificationsDispatched = 0;
-
-            foreach (var rule in rules)
+            if (!actingAdmin.IsActive)
             {
-                var scopeRows = await _db.AttendanceRuleScopes
-                    .Where(s => s.AttendanceRuleId == rule.AttendanceRuleId)
-                    .ToListAsync(cancellationToken);
+                return Failure(
+                    ConfigurationErrorCodes.NotFound,
+                    $"Admin {command.ActingAdminId} is not active.");
+            }
+        }
 
-                var members = await ResolveScopedMembersAsync(scopeRows, cancellationToken);
+        // §15.3.12: AttendanceRegisterEnabled is required. If it
+        // is absent, the engine refuses to run entirely.
+        var globalSetting = await _db.SystemSettings
+            .FirstOrDefaultAsync(s => s.Key == AttendanceRegisterEnabledKey,
+                cancellationToken);
 
-                foreach (var member in members)
+        if (globalSetting?.Value is null)
+        {
+            return Failure(
+                ConfigurationErrorCodes.ConfigurationMissing,
+                $"Required setting '{AttendanceRegisterEnabledKey}' is not configured.");
+        }
+
+        if (!bool.TryParse(globalSetting.Value, out var globalRegisterEnabled))
+        {
+            return Failure(
+                ConfigurationErrorCodes.ConfigurationInvalid,
+                $"Setting '{AttendanceRegisterEnabledKey}' must be 'true' or 'false'.");
+        }
+
+        // Timezone: required. Absent or unrecognised → refuse.
+        var tzResult = await TimeZoneResolver.ResolveAsync(_db, cancellationToken);
+        if (!tzResult.IsSuccess)
+        {
+            return Failure(tzResult.ErrorCode!, tzResult.ErrorDetail!);
+        }
+
+        var today = TimeZoneResolver.ToDateInTimeZone(_clock.GetUtcNow(), tzResult.Zone!);
+
+        // Load the rules to evaluate.
+        var rules = await ResolveRulesAsync(command, cancellationToken);
+        if (rules is null)
+        {
+            return Failure(
+                ConfigurationErrorCodes.NotFound,
+                $"Attendance Rule {command.RuleId} does not exist, "
+                + "is not enabled, or is not a Manual rule.");
+        }
+
+        var rulesEvaluated = 0;
+        var membersEvaluated = 0;
+        var statusChangesApplied = 0;
+        var notificationsDispatched = 0;
+
+        foreach (var rule in rules)
+        {
+            var scopeRows = await _db.AttendanceRuleScopes
+                .Where(s => s.AttendanceRuleId == rule.AttendanceRuleId)
+                .ToListAsync(cancellationToken);
+
+            var members = await ResolveScopedMembersAsync(scopeRows, cancellationToken);
+
+            foreach (var member in members)
+            {
+                membersEvaluated++;
+
+                var effectiveScope = await ResolveEffectiveRegisterScopeAsync(
+                    member, globalRegisterEnabled, cancellationToken);
+
+                // AbsenceDays is skipped when the register is off
+                // at the member's effective scope. ReadmissionCount
+                // applies regardless.
+                var absenceExempt = !effectiveScope
+                    && rule.TriggerType == "AbsenceDays";
+
+                if (absenceExempt)
                 {
-                    membersEvaluated++;
-
-                    var effectiveScope = await ResolveEffectiveRegisterScopeAsync(
-                        member, globalRegisterEnabled, cancellationToken);
-
-                    // AbsenceDays is skipped when the register is off
-                    // at the member's effective scope. ReadmissionCount
-                    // applies regardless.
-                    var absenceExempt = !effectiveScope
-                        && rule.TriggerType == "AbsenceDays";
-
-                    if (absenceExempt)
-                    {
-                        continue;
-                    }
-
-                    var fires = await EvaluateTriggerAsync(
-                        rule, member, today, cancellationToken);
-
-                    if (!fires)
-                    {
-                        continue;
-                    }
-
-                    var applied = await ApplyOutcomeAsync(rule, member, cancellationToken);
-
-                    switch (applied)
-                    {
-                        case OutcomeApplied.StatusChange:
-                            statusChangesApplied++;
-                            break;
-                        case OutcomeApplied.Notification:
-                            notificationsDispatched++;
-                            break;
-                        case OutcomeApplied.NoOp:
-                            break;
-                    }
+                    continue;
                 }
 
-                rulesEvaluated++;
+                var fires = await EvaluateTriggerAsync(
+                    rule, member, today, cancellationToken);
+
+                if (!fires)
+                {
+                    continue;
+                }
+
+                var applied = await ApplyOutcomeAsync(rule, member, cancellationToken);
+
+                switch (applied)
+                {
+                    case OutcomeApplied.StatusChange:
+                        statusChangesApplied++;
+                        break;
+                    case OutcomeApplied.Notification:
+                        notificationsDispatched++;
+                        break;
+                    case OutcomeApplied.NoOp:
+                        break;
+                }
             }
+
+            rulesEvaluated++;
+        }
 
         return new AttendanceRuleEngineResult
         {

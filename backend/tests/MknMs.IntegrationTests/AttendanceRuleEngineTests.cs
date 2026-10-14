@@ -509,6 +509,61 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
         result.ErrorDetail.Should().Contain("Attendance Rule");
     }
 
+    [Fact]
+    public async Task ManualInvocation_NonexistentAdmin_Fails()
+    {
+        // §13.6: the manual invocation carries the ActingAdminID of the
+        // administrator performing it, which resolves to an Admin row.
+        // A positive id that names no row does not satisfy the
+        // requirement.
+        var f = await SeedAsync();
+        var ruleId = await AddRuleAsync("manual", "Manual", null, "SetStatus", f.OtherStatusId);
+
+        var service = new AttendanceRuleEngineService(_db, _notification, _clock);
+        var result = await service.RunAsync(new AttendanceRuleEngineCommand
+        {
+            TriggerType = "Manual",
+            RuleId = ruleId,
+            ActingAdminId = 9999,
+        });
+
+        result.Status.Should().Be("Failure");
+        result.ErrorCode.Should().Be("not_found");
+        result.ErrorDetail.Should().Contain("Admin 9999");
+
+        var member = await _db.Members.FirstAsync();
+        member.MemberStatusId.Should().Be(f.DefaultStatusId);
+    }
+
+    [Fact]
+    public async Task ManualInvocation_InactiveAdmin_Fails()
+    {
+        // §13.6: the ActingAdminID resolves to an Admin row whose
+        // IsActive = true. An inactive admin does not satisfy the
+        // requirement.
+        var f = await SeedAsync();
+        var ruleId = await AddRuleAsync("manual", "Manual", null, "SetStatus", f.OtherStatusId);
+
+        var admin = await _db.Admins.FirstAsync(a => a.AdminId == f.AdminId);
+        admin.IsActive = false;
+        await _db.SaveChangesAsync();
+
+        var service = new AttendanceRuleEngineService(_db, _notification, _clock);
+        var result = await service.RunAsync(new AttendanceRuleEngineCommand
+        {
+            TriggerType = "Manual",
+            RuleId = ruleId,
+            ActingAdminId = f.AdminId,
+        });
+
+        result.Status.Should().Be("Failure");
+        result.ErrorCode.Should().Be("not_found");
+        result.ErrorDetail.Should().Contain("is not active");
+
+        var member = await _db.Members.FirstAsync();
+        member.MemberStatusId.Should().Be(f.DefaultStatusId);
+    }
+
     // -----------------------------------------------------------------
     // ReadmissionCount
     // -----------------------------------------------------------------
