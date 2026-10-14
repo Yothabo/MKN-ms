@@ -13,6 +13,7 @@ using MknMs.Domain.D8_AttendanceRecord;
 using MknMs.Persistence;
 using MknMs.Application.Common;
 using Xunit;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace MknMs.IntegrationTests;
 
@@ -185,7 +186,7 @@ public class SpecComplianceTests : IAsyncLifetime
         });
         await _db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
+        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<GenerateAssignmentService>.Instance);
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = occurrenceId,
@@ -220,7 +221,7 @@ public class SpecComplianceTests : IAsyncLifetime
         });
         await _db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
+        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<GenerateAssignmentService>.Instance);
         await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = occurrenceId,
@@ -321,7 +322,7 @@ public class SpecComplianceTests : IAsyncLifetime
         });
         await _db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
+        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<GenerateAssignmentService>.Instance);
         await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = occurrenceId,
@@ -370,7 +371,7 @@ public class SpecComplianceTests : IAsyncLifetime
         });
         await _db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
+        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<GenerateAssignmentService>.Instance);
         await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = occurrenceId,
