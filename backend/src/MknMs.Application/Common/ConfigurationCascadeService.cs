@@ -117,6 +117,9 @@ public sealed class ConfigurationCascadeService : IConfigurationCascadeService
             case nameof(Event):
                 return await ApplyEventCascadeAsync(entityId, cancellationToken);
 
+            case nameof(Program):
+                return await ApplyProgramCascadeAsync(entityId, cancellationToken);
+
             default:
                 return ConfigurationResult<CascadeOutcome>.Success(
                     CascadeOutcome.Applied("No dependent changes apply."));
@@ -605,6 +608,52 @@ public sealed class ConfigurationCascadeService : IConfigurationCascadeService
             + $"{programItems.Count} Program Item(s) removed; "
             + $"{eventDuties.Count} Event Duty row(s) removed; "
             + "event-sourced Service Occurrences preserved.";
+
+        return ConfigurationResult<CascadeOutcome>.Success(
+            CascadeOutcome.Applied(text));
+    }
+
+    // -----------------------------------------------------------------
+    // Program cascade (§9.7 row)
+    //
+    // Referencing ProgramItem rows are physically removed. Their
+    // EventDuty children are also removed, by FK chain — a
+    // ProgramItem cannot be removed while an EventDuty references
+    // it. Removal order: EventDuty, then ProgramItem.
+    // -----------------------------------------------------------------
+
+    private async Task<ConfigurationResult<CascadeOutcome>> ApplyProgramCascadeAsync(
+        int programId,
+        CancellationToken cancellationToken)
+    {
+        var program = await _db.Programs
+            .FirstOrDefaultAsync(p => p.ProgramId == programId, cancellationToken);
+        if (program is null)
+        {
+            return ConfigurationResult<CascadeOutcome>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.NotFound,
+                    $"Program {programId} does not exist."));
+        }
+
+        var items = await _db.ProgramItems
+            .Where(i => i.ProgramId == programId)
+            .ToListAsync(cancellationToken);
+
+        var itemIds = items.Select(i => i.ItemId).ToList();
+
+        var eventDuties = itemIds.Count == 0
+            ? new List<EventDuty>()
+            : await _db.EventDuties
+                .Where(d => itemIds.Contains(d.ProgramItemId))
+                .ToListAsync(cancellationToken);
+
+        _db.EventDuties.RemoveRange(eventDuties);
+        _db.ProgramItems.RemoveRange(items);
+
+        var text =
+            $"{items.Count} Program Item(s) removed; "
+            + $"{eventDuties.Count} Event Duty row(s) removed.";
 
         return ConfigurationResult<CascadeOutcome>.Success(
             CascadeOutcome.Applied(text));

@@ -24,15 +24,40 @@ public interface IManageProgramService
         int programId,
         string title,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Soft-deletes a Program. §9.7's Program row applies: the
+    /// Program's ProgramItem children (and their EventDuty
+    /// dependents) are physically removed; the Program row itself is
+    /// retained with IsDeleted = true.
+    ///
+    /// No endpoint exposes this at the current phase — §9.7 states
+    /// that a Program is deactivated only by deactivating its Event.
+    /// The method exists for the cascade contract and for tests.
+    /// </summary>
+    Task<ConfigurationResult<Program>> SoftDeleteAsync(
+        int programId,
+        int actingAdminId,
+        int approvedByAdminId,
+        bool consequencesAcknowledged,
+        string reason,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class ManageProgramService : IManageProgramService
 {
     private readonly MknDbContext _db;
+    private readonly IConfigurationLifecycleService _lifecycle;
+    private readonly IConfigurationCascadeService _cascade;
 
-    public ManageProgramService(MknDbContext db)
+    public ManageProgramService(
+        MknDbContext db,
+        IConfigurationLifecycleService lifecycle,
+        IConfigurationCascadeService cascade)
     {
         _db = db;
+        _lifecycle = lifecycle;
+        _cascade = cascade;
     }
 
     public async Task<Program?> GetForEventAsync(int eventId, CancellationToken cancellationToken = default)
@@ -96,6 +121,83 @@ public sealed class ManageProgramService : IManageProgramService
         }
 
         entity.Title = title.Trim();
+        await _db.SaveChangesAsync(cancellationToken);
+        return ConfigurationResult<Program>.Success(entity);
+    }
+
+    public async Task<ConfigurationResult<Program>> SoftDeleteAsync(
+        int programId,
+        int actingAdminId,
+        int approvedByAdminId,
+        bool consequencesAcknowledged,
+        string reason,
+        CancellationToken cancellationToken = default)
+    {
+        if (!ConfigurationValidation.IsValidName(reason))
+        {
+            return ConfigurationResult<Program>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.InvalidValue,
+                    "Reason is required for soft delete."));
+        }
+
+        var entity = await _db.Programs
+            .FirstOrDefaultAsync(p => p.ProgramId == programId, cancellationToken);
+        if (entity is null)
+        {
+            throw new EntityNotFoundException(nameof(Program), programId);
+        }
+
+        if (entity.IsDeleted)
+        {
+            return ConfigurationResult<Program>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.AlreadyInactive,
+                    "Program is already soft-deleted."));
+        }
+
+        if (!consequencesAcknowledged)
+        {
+            return ConfigurationResult<Program>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.ValidationFailed,
+                    "The consequences of this soft delete must be acknowledged."));
+        }
+
+        var cascade = await _cascade.ApplyAsync(
+            nameof(Program), programId, cancellationToken);
+        if (!cascade.IsSuccess)
+        {
+            return ConfigurationResult<Program>.Failure(cascade.Error!);
+        }
+
+        if (cascade.Value!.IsBlocked)
+        {
+            return ConfigurationResult<Program>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.LifecycleViolation,
+                    cascade.Value.BlockedReason ?? "Soft delete is blocked."));
+        }
+
+        entity.IsDeleted = true;
+
+        var audit = await _lifecycle.RecordAsync(new ConfigurationLifecycleEvent
+        {
+            EntityType = nameof(Program),
+            EntityId = entity.ProgramId,
+            EntityName = entity.Title,
+            Action = ConfigurationLifecycleActions.SoftDelete,
+            Reason = reason,
+            ConsequencesText = cascade.Value.ConsequencesText,
+            InitiatedByAdminId = actingAdminId,
+            ApprovedByAdminId = approvedByAdminId,
+        }, cancellationToken);
+
+        if (!audit.IsSuccess)
+        {
+            return ConfigurationResult<Program>.Failure(audit.Error!);
+        }
+
         await _db.SaveChangesAsync(cancellationToken);
         return ConfigurationResult<Program>.Success(entity);
     }
