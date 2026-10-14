@@ -14,14 +14,17 @@
 -- Members
 -- Pinned to the lowest-id Main branch, the lowest-id matching Role,
 -- and the default MemberStatus.
+--
+-- Member carries no IsActive column. Its state is MemberStatusId
+-- alone. §4, §9.7, §15.8.27. The column was dropped by migration
+-- 20261013192223_DropStep8LegacyColumns.
 -- ---------------------------------------------------------------------
 
 INSERT INTO member (name, surname, join_date, date_of_birth, membership_stage,
-                    gender, phone, email, branch_id, role_id, member_status_id,
-                    is_active)
+                    gender, phone, email, branch_id, role_id, member_status_id)
 SELECT 'Alex', 'Example', '2024-01-15', '1990-05-20', 'Full',
        'Other', '+27-000-0000', 'alex@example.com',
-       b.branch_id, r.role_id, s.member_status_id, TRUE
+       b.branch_id, r.role_id, s.member_status_id
 FROM (SELECT branch_id FROM branch WHERE name = 'Main' ORDER BY branch_id LIMIT 1) b,
      (SELECT role_id FROM role WHERE name = 'Coordinator' ORDER BY role_id LIMIT 1) r,
      (SELECT member_status_id FROM member_status WHERE is_default = TRUE ORDER BY member_status_id LIMIT 1) s
@@ -30,11 +33,10 @@ WHERE NOT EXISTS (
 );
 
 INSERT INTO member (name, surname, join_date, date_of_birth, membership_stage,
-                    gender, phone, email, branch_id, role_id, member_status_id,
-                    is_active)
+                    gender, phone, email, branch_id, role_id, member_status_id)
 SELECT 'Beatrice', 'Sample', '2024-06-01', '1995-03-12', 'Full',
        'Female', '+27-000-0001', 'beatrice@example.com',
-       b.branch_id, r.role_id, s.member_status_id, TRUE
+       b.branch_id, r.role_id, s.member_status_id
 FROM (SELECT branch_id FROM branch WHERE name = 'Main' ORDER BY branch_id LIMIT 1) b,
      (SELECT role_id FROM role WHERE name = 'Steward' ORDER BY role_id LIMIT 1) r,
      (SELECT member_status_id FROM member_status WHERE is_default = TRUE ORDER BY member_status_id LIMIT 1) s
@@ -43,11 +45,10 @@ WHERE NOT EXISTS (
 );
 
 INSERT INTO member (name, surname, join_date, date_of_birth, membership_stage,
-                    gender, phone, email, branch_id, role_id, member_status_id,
-                    is_active)
+                    gender, phone, email, branch_id, role_id, member_status_id)
 SELECT 'Casper', 'Instance', '2025-01-10', '2000-08-25', 'Full',
        'Male', '+27-000-0002', 'casper@example.com',
-       b.branch_id, r.role_id, s.member_status_id, TRUE
+       b.branch_id, r.role_id, s.member_status_id
 FROM (SELECT branch_id FROM branch WHERE name = 'Main' ORDER BY branch_id LIMIT 1) b,
      (SELECT role_id FROM role WHERE name = 'Coordinator' ORDER BY role_id LIMIT 1) r,
      (SELECT member_status_id FROM member_status WHERE is_default = TRUE ORDER BY member_status_id LIMIT 1) s
@@ -56,11 +57,10 @@ WHERE NOT EXISTS (
 );
 
 INSERT INTO member (name, surname, join_date, date_of_birth, membership_stage,
-                    gender, phone, email, branch_id, role_id, member_status_id,
-                    is_active)
+                    gender, phone, email, branch_id, role_id, member_status_id)
 SELECT 'Dana', 'Prototype', '2023-04-20', '1985-11-30', 'Full',
        'Female', '+27-000-0003', 'dana@example.com',
-       b.branch_id, r.role_id, s.member_status_id, TRUE
+       b.branch_id, r.role_id, s.member_status_id
 FROM (SELECT branch_id FROM branch WHERE name = 'Main' ORDER BY branch_id LIMIT 1) b,
      (SELECT role_id FROM role WHERE name = 'Steward' ORDER BY role_id LIMIT 1) r,
      (SELECT member_status_id FROM member_status WHERE is_default = TRUE ORDER BY member_status_id LIMIT 1) s
