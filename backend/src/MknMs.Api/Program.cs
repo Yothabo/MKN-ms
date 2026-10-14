@@ -115,6 +115,7 @@ builder.Services.AddScoped<IAttendanceRuleEngineService, AttendanceRuleEngineSer
 // configuration process.
 builder.Services.AddScoped<IConfigurationLifecycleService, ConfigurationLifecycleService>();
 builder.Services.AddScoped<IConfigurationCascadeService, ConfigurationCascadeService>();
+builder.Services.AddScoped<IOccurrenceLockService, OccurrenceLockService>();
 
 // Standard API services.
 builder.Services.AddEndpointsApiExplorer();
