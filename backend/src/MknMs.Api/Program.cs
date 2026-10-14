@@ -16,6 +16,7 @@ using MknMs.Application.Processes.Configuration.ManageEventDuty;
 using MknMs.Application.Processes.Configuration.ManageIdentifierHistory;
 using MknMs.Application.Processes.Configuration.ManageMemberRecord;
 using MknMs.Application.Processes.Configuration.ManageAttributeType;
+using MknMs.Application.Processes.Configuration.ManageLookups;
 using MknMs.Application.Processes.Configuration.ManageMemberStatus;
 using MknMs.Application.Processes.Configuration.ManageProgram;
 using MknMs.Application.Processes.Configuration.ManageProgramItem;
@@ -70,6 +71,7 @@ builder.Services.AddScoped<IManageIdentifierHistoryService, ManageIdentifierHist
 builder.Services.AddScoped<IManageAttendanceRuleService, ManageAttendanceRuleService>();
 builder.Services.AddScoped<IManageMemberStatusService, ManageMemberStatusService>();
 builder.Services.AddScoped<IManageAttributeTypeService, ManageAttributeTypeService>();
+builder.Services.AddScoped<IManageLookupsService, ManageLookupsService>();
 
 // 4.0 Manage Eligibility.
 builder.Services.AddScoped<IManageEligibilityService, ManageEligibilityService>();

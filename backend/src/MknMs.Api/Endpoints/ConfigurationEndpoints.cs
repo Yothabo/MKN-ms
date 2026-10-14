@@ -16,6 +16,7 @@ using MknMs.Application.Processes.Configuration.ManageEventDuty;
 using MknMs.Application.Processes.Configuration.ManageIdentifierHistory;
 using MknMs.Application.Processes.Configuration.ManageMemberRecord;
 using MknMs.Application.Processes.Configuration.ManageAttributeType;
+using MknMs.Application.Processes.Configuration.ManageLookups;
 using MknMs.Application.Processes.Configuration.ManageMemberStatus;
 using MknMs.Application.Processes.Configuration.ManageProgram;
 using MknMs.Application.Processes.Configuration.ManageProgramItem;
@@ -45,6 +46,7 @@ public static class ConfigurationEndpoints
         MapManageAttendanceRule(routes);
         MapManageMemberStatus(routes);
         MapManageAttributeType(routes);
+        MapManageLookups(routes);
         return routes;
     }
 
@@ -650,6 +652,63 @@ public static class ConfigurationEndpoints
             IManageMemberStatusService service,
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.SoftDeleteAsync(
+                id, request.ActingAdminId, request.ApprovedByAdminId,
+                request.ConsequencesAcknowledged, request.Reason ?? string.Empty,
+                cancellationToken)));
+    }
+
+    // -----------------------------------------------------------------
+    // 3.6 Manage D10 Lookups
+    // -----------------------------------------------------------------
+
+    private static void MapManageLookups(IEndpointRouteBuilder routes)
+    {
+        routes.MapPost("/api/config/3.6/outcome-states/{id:int}/soft-delete", async (
+            int id,
+            [FromBody] LifecycleActionRequest request,
+            IManageLookupsService service,
+            CancellationToken cancellationToken) =>
+            ToHttpResult(await service.SoftDeleteOutcomeStateAsync(
+                id, request.ActingAdminId, request.ApprovedByAdminId,
+                request.ConsequencesAcknowledged, request.Reason ?? string.Empty,
+                cancellationToken)));
+
+        routes.MapPost("/api/config/3.6/assignment-statuses/{id:int}/soft-delete", async (
+            int id,
+            [FromBody] LifecycleActionRequest request,
+            IManageLookupsService service,
+            CancellationToken cancellationToken) =>
+            ToHttpResult(await service.SoftDeleteAssignmentStatusAsync(
+                id, request.ActingAdminId, request.ApprovedByAdminId,
+                request.ConsequencesAcknowledged, request.Reason ?? string.Empty,
+                cancellationToken)));
+
+        routes.MapPost("/api/config/3.6/time-of-days/{id:int}/soft-delete", async (
+            int id,
+            [FromBody] LifecycleActionRequest request,
+            IManageLookupsService service,
+            CancellationToken cancellationToken) =>
+            ToHttpResult(await service.SoftDeleteTimeOfDayAsync(
+                id, request.ActingAdminId, request.ApprovedByAdminId,
+                request.ConsequencesAcknowledged, request.Reason ?? string.Empty,
+                cancellationToken)));
+
+        routes.MapPost("/api/config/3.6/service-types/{id:int}/soft-delete", async (
+            int id,
+            [FromBody] LifecycleActionRequest request,
+            IManageLookupsService service,
+            CancellationToken cancellationToken) =>
+            ToHttpResult(await service.SoftDeleteServiceTypeAsync(
+                id, request.ActingAdminId, request.ApprovedByAdminId,
+                request.ConsequencesAcknowledged, request.Reason ?? string.Empty,
+                cancellationToken)));
+
+        routes.MapPost("/api/config/3.6/permission-tiers/{id:int}/soft-delete", async (
+            int id,
+            [FromBody] LifecycleActionRequest request,
+            IManageLookupsService service,
+            CancellationToken cancellationToken) =>
+            ToHttpResult(await service.SoftDeletePermissionTierAsync(
                 id, request.ActingAdminId, request.ApprovedByAdminId,
                 request.ConsequencesAcknowledged, request.Reason ?? string.Empty,
                 cancellationToken)));

@@ -123,6 +123,21 @@ public sealed class ConfigurationCascadeService : IConfigurationCascadeService
             case nameof(ProgramItem):
                 return await ApplyProgramItemCascadeAsync(entityId, cancellationToken);
 
+            case nameof(OutcomeState):
+                return await ApplyOutcomeStateCascadeAsync(entityId, cancellationToken);
+
+            case nameof(AssignmentStatus):
+                return await ApplyAssignmentStatusCascadeAsync(entityId, cancellationToken);
+
+            case nameof(TimeOfDay):
+                return await ApplyTimeOfDayCascadeAsync(entityId, cancellationToken);
+
+            case nameof(ServiceType):
+                return await ApplyServiceTypeCascadeAsync(entityId, cancellationToken);
+
+            case nameof(PermissionTier):
+                return await ApplyPermissionTierCascadeAsync(entityId, cancellationToken);
+
             default:
                 return ConfigurationResult<CascadeOutcome>.Success(
                     CascadeOutcome.Applied("No dependent changes apply."));
@@ -692,4 +707,220 @@ public sealed class ConfigurationCascadeService : IConfigurationCascadeService
         return ConfigurationResult<CascadeOutcome>.Success(
             CascadeOutcome.Applied(text));
     }
+
+    // -----------------------------------------------------------------
+    // D10 lookup cascades (§9.7 rows)
+    //
+    // All five are block-only. Each has a specific set of referencing
+    // tables and, for the two whose ids are stored in SystemSetting,
+    // a specific set of setting keys. The setting check is scoped to
+    // those keys: an unscoped value match would false-positive on a
+    // numeric setting that coincidentally equals the lookup id.
+    // -----------------------------------------------------------------
+
+    private static readonly string[] OutcomeStateSettingKeys =
+    {
+        "OutcomeStateUnfilledID",
+        "OutcomeStatePartiallyFilledID",
+        "OutcomeStateFilledID",
+        "OutcomeStateCancelledID",
+    };
+
+    private static readonly string[] AssignmentStatusSettingKeys =
+    {
+        "InitialAssignmentStatusID",
+        "DeclinedStatusID",
+        "TimedOutStatusID",
+    };
+
+    private async Task<ConfigurationResult<CascadeOutcome>> ApplyOutcomeStateCascadeAsync(
+        int outcomeStateId,
+        CancellationToken cancellationToken)
+    {
+        var exists = await _db.OutcomeStates
+            .AnyAsync(o => o.OutcomeStateId == outcomeStateId, cancellationToken);
+        if (!exists)
+        {
+            return NotFound(nameof(OutcomeState), outcomeStateId);
+        }
+
+        var occurrenceCount = await _db.ServiceOccurrences
+            .CountAsync(o => o.FillStatusId == outcomeStateId, cancellationToken);
+
+        var settingCount = await CountSettingReferencesAsync(
+            OutcomeStateSettingKeys, outcomeStateId, cancellationToken);
+
+        if (occurrenceCount > 0 || settingCount > 0)
+        {
+            return BlockedByReferences(
+                nameof(OutcomeState), outcomeStateId,
+                new (string, int)[]
+                {
+                    ("Service Occurrence", occurrenceCount),
+                    ("System Setting", settingCount),
+                });
+        }
+
+        return NoDependents();
+    }
+
+    private async Task<ConfigurationResult<CascadeOutcome>> ApplyAssignmentStatusCascadeAsync(
+        int statusId,
+        CancellationToken cancellationToken)
+    {
+        var exists = await _db.AssignmentStatuses
+            .AnyAsync(s => s.AssignmentStatusId == statusId, cancellationToken);
+        if (!exists)
+        {
+            return NotFound(nameof(AssignmentStatus), statusId);
+        }
+
+        var assignmentCount = await _db.RosterAssignments
+            .CountAsync(a => a.AssignmentStatusId == statusId, cancellationToken);
+
+        var settingCount = await CountSettingReferencesAsync(
+            AssignmentStatusSettingKeys, statusId, cancellationToken);
+
+        if (assignmentCount > 0 || settingCount > 0)
+        {
+            return BlockedByReferences(
+                nameof(AssignmentStatus), statusId,
+                new (string, int)[]
+                {
+                    ("Roster Assignment", assignmentCount),
+                    ("System Setting", settingCount),
+                });
+        }
+
+        return NoDependents();
+    }
+
+    private async Task<ConfigurationResult<CascadeOutcome>> ApplyTimeOfDayCascadeAsync(
+        int timeOfDayId,
+        CancellationToken cancellationToken)
+    {
+        var exists = await _db.TimeOfDays
+            .AnyAsync(t => t.TimeOfDayId == timeOfDayId, cancellationToken);
+        if (!exists)
+        {
+            return NotFound(nameof(TimeOfDay), timeOfDayId);
+        }
+
+        var slotCount = await _db.BranchTimeSlots
+            .CountAsync(s => s.TimeOfDayId == timeOfDayId, cancellationToken);
+
+        if (slotCount > 0)
+        {
+            return BlockedByReferences(
+                nameof(TimeOfDay), timeOfDayId,
+                new (string, int)[] { ("Branch Time Slot", slotCount) });
+        }
+
+        return NoDependents();
+    }
+
+    private async Task<ConfigurationResult<CascadeOutcome>> ApplyServiceTypeCascadeAsync(
+        int serviceTypeId,
+        CancellationToken cancellationToken)
+    {
+        var exists = await _db.ServiceTypes
+            .AnyAsync(s => s.ServiceTypeId == serviceTypeId, cancellationToken);
+        if (!exists)
+        {
+            return NotFound(nameof(ServiceType), serviceTypeId);
+        }
+
+        var defCount = await _db.ServiceDefinitions
+            .CountAsync(s => s.ServiceTypeId == serviceTypeId, cancellationToken);
+
+        var occurrenceCount = await _db.ServiceOccurrences
+            .CountAsync(o => o.ServiceTypeId == serviceTypeId, cancellationToken);
+
+        if (defCount > 0 || occurrenceCount > 0)
+        {
+            return BlockedByReferences(
+                nameof(ServiceType), serviceTypeId,
+                new (string, int)[]
+                {
+                    ("Service Definition", defCount),
+                    ("Service Occurrence", occurrenceCount),
+                });
+        }
+
+        return NoDependents();
+    }
+
+    private async Task<ConfigurationResult<CascadeOutcome>> ApplyPermissionTierCascadeAsync(
+        int tierId,
+        CancellationToken cancellationToken)
+    {
+        var exists = await _db.PermissionTiers
+            .AnyAsync(t => t.PermissionTierId == tierId, cancellationToken);
+        if (!exists)
+        {
+            return NotFound(nameof(PermissionTier), tierId);
+        }
+
+        var adminCount = await _db.Admins
+            .CountAsync(a => a.PermissionTierId == tierId, cancellationToken);
+
+        var policyCount = await _db.EntityDeletionPolicies
+            .CountAsync(p => p.RequiredDeletePermissionTierId == tierId
+                || p.RequiredDeactivatePermissionTierId == tierId,
+                cancellationToken);
+
+        if (adminCount > 0 || policyCount > 0)
+        {
+            return BlockedByReferences(
+                nameof(PermissionTier), tierId,
+                new (string, int)[]
+                {
+                    ("Admin", adminCount),
+                    ("Entity Deletion Policy", policyCount),
+                });
+        }
+
+        return NoDependents();
+    }
+
+    // -----------------------------------------------------------------
+    // Shared helpers for the D10 lookup rules
+    // -----------------------------------------------------------------
+
+    private async Task<int> CountSettingReferencesAsync(
+        string[] keys,
+        int lookupId,
+        CancellationToken cancellationToken)
+    {
+        var text = lookupId.ToString();
+        return await _db.SystemSettings
+            .CountAsync(s => keys.Contains(s.Key) && s.Value == text, cancellationToken);
+    }
+
+    private static ConfigurationResult<CascadeOutcome> NotFound(
+        string entityType, int entityId) =>
+        ConfigurationResult<CascadeOutcome>.Failure(
+            new ConfigurationError(
+                ConfigurationErrorCodes.NotFound,
+                $"{entityType} {entityId} does not exist."));
+
+    private static ConfigurationResult<CascadeOutcome> BlockedByReferences(
+        string entityType,
+        int entityId,
+        (string Name, int Count)[] references)
+    {
+        var present = references.Where(r => r.Count > 0)
+            .Select(r => $"{r.Count} {r.Name}(s)")
+            .ToArray();
+
+        var text = string.Join(", ", present);
+
+        return ConfigurationResult<CascadeOutcome>.Success(
+            CascadeOutcome.Blocked(
+                $"{entityType} {entityId} is referenced by {text}."));
+    }
+
+    private static ConfigurationResult<CascadeOutcome> NoDependents() =>
+        ConfigurationResult<CascadeOutcome>.Success(
+            CascadeOutcome.Applied("No dependent changes apply."));
 }
