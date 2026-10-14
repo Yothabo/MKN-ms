@@ -16,6 +16,14 @@ namespace MknMs.IntegrationTests;
 /// <summary>
 /// Tests for AuthorityNotificationSweepService (9.0 Path 2).
 /// </summary>
+/// <remarks>
+/// The sweep's per-recipient dispatch-failure branch (acceptance matrix
+/// row 8) is not tested. The operation inside the try is logging; the
+/// only other failure source, the channel setting, is caught before row
+/// processing. A real transport introduces the failure path. Adding a
+/// seam now would create a production abstraction with no current
+/// functional need. Revisit when the transport is real.
+/// </remarks>
 public class AuthorityNotificationSweepTests : IAsyncLifetime
 {
     private const string TestConnectionString =
@@ -249,10 +257,10 @@ public class AuthorityNotificationSweepTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task SubscriptionByEventTypeMismatch_DoesNotDispatch()
+    public async Task SubscriptionByEventTypeMismatch_DoesNotDispatch_SetsNotifiedAt()
     {
         var f = await SeedAsync();
-        await SeedAuditAsync(action: "Deactivate");
+        var auditId = await SeedAuditAsync(action: "Deactivate");
 
         // The subscription names SoftDelete; the row is a Deactivate.
         _db.NotificationSubscriptions.Add(new NotificationSubscription
@@ -267,7 +275,15 @@ public class AuthorityNotificationSweepTests : IAsyncLifetime
         var service = MakeService();
         var result = await service.RunAsync();
 
+        // Zero recipients is a valid outcome. The row is processed and
+        // NotifiedAt is set, per B16.
         result.NotificationsDispatched.Should().Be(0);
+        result.AuditRowsProcessed.Should().Be(1);
+
+        var row = await _db.ConfigurationAuditLogs
+            .AsNoTracking()
+            .FirstAsync(a => a.AuditId == auditId);
+        row.NotifiedAt.Should().NotBeNull();
     }
 
     [Fact]
@@ -344,5 +360,66 @@ public class AuthorityNotificationSweepTests : IAsyncLifetime
 
         result.NotificationsDispatched.Should().Be(0);
         result.AuditRowsProcessed.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Sweep_SkipsRowWithNotifiedAtSet()
+    {
+        await SeedAsync();
+        var auditId = await SeedAuditAsync();
+
+        var row = await _db.ConfigurationAuditLogs
+            .FirstAsync(a => a.AuditId == auditId);
+        var alreadyNotified = Now.AddMinutes(-30);
+        row.NotifiedAt = alreadyNotified;
+        await _db.SaveChangesAsync();
+
+        var service = MakeService();
+        var result = await service.RunAsync();
+
+        result.Status.Should().Be("Success");
+        result.AuditRowsProcessed.Should().Be(0);
+        result.NotificationsDispatched.Should().Be(0);
+
+        var after = await _db.ConfigurationAuditLogs
+            .AsNoTracking()
+            .FirstAsync(a => a.AuditId == auditId);
+        after.NotifiedAt.Should().Be(alreadyNotified);
+    }
+
+    [Fact]
+    public async Task TwoSubscriptionsMatchSameAuditRow_BothDispatch()
+    {
+        var f = await SeedAsync();
+        await SeedAuditAsync();
+
+        // One by-tier subscription resolves both admins. One by-admin
+        // subscription resolves AdminIdA. The union is both admins;
+        // NotificationsDispatched counts per resolved recipient, so
+        // the total is 2.
+        _db.NotificationSubscriptions.Add(new NotificationSubscription
+        {
+            EventType = "Deactivate",
+            RecipientTierId = f.TierId,
+            IsActive = true,
+            IsDeleted = false,
+        });
+        _db.NotificationSubscriptions.Add(new NotificationSubscription
+        {
+            EventType = "Deactivate",
+            RecipientAdminId = f.AdminIdA,
+            IsActive = true,
+            IsDeleted = false,
+        });
+        await _db.SaveChangesAsync();
+
+        var service = MakeService();
+        var result = await service.RunAsync();
+
+        result.Status.Should().Be("Success");
+        result.NotificationsDispatched.Should().Be(2);
+
+        var row = await _db.ConfigurationAuditLogs.SingleAsync();
+        row.NotifiedAt.Should().NotBeNull();
     }
 }

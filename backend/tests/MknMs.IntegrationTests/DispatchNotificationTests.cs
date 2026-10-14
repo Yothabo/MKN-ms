@@ -27,6 +27,12 @@ namespace MknMs.IntegrationTests;
 /// channel that is absent and Required = false, or a channel whose
 /// value is not recognised, produces no send and no log. These tests
 /// exercise all three of those cases.
+///
+/// The sweep's per-recipient dispatch-failure branch (acceptance matrix
+/// row 8) is not tested here. The sweep's only per-recipient operation
+/// today is logging; a real transport, when added, introduces the
+/// failure path. Adding a test seam now would create a production
+/// abstraction with no current functional need.
 /// </remarks>
 public class DispatchNotificationTests : IAsyncLifetime
 {
@@ -260,6 +266,35 @@ public class DispatchNotificationTests : IAsyncLifetime
 
         logger.Entries.Should().BeEmpty(
             "an absent optional NotificationChannel must not log (§14.1.2)");
+    }
+
+    [Fact]
+    public async Task Dispatch_WithRequiredChannelAbsent_Throws()
+    {
+        // §14.1.2: absent and Required = true → the invocation refuses
+        // and surfaces a configuration error. The service rethrows the
+        // InvalidOperationException so the invoking process can see it.
+        var f = await SeedFixtureAsync(
+            notificationChannel: null,
+            notificationChannelRequired: false);
+
+        // SeedFixtureAsync skips the setting when the value is null.
+        // Insert it explicitly with Required = true.
+        _db.SystemSettings.Add(new SystemSetting
+        {
+            Key = "NotificationChannel",
+            Value = null,
+            Required = true,
+        });
+        await _db.SaveChangesAsync();
+
+        var logger = new CapturingLogger<DispatchNotificationService>();
+        var service = new DispatchNotificationService(_db, logger);
+
+        var act = async () => await service.DispatchAssignmentNoticeAsync(f.Assignment);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*NotificationChannel*");
     }
 
     [Fact]
