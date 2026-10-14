@@ -217,6 +217,38 @@ public class HttpSurfaceTests : IClassFixture<WebApplicationFactory<Program>>, I
             new SystemSetting { Key = "OutcomeStateFilledID", Value = filled.OutcomeStateId.ToString(), Required = true },
             new SystemSetting { Key = "NotificationChannel", Value = "Log", Required = false });
         await _db.SaveChangesAsync();
+
+        // Additional entities the soft-delete smoke tests exercise.
+        // Each is chosen so its cascade either succeeds or blocks as
+        // the test intends.
+
+        // A default Role, so the smoke soft delete of a non-default
+        // Role has a fallback target.
+        _db.Roles.Add(new Role { Name = "SmokeDefault", IsDefault = true });
+        // A non-default Role with no member and no rule referring to
+        // it — the successful case.
+        _db.Roles.Add(new Role { Name = "SmokeRole" });
+
+        // A second Branch with no Member assigned — the successful
+        // Branch soft delete case.
+        _db.Branches.Add(new Branch
+        {
+            Name = "SmokeBranch", Location = "Nowhere",
+        });
+
+        // An OutcomeState not referenced by any setting or occurrence.
+        _db.OutcomeStates.Add(new OutcomeState { Name = "SmokeOutcomeState" });
+
+        // An Event with no Programs — the successful Event cascade.
+        _db.Events.Add(new MknMs.Domain.D9_EventProgram.Event
+        {
+            Name = "SmokeEvent",
+            StartDate = new DateOnly(2026, 12, 1),
+            EndDate = new DateOnly(2026, 12, 2),
+            Type = "Conference",
+            HostBranchId = branch.BranchId,
+        });
+        await _db.SaveChangesAsync();
     }
 
     /// <summary>
@@ -354,6 +386,123 @@ public class HttpSurfaceTests : IClassFixture<WebApplicationFactory<Program>>, I
             new { dutyId = 1, grantedDate = "2026-10-06", grantedByAdminId = 1 });
 
         await AssertNoServerErrorAsync(response, "/api/config/4.0/members/1/eligibility");
+    }
+
+    [Fact]
+    public async Task SoftDeleteRole_ReachesEndpoint()
+    {
+        var client = _factory.CreateClient();
+
+        var roleId = await _db.Roles
+            .Where(r => r.Name == "SmokeRole")
+            .Select(r => r.RoleId)
+            .FirstAsync();
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/config/1.0/roles/{roleId}/soft-delete",
+            new
+            {
+                actingAdminId = 1,
+                approvedByAdminId = 1,
+                consequencesAcknowledged = true,
+                reason = "smoke test",
+            });
+
+        await AssertNoServerErrorAsync(response, $"roles/{roleId}/soft-delete");
+    }
+
+    [Fact]
+    public async Task SoftDeleteBranch_ReachesEndpoint()
+    {
+        var client = _factory.CreateClient();
+
+        var branchId = await _db.Branches
+            .Where(b => b.Name == "SmokeBranch")
+            .Select(b => b.BranchId)
+            .FirstAsync();
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/config/1.0/branches/{branchId}/soft-delete",
+            new
+            {
+                actingAdminId = 1,
+                approvedByAdminId = 1,
+                consequencesAcknowledged = true,
+                reason = "smoke test",
+            });
+
+        await AssertNoServerErrorAsync(response, $"branches/{branchId}/soft-delete");
+    }
+
+    [Fact]
+    public async Task SoftDeleteOutcomeState_ReachesEndpoint()
+    {
+        var client = _factory.CreateClient();
+
+        var stateId = await _db.OutcomeStates
+            .Where(s => s.Name == "SmokeOutcomeState")
+            .Select(s => s.OutcomeStateId)
+            .FirstAsync();
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/config/3.6/outcome-states/{stateId}/soft-delete",
+            new
+            {
+                actingAdminId = 1,
+                approvedByAdminId = 1,
+                consequencesAcknowledged = true,
+                reason = "smoke test",
+            });
+
+        await AssertNoServerErrorAsync(response, $"outcome-states/{stateId}/soft-delete");
+    }
+
+    [Fact]
+    public async Task SoftDeleteEvent_ReachesEndpoint()
+    {
+        var client = _factory.CreateClient();
+
+        var eventId = await _db.Events
+            .Where(e => e.Name == "SmokeEvent")
+            .Select(e => e.EventId)
+            .FirstAsync();
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/config/8.0/events/{eventId}/soft-delete",
+            new
+            {
+                actingAdminId = 1,
+                approvedByAdminId = 1,
+                consequencesAcknowledged = true,
+                reason = "smoke test",
+            });
+
+        await AssertNoServerErrorAsync(response, $"events/{eventId}/soft-delete");
+    }
+
+    [Fact]
+    public async Task SoftDeleteBranch_BlockedByMember_NoServerError()
+    {
+        // The seeded "Main" branch has Alex assigned. The cascade
+        // blocks; the endpoint must still return a non-500 response.
+        var client = _factory.CreateClient();
+
+        var branchId = await _db.Branches
+            .Where(b => b.Name == "Main")
+            .Select(b => b.BranchId)
+            .FirstAsync();
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/config/1.0/branches/{branchId}/soft-delete",
+            new
+            {
+                actingAdminId = 1,
+                approvedByAdminId = 1,
+                consequencesAcknowledged = true,
+                reason = "should be blocked",
+            });
+
+        await AssertNoServerErrorAsync(response, $"branches/{branchId}/soft-delete (blocked)");
     }
 
     [Fact]
