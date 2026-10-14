@@ -120,6 +120,9 @@ public sealed class ConfigurationCascadeService : IConfigurationCascadeService
             case nameof(Program):
                 return await ApplyProgramCascadeAsync(entityId, cancellationToken);
 
+            case nameof(ProgramItem):
+                return await ApplyProgramItemCascadeAsync(entityId, cancellationToken);
+
             default:
                 return ConfigurationResult<CascadeOutcome>.Success(
                     CascadeOutcome.Applied("No dependent changes apply."));
@@ -655,6 +658,37 @@ public sealed class ConfigurationCascadeService : IConfigurationCascadeService
             $"{items.Count} Program Item(s) removed; "
             + $"{eventDuties.Count} Event Duty row(s) removed.";
 
+        return ConfigurationResult<CascadeOutcome>.Success(
+            CascadeOutcome.Applied(text));
+    }
+
+    // -----------------------------------------------------------------
+    // ProgramItem cascade (§9.7 row)
+    //
+    // Referencing EventDuty rows are physically removed. The
+    // ProgramItem itself is retained as soft-deleted.
+    // -----------------------------------------------------------------
+
+    private async Task<ConfigurationResult<CascadeOutcome>> ApplyProgramItemCascadeAsync(
+        int itemId,
+        CancellationToken cancellationToken)
+    {
+        var item = await _db.ProgramItems
+            .FirstOrDefaultAsync(i => i.ItemId == itemId, cancellationToken);
+        if (item is null)
+        {
+            return ConfigurationResult<CascadeOutcome>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.NotFound,
+                    $"ProgramItem {itemId} does not exist."));
+        }
+
+        var eventDuties = await _db.EventDuties
+            .Where(d => d.ProgramItemId == itemId)
+            .ToListAsync(cancellationToken);
+        _db.EventDuties.RemoveRange(eventDuties);
+
+        var text = $"{eventDuties.Count} Event Duty row(s) removed.";
         return ConfigurationResult<CascadeOutcome>.Success(
             CascadeOutcome.Applied(text));
     }
