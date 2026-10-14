@@ -1,5 +1,6 @@
 using MknMs.Application.Processes.Operations.DispatchNotification;
 using MknMs.Domain.D11_SystemSetting;
+using Microsoft.Extensions.Logging;
 
 namespace MknMs.Application.Processes.Operations.GenerateAssignment;
 
@@ -32,17 +33,20 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
     private readonly IDispatchNotificationService _notification;
     private readonly TimeProvider _clock;
     private readonly IOccurrenceLockService _occurrenceLock;
+    private readonly ILogger<GenerateAssignmentService> _logger;
 
     public GenerateAssignmentService(
         MknDbContext db,
         IDispatchNotificationService notification,
         TimeProvider clock,
-        IOccurrenceLockService occurrenceLock)
+        IOccurrenceLockService occurrenceLock,
+        ILogger<GenerateAssignmentService> logger)
     {
         _db = db;
         _notification = notification;
         _clock = clock;
         _occurrenceLock = occurrenceLock;
+        _logger = logger;
     }
 
     public async Task<GenerateAssignmentResult> RunAsync(
@@ -359,7 +363,23 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
                     totalCreated++;
 
                     // Fire-and-forget notification (the 5.0 → 9.0 edge).
-                    await _notification.DispatchAssignmentNoticeAsync(assignment, cancellationToken);
+                    // §10.1.8: a thrown exception or a timeout from the
+                    // invocation does not roll back the assignment and
+                    // does not mark the run as failed. 5.0 catches the
+                    // failure, logs it, and continues.
+                    try
+                    {
+                        await _notification.DispatchAssignmentNoticeAsync(
+                            assignment, cancellationToken);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(
+                            ex,
+                            "Notification dispatch failed for assignment {AssignmentId}. "
+                            + "The assignment is committed; the run continues.",
+                            assignment.AssignmentId);
+                    }
                 }
             }
 
@@ -389,21 +409,28 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
 
         int? serviceDefId = schedule?.ServiceDefId;
 
-        // If no schedule (event-sourced occurrence), resolve the service
-        // definition differently. Event-sourced occurrences inherit from
-        // the ProgramItem's linked ServiceDefinition, but the schema
-        // does not store ServiceDefId on the occurrence — the link is
-        // via the ServiceOccurrenceDuty table for overrides only.
-        //
-        // For the current implementation, event-sourced occurrences are
-        // treated as having no inheritable duty list unless
-        // ServiceOccurrenceDuty rows supply one. This is consistent with
-        // the specification: 5.0 is defined for schedule-sourced
-        // occurrences; event-sourced occurrences are populated through
-        // manual assignment.
+        // If no schedule, this is an event-sourced occurrence. There is
+        // no inheritable duty list: the ServiceSchedule that would
+        // supply one is absent. Only ServiceOccurrenceDuty rows with
+        // Action = Added supply duties. Removed has no meaning here,
+        // because there is nothing to remove.
         if (serviceDefId is null)
         {
-            return new List<RequiredDuty>();
+            // Event-sourced occurrence. §10.1.8 / acceptance matrix:
+            // no duty list is inherited from a schedule; only
+            // ServiceOccurrenceDuty rows with Action = Added supply
+            // duties. Removed has no meaning here because there is
+            // nothing to remove.
+            var addedOverrides = await _db.ServiceOccurrenceDuties
+                .Where(d => d.OccurrenceId == occurrence.OccurrenceId
+                    && d.Action == "Added")
+                .ToListAsync(cancellationToken);
+
+            return addedOverrides
+                .Select(ov => new RequiredDuty(
+                    ov.DutyId,
+                    ov.RequiredSlotCount ?? 1))
+                .ToList();
         }
 
         var inherited = await _db.ServiceDefinitionDuties
@@ -944,4 +971,5 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
                 cancellationToken);
 
         return exists;
-    }}
+    }
+}
