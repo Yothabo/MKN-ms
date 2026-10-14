@@ -335,6 +335,43 @@ public class RecordAttendanceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Record_AtNonHomeBranch_WritesAgainstOccurrence()
+    {
+        // §13.1.3: attendance is recorded against the occurrence, not
+        // the member's home branch. Member.BranchID is not consulted.
+        var f = await SeedFixtureAsync();
+
+        // Add a second branch and move the member to it. The
+        // occurrence's schedule still points at the first branch.
+        var secondBranch = new Branch
+        {
+            Name = "Second",
+            Location = "Elsewhere",
+            IsActive = true,
+        };
+        _db.Branches.Add(secondBranch);
+        await _db.SaveChangesAsync();
+
+        var member = await _db.Members.FirstAsync();
+        member.BranchId = secondBranch.BranchId;
+        await _db.SaveChangesAsync();
+
+        var service = new RecordAttendanceService(_db, _clock);
+        var result = await service.RunAsync(new RecordAttendanceCommand
+        {
+            MemberId = f.MemberId,
+            OccurrenceId = f.OccurrenceId,
+        });
+
+        result.Status.Should().Be("Success");
+        result.Recorded.Should().BeTrue();
+
+        var row = await _db.AttendanceRecords.SingleAsync();
+        row.MemberId.Should().Be(f.MemberId);
+        row.OccurrenceId.Should().Be(f.OccurrenceId);
+    }
+
+    [Fact]
     public async Task Record_WithBranchOverrideOn_GlobalOff_WritesRow()
     {
         var f = await SeedFixtureAsync();
