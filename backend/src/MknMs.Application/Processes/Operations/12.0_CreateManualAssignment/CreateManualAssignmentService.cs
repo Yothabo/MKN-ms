@@ -28,15 +28,18 @@ public sealed class CreateManualAssignmentService : ICreateManualAssignmentServi
     private readonly MknDbContext _db;
     private readonly IDispatchNotificationService _notification;
     private readonly TimeProvider _clock;
+    private readonly IOccurrenceLockService _occurrenceLock;
 
     public CreateManualAssignmentService(
         MknDbContext db,
         IDispatchNotificationService notification,
-        TimeProvider clock)
+        TimeProvider clock,
+        IOccurrenceLockService occurrenceLock)
     {
         _db = db;
         _notification = notification;
         _clock = clock;
+        _occurrenceLock = occurrenceLock;
     }
 
     public async Task<CreateManualAssignmentResult> RunAsync(
@@ -92,6 +95,21 @@ public sealed class CreateManualAssignmentService : ICreateManualAssignmentServi
                 {
                     return Failure($"AssignmentStatus {statusId} does not exist.");
                 }
+            }
+
+            // B6: participate in the occurrence lock so a concurrent
+            // 5.0 or 7.0 writer sees a consistent view of the slot.
+            // §17.1 B3 does not enforce capacity on manual assignment,
+            // but the lock makes the manual insert visible to any
+            // concurrent capacity check.
+            await using var lease = await _occurrenceLock.TryAcquireAsync(
+                command.OccurrenceId, cancellationToken);
+
+            if (lease is null)
+            {
+                return Failure(
+                    $"Another writer is filling occurrence {command.OccurrenceId}. "
+                    + "Retry the manual assignment.");
             }
 
             // Uniqueness: (MemberId, DutyId, OccurrenceId) must not

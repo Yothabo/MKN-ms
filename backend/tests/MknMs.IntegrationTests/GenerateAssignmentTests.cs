@@ -12,6 +12,7 @@ using MknMs.Domain.D4_Member;
 using MknMs.Domain.D6_Eligibility;
 using MknMs.Domain.D7_RosterAssignment;
 using MknMs.Persistence;
+using MknMs.Application.Common;
 using Xunit;
 
 namespace MknMs.IntegrationTests;
@@ -78,7 +79,7 @@ public class GenerateAssignmentTests : IAsyncLifetime
     public async Task Run_WithMixedEligibilityAndTier_ProducesExpectedOutcome()
     {
         var fixture = await SeedFixtureAsync();
-        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
 
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
@@ -115,7 +116,7 @@ public class GenerateAssignmentTests : IAsyncLifetime
     public async Task Run_Twice_IsIdempotent()
     {
         var fixture = await SeedFixtureAsync();
-        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
 
         var first = await service.RunAsync(new GenerateAssignmentCommand
         {
@@ -140,7 +141,7 @@ public class GenerateAssignmentTests : IAsyncLifetime
     public async Task Run_WithNoEligibility_ProducesNoAssignments()
     {
         var fixture = await SeedFixtureAsync(includeEligibility: false);
-        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
 
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
@@ -158,7 +159,7 @@ public class GenerateAssignmentTests : IAsyncLifetime
     public async Task Run_WithInvalidCommand_ReturnsFailure()
     {
         await SeedFixtureAsync();
-        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
 
         // Neither occurrence nor range supplied.
         var result = await service.RunAsync(new GenerateAssignmentCommand());
@@ -382,7 +383,7 @@ public class GenerateAssignmentTests : IAsyncLifetime
         rule.CriteriaValue = "Female";
         await _db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = fixture.OccurrenceId,
@@ -403,7 +404,7 @@ public class GenerateAssignmentTests : IAsyncLifetime
         rule.CriteriaValue = "Full";
         await _db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = fixture.OccurrenceId,
@@ -425,7 +426,7 @@ public class GenerateAssignmentTests : IAsyncLifetime
         rule.CriteriaValue = "25-35";
         await _db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = fixture.OccurrenceId,
@@ -446,7 +447,7 @@ public class GenerateAssignmentTests : IAsyncLifetime
         rule.CriteriaValue = "5-10";
         await _db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = fixture.OccurrenceId,
@@ -469,7 +470,7 @@ public class GenerateAssignmentTests : IAsyncLifetime
         rule.CriteriaValue = "30";
         await _db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = fixture.OccurrenceId,
@@ -508,7 +509,7 @@ public class GenerateAssignmentTests : IAsyncLifetime
         });
         await _db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = fixture.OccurrenceId,
@@ -547,7 +548,7 @@ public class GenerateAssignmentTests : IAsyncLifetime
         });
         await _db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = fixture.OccurrenceId,
@@ -586,7 +587,7 @@ public class GenerateAssignmentTests : IAsyncLifetime
         });
         await _db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = fixture.OccurrenceId,
@@ -607,7 +608,7 @@ public class GenerateAssignmentTests : IAsyncLifetime
         rule.CriteriaValue = "0.5";
         await _db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = fixture.OccurrenceId,
@@ -647,7 +648,7 @@ public class GenerateAssignmentTests : IAsyncLifetime
         });
         await _db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = fixture.OccurrenceId,
@@ -684,7 +685,7 @@ public class GenerateAssignmentTests : IAsyncLifetime
         });
         await _db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = fixture.OccurrenceId,
@@ -723,7 +724,7 @@ public class GenerateAssignmentTests : IAsyncLifetime
         });
         await _db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = fixture.OccurrenceId,

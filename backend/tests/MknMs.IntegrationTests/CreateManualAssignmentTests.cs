@@ -11,6 +11,7 @@ using MknMs.Domain.D4_Member;
 using MknMs.Domain.D6_Eligibility;
 using MknMs.Domain.D7_RosterAssignment;
 using MknMs.Persistence;
+using MknMs.Application.Common;
 using Xunit;
 
 namespace MknMs.IntegrationTests;
@@ -225,7 +226,7 @@ public class CreateManualAssignmentTests : IAsyncLifetime
     public async Task Create_WithNullStatus_WritesRowAndDispatchesNotification()
     {
         var f = await SeedFixtureAsync();
-        var service = new CreateManualAssignmentService(_db, _notification, _clock);
+        var service = new CreateManualAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
 
         var result = await service.RunAsync(new CreateManualAssignmentCommand
         {
@@ -253,7 +254,7 @@ public class CreateManualAssignmentTests : IAsyncLifetime
     public async Task Create_WithNonNullStatus_DoesNotDispatchNotification()
     {
         var f = await SeedFixtureAsync();
-        var service = new CreateManualAssignmentService(_db, _notification, _clock);
+        var service = new CreateManualAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
 
         var result = await service.RunAsync(new CreateManualAssignmentCommand
         {
@@ -276,7 +277,7 @@ public class CreateManualAssignmentTests : IAsyncLifetime
     public async Task Create_Duplicate_Fails()
     {
         var f = await SeedFixtureAsync();
-        var service = new CreateManualAssignmentService(_db, _notification, _clock);
+        var service = new CreateManualAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
 
         await service.RunAsync(new CreateManualAssignmentCommand
         {
@@ -304,7 +305,7 @@ public class CreateManualAssignmentTests : IAsyncLifetime
     public async Task Create_WithEligibilityFlagRule_AndNoGrant_Fails()
     {
         var f = await SeedFixtureAsync(withEligibilityFlagRule: true);
-        var service = new CreateManualAssignmentService(_db, _notification, _clock);
+        var service = new CreateManualAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
 
         // The "ineligible" member has no grant.
         var result = await service.RunAsync(new CreateManualAssignmentCommand
@@ -327,7 +328,7 @@ public class CreateManualAssignmentTests : IAsyncLifetime
     public async Task Create_WithEligibilityFlagRule_AndGrant_Succeeds()
     {
         var f = await SeedFixtureAsync(withEligibilityFlagRule: true);
-        var service = new CreateManualAssignmentService(_db, _notification, _clock);
+        var service = new CreateManualAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
 
         var result = await service.RunAsync(new CreateManualAssignmentCommand
         {
@@ -345,7 +346,7 @@ public class CreateManualAssignmentTests : IAsyncLifetime
     public async Task Create_WithNonEligibilityCriteria_BypassesThem()
     {
         var f = await SeedFixtureAsync(withEligibilityFlagRule: false);
-        var service = new CreateManualAssignmentService(_db, _notification, _clock);
+        var service = new CreateManualAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
 
         // The duty has a Role=Steward rule. Neither member holds
         // Steward. Manual assignment bypasses it. §17.1 B1.
@@ -365,7 +366,7 @@ public class CreateManualAssignmentTests : IAsyncLifetime
     public async Task Create_WithMissingReferents_Fails()
     {
         var f = await SeedFixtureAsync();
-        var service = new CreateManualAssignmentService(_db, _notification, _clock);
+        var service = new CreateManualAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
 
         var missingMember = await service.RunAsync(new CreateManualAssignmentCommand
         {
@@ -394,7 +395,7 @@ public class CreateManualAssignmentTests : IAsyncLifetime
     public async Task Create_DoesNotEnforceSlotCapacity()
     {
         var f = await SeedFixtureAsync();
-        var service = new CreateManualAssignmentService(_db, _notification, _clock);
+        var service = new CreateManualAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
 
         // Fill the slot via 12.0 (first assignment).
         var first = await service.RunAsync(new CreateManualAssignmentCommand

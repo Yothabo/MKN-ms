@@ -31,15 +31,18 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
     private readonly MknDbContext _db;
     private readonly IDispatchNotificationService _notification;
     private readonly TimeProvider _clock;
+    private readonly IOccurrenceLockService _occurrenceLock;
 
     public GenerateAssignmentService(
         MknDbContext db,
         IDispatchNotificationService notification,
-        TimeProvider clock)
+        TimeProvider clock,
+        IOccurrenceLockService occurrenceLock)
     {
         _db = db;
         _notification = notification;
         _clock = clock;
+        _occurrenceLock = occurrenceLock;
     }
 
     public async Task<GenerateAssignmentResult> RunAsync(
@@ -129,6 +132,20 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
                     globalRegisterEnabled,
                     cancellationToken);
 
+                if (outcome.ContentionDetail is not null)
+                {
+                    return new GenerateAssignmentResult
+                    {
+                        Status = "Failure",
+                        OccurrencesProcessed = 0,
+                        AssignmentsCreated = 0,
+                        DutiesFullyFilled = 0,
+                        DutiesPartiallyFilled = 0,
+                        DutiesUnfilled = 0,
+                        ErrorDetail = outcome.ContentionDetail,
+                    };
+                }
+
                 totalCreated += outcome.AssignmentsCreated;
 
                 // The unit of fill is the duty. Each duty contributes one
@@ -215,7 +232,8 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
 
     private sealed record OccurrenceFillOutcome(
         IReadOnlyList<DutyFillOutcome> Duties,
-        int AssignmentsCreated);
+        int AssignmentsCreated,
+        string? ContentionDetail = null);
 
     private async Task<OccurrenceFillOutcome> FillOccurrenceAsync(
         ServiceOccurrence occurrence,
@@ -223,6 +241,21 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
         bool globalRegisterEnabled,
         CancellationToken cancellationToken)
     {
+        // B6: serialize every writer that can change this occurrence's
+        // slot occupancy. 5.0, 7.0's re-resolution, and 12.0 all
+        // acquire the same lock. Contention yields a Failure rather
+        // than a silent overfill.
+        await using var lease = await _occurrenceLock.TryAcquireAsync(
+            occurrence.OccurrenceId, cancellationToken);
+
+        if (lease is null)
+        {
+            return new OccurrenceFillOutcome(
+                Array.Empty<DutyFillOutcome>(),
+                0,
+                $"Another writer is filling occurrence {occurrence.OccurrenceId}.");
+        }
+
         // Effective duty list: inherited from ServiceDefinitionDuty, then
         // adjusted by ServiceOccurrenceDuty overrides (Added / Removed,
         // RequiredSlotCount override).

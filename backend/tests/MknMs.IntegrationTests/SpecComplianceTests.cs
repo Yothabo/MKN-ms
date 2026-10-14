@@ -11,6 +11,7 @@ using MknMs.Domain.D6_Eligibility;
 using MknMs.Domain.D7_RosterAssignment;
 using MknMs.Domain.D8_AttendanceRecord;
 using MknMs.Persistence;
+using MknMs.Application.Common;
 using Xunit;
 
 namespace MknMs.IntegrationTests;
@@ -184,7 +185,7 @@ public class SpecComplianceTests : IAsyncLifetime
         });
         await _db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = occurrenceId,
@@ -219,7 +220,7 @@ public class SpecComplianceTests : IAsyncLifetime
         });
         await _db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
         await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = occurrenceId,
@@ -320,7 +321,7 @@ public class SpecComplianceTests : IAsyncLifetime
         });
         await _db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
         await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = occurrenceId,
@@ -369,7 +370,7 @@ public class SpecComplianceTests : IAsyncLifetime
         });
         await _db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock);
+        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
         await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = occurrenceId,

@@ -11,6 +11,7 @@ using MknMs.Domain.D4_Member;
 using MknMs.Domain.D6_Eligibility;
 using MknMs.Domain.D7_RosterAssignment;
 using MknMs.Persistence;
+using MknMs.Application.Common;
 using Xunit;
 
 namespace MknMs.IntegrationTests;
@@ -317,7 +318,7 @@ public class ManageConfirmationTests : IAsyncLifetime
     public async Task Confirm_TransitionsToInitialStatusWithoutReplacement()
     {
         var fixture = await SeedFixtureAsync();
-        var service = new ManageConfirmationService(_db, _notification, _clock);
+        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db));
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
@@ -342,7 +343,7 @@ public class ManageConfirmationTests : IAsyncLifetime
     public async Task Decline_WithTerminalStatus_AndCandidateAvailable_CreatesReplacement()
     {
         var fixture = await SeedFixtureAsync();
-        var service = new ManageConfirmationService(_db, _notification, _clock);
+        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db));
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
@@ -386,7 +387,7 @@ public class ManageConfirmationTests : IAsyncLifetime
         _db.Eligibilities.RemoveRange(danaEligibility);
         await _db.SaveChangesAsync();
 
-        var service = new ManageConfirmationService(_db, _notification, _clock);
+        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db));
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
@@ -421,7 +422,7 @@ public class ManageConfirmationTests : IAsyncLifetime
         });
         await _db.SaveChangesAsync();
 
-        var service = new ManageConfirmationService(_db, _notification, _clock);
+        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db));
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
@@ -447,7 +448,7 @@ public class ManageConfirmationTests : IAsyncLifetime
         assignment.CreatedAt = _clock.GetUtcNow().AddHours(-72);
         await _db.SaveChangesAsync();
 
-        var service = new ManageConfirmationService(_db, _notification, _clock);
+        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db));
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
@@ -467,7 +468,7 @@ public class ManageConfirmationTests : IAsyncLifetime
     public async Task Sweep_WithAssignmentInsideWindow_DoesNotTransition()
     {
         var fixture = await SeedFixtureAsync();
-        var service = new ManageConfirmationService(_db, _notification, _clock);
+        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db));
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
@@ -487,7 +488,7 @@ public class ManageConfirmationTests : IAsyncLifetime
     public async Task Confirm_WithoutInitialStatusSetting_Fails()
     {
         var fixture = await SeedFixtureAsync(includeInitialStatusSetting: false);
-        var service = new ManageConfirmationService(_db, _notification, _clock);
+        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db));
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
@@ -509,7 +510,7 @@ public class ManageConfirmationTests : IAsyncLifetime
         _db.SystemSettings.Remove(setting);
         await _db.SaveChangesAsync();
 
-        var service = new ManageConfirmationService(_db, _notification, _clock);
+        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db));
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
@@ -525,7 +526,7 @@ public class ManageConfirmationTests : IAsyncLifetime
     public async Task Run_WithInvalidCommand_Fails()
     {
         await SeedFixtureAsync();
-        var service = new ManageConfirmationService(_db, _notification, _clock);
+        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db));
 
         // Confirm without an AssignmentId is invalid.
         var result = await service.RunAsync(new ManageConfirmationCommand
@@ -550,7 +551,7 @@ public class ManageConfirmationTests : IAsyncLifetime
         setting.Value = fixture.ProposedStatusId.ToString();
         await _db.SaveChangesAsync();
 
-        var service = new ManageConfirmationService(_db, _notification, _clock);
+        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db));
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {

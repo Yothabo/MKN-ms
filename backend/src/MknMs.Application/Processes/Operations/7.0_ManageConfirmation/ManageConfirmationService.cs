@@ -54,15 +54,18 @@ public sealed class ManageConfirmationService : IManageConfirmationService
     private readonly MknDbContext _db;
     private readonly IDispatchNotificationService _notification;
     private readonly TimeProvider _clock;
+    private readonly IOccurrenceLockService _occurrenceLock;
 
     public ManageConfirmationService(
         MknDbContext db,
         IDispatchNotificationService notification,
-        TimeProvider clock)
+        TimeProvider clock,
+        IOccurrenceLockService occurrenceLock)
     {
         _db = db;
         _notification = notification;
         _clock = clock;
+        _occurrenceLock = occurrenceLock;
     }
 
     public async Task<ManageConfirmationResult> RunAsync(
@@ -443,6 +446,17 @@ public sealed class ManageConfirmationService : IManageConfirmationService
     {
         var occurrenceId = terminalAssignment.OccurrenceId;
         var dutyId = terminalAssignment.DutyId;
+
+        // B6: re-resolution changes slot occupancy, so it participates
+        // in the same lock as 5.0 and 12.0. Contention leaves the slot
+        // vacant; a later sweep retries.
+        await using var lease = await _occurrenceLock.TryAcquireAsync(
+            occurrenceId, cancellationToken);
+
+        if (lease is null)
+        {
+            return false;
+        }
 
         // The duty's effective required slot count. If the occurrence
         // does not carry this duty, re-resolution is skipped — there is
