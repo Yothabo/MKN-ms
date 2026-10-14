@@ -16,21 +16,25 @@ namespace MknMs.Infrastructure.Scheduling;
 /// the process's view of "today" and the scheduler's trigger timezone
 /// derived from the same configuration value.
 ///
-/// Four processes have a scheduled trigger per §16's trigger summary:
+/// Six processes have a scheduled trigger per §16's trigger summary:
 ///
 ///   - 11.0: daily. §7 says "daily, a fixed frequency, not
-///     administrator-configurable." The hour is an implementation
-///     choice; 02:00 in the application timezone runs the pipeline
-///     before the day begins.
+///     administrator-configurable." 02:00 in the application timezone
+///     runs the pipeline before the day begins.
 ///   - 5.0: §10 says "a recurring run." Daily at 03:00, one hour after
 ///     materialization, fills the occurrences that were just created.
 ///   - 7.0: §11 says the check "runs periodically." Hourly.
-///   - 10.0: §12 says the sweep runs "periodically." Hourly.
+///   - 10.0: §12 says the sweep runs "periodically." Hourly at :30.
+///   - 13.0: §13.6 says the engine "runs on a configured schedule."
+///     Daily at 04:00.
+///   - 9.0 Path 2: the authority-notification sweep. §14.1.3 names it
+///     as a scheduled trigger of 9.0, not an invocation. Hourly at
+///     :15, between 7.0's :00 sweep and 10.0's :30 sweep.
 ///
-/// All four use [DisallowConcurrentExecution] on their job classes so
+/// All six use [DisallowConcurrentExecution] on their job classes so
 /// Quartz never runs two instances of the same job at once.
 ///
-/// Specification: §7, §10, §11, §12, §16.
+/// Specification: §7, §10, §11, §12, §13.6, §14.1.3, §16.
 /// </remarks>
 public static class QuartzSchedulerRegistration
 {
@@ -44,6 +48,7 @@ public static class QuartzSchedulerRegistration
     public const string ConfirmationTimeoutCron = "0 0 * * * ?";
     public const string FillStatusSweepCron = "0 30 * * * ?";
     public const string AttendanceRuleCron = "0 0 4 * * ?";
+    public const string AuthorityNotificationCron = "0 15 * * * ?";
 
     public static IServiceCollection AddMknScheduledJobs(
         this IServiceCollection services,
@@ -90,6 +95,14 @@ public static class QuartzSchedulerRegistration
                 .ForJob(attendanceKey)
                 .WithIdentity($"{nameof(AttendanceRuleEngineJob)}-trigger")
                 .WithCronSchedule(AttendanceRuleCron, cron => cron.InTimeZone(timeZone)));
+
+            // 9.0 Path 2 — authority-notification sweep, hourly at :15.
+            var authorityKey = new JobKey(nameof(AuthorityNotificationSweepJob));
+            q.AddJob<AuthorityNotificationSweepJob>(opts => opts.WithIdentity(authorityKey));
+            q.AddTrigger(opts => opts
+                .ForJob(authorityKey)
+                .WithIdentity($"{nameof(AuthorityNotificationSweepJob)}-trigger")
+                .WithCronSchedule(AuthorityNotificationCron, cron => cron.InTimeZone(timeZone)));
         });
 
         services.AddQuartzHostedService(opts =>
