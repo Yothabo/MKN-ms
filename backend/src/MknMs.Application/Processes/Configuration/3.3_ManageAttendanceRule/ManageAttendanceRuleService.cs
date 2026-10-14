@@ -133,13 +133,16 @@ public sealed class ManageAttendanceRuleService : IManageAttendanceRuleService
 
     private readonly MknDbContext _db;
     private readonly IConfigurationLifecycleService _lifecycle;
+    private readonly IConfigurationCascadeService _cascade;
 
     public ManageAttendanceRuleService(
         MknDbContext db,
-        IConfigurationLifecycleService lifecycle)
+        IConfigurationLifecycleService lifecycle,
+        IConfigurationCascadeService cascade)
     {
         _db = db;
         _lifecycle = lifecycle;
+        _cascade = cascade;
     }
 
     public async Task<IReadOnlyList<AttendanceRule>> ListAsync(
@@ -386,13 +389,23 @@ public sealed class ManageAttendanceRuleService : IManageAttendanceRuleService
                     "The consequences of this soft delete must be acknowledged."));
         }
 
+        var cascade = await _cascade.ApplyAsync(
+            nameof(AttendanceRule), ruleId, cancellationToken);
+        if (!cascade.IsSuccess)
+        {
+            return ConfigurationResult<AttendanceRule>.Failure(cascade.Error!);
+        }
+
+        if (cascade.Value!.IsBlocked)
+        {
+            return ConfigurationResult<AttendanceRule>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.LifecycleViolation,
+                    cascade.Value.BlockedReason ?? "Soft delete is blocked."));
+        }
+
         entity.IsDeleted = true;
         entity.IsActive = false;
-
-        var scopes = await _db.AttendanceRuleScopes
-            .Where(s => s.AttendanceRuleId == ruleId)
-            .ToListAsync(cancellationToken);
-        _db.AttendanceRuleScopes.RemoveRange(scopes);
 
         var audit = await _lifecycle.RecordAsync(new ConfigurationLifecycleEvent
         {
@@ -401,6 +414,7 @@ public sealed class ManageAttendanceRuleService : IManageAttendanceRuleService
             EntityName = entity.Name,
             Action = ConfigurationLifecycleActions.SoftDelete,
             Reason = reason,
+            ConsequencesText = cascade.Value.ConsequencesText,
             InitiatedByAdminId = actingAdminId,
             ApprovedByAdminId = approvedByAdminId,
         }, cancellationToken);

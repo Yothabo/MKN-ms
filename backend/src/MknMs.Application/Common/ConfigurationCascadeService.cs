@@ -138,6 +138,9 @@ public sealed class ConfigurationCascadeService : IConfigurationCascadeService
             case nameof(PermissionTier):
                 return await ApplyPermissionTierCascadeAsync(entityId, cancellationToken);
 
+            case nameof(AttendanceRule):
+                return await ApplyAttendanceRuleCascadeAsync(entityId, cancellationToken);
+
             default:
                 return ConfigurationResult<CascadeOutcome>.Success(
                     CascadeOutcome.Applied("No dependent changes apply."));
@@ -923,4 +926,36 @@ public sealed class ConfigurationCascadeService : IConfigurationCascadeService
     private static ConfigurationResult<CascadeOutcome> NoDependents() =>
         ConfigurationResult<CascadeOutcome>.Success(
             CascadeOutcome.Applied("No dependent changes apply."));
+
+    // -----------------------------------------------------------------
+    // AttendanceRule cascade (§9.7 row)
+    //
+    // Soft delete removes the rule's AttendanceRuleScope rows. The
+    // rule row itself is retained. Deactivate and Disable do not
+    // invoke this rule — they leave scope rows in place.
+    // -----------------------------------------------------------------
+
+    private async Task<ConfigurationResult<CascadeOutcome>> ApplyAttendanceRuleCascadeAsync(
+        int ruleId,
+        CancellationToken cancellationToken)
+    {
+        var rule = await _db.AttendanceRules
+            .FirstOrDefaultAsync(r => r.AttendanceRuleId == ruleId, cancellationToken);
+        if (rule is null)
+        {
+            return ConfigurationResult<CascadeOutcome>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.NotFound,
+                    $"AttendanceRule {ruleId} does not exist."));
+        }
+
+        var scopes = await _db.AttendanceRuleScopes
+            .Where(s => s.AttendanceRuleId == ruleId)
+            .ToListAsync(cancellationToken);
+        _db.AttendanceRuleScopes.RemoveRange(scopes);
+
+        var text = $"{scopes.Count} Attendance Rule Scope row(s) removed.";
+        return ConfigurationResult<CascadeOutcome>.Success(
+            CascadeOutcome.Applied(text));
+    }
 }
