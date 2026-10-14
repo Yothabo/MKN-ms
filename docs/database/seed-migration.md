@@ -14,20 +14,21 @@ The strategy is a rewrite, not a patch. The existing scripts reflect the pre-ame
 
 ## The current seed scripts
 
-Two scripts exist at the freeze commit:
+Three scripts exist now:
 
-- `backend/scripts/seed-development.sql` — the minimal configuration to exercise the configuration layer and 11.0.
-- `backend/scripts/seed-assignment.sql` — the additional configuration to exercise 5.0's duty-rule evaluation.
+- `backend/scripts/seed-vocabulary.sql` — D10 lookups, MemberStatus, Role, Duty, Branch, BranchTimeSlot, ServiceDefinition, ServiceDefinitionDuty, ServiceSchedule, and every SystemSetting key. Also carries three guarded backfills that set the default Role, MemberStatus and PermissionTier.
+- `backend/scripts/seed-membership.sql` — Member, Admin.
+- `backend/scripts/seed-operations.sql` — DutyRule, Eligibility.
 
-Both are idempotent. Both use `NOT EXISTS` guards on natural keys. Both reflect the pre-amendment schema:
+The three-file split replaces the two files that existed at the
+freeze commit:
 
-- No `MemberStatus` rows.
-- No `AttributeType` or `MemberAttributeValue` rows.
-- No `EventBranch` rows.
-- `EventDuty` rows with `Label` rather than `DutyID`.
-- `Member` rows with `IsActive` rather than `MemberStatusID`.
-- No settings for the new amendment keys (`DeclinedStatusID`, `TimedOutStatusID`, `YouthAgeMin`, `YouthAgeMax`, the attendance register scope).
-- No `AttendanceRule` rows.
+- `seed-development.sql` (removed) — the pre-amendment minimal
+  configuration.
+- `seed-assignment.sql` (removed) — the pre-amendment duty-rule
+  evaluation data.
+
+Both pre-amendment files reflected a schema that no longer exists — the columns Member.IsActive, Event.Location and EventDuty.Label have been removed. Their content is superseded by the three current scripts.
 
 ---
 

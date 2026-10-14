@@ -171,4 +171,56 @@ The OpenAPI document is a byproduct of the adapter's implementation. It is not a
 
 ---
 
-*Source: System Design Specification §16; `docs/processes/contracts.md`; `docs/database/errors.md`; the freeze commit's endpoint inventory.*
+## Since the freeze
+
+The sections above describe the adapter contract at the freeze
+commit. Implementation has continued since, and two groups of
+endpoints have been added. They are recorded here so a reader
+does not confuse the freeze-time inventory with the current one.
+The authoritative current list of routes lives in the endpoint
+sources under `backend/src/MknMs.Api/Endpoints/`; the routes below
+are named for orientation, not as a second specification.
+
+### 13.0 Attendance Rule Engine — manual invocation
+
+At the freeze commit 13.0 had no HTTP surface. Its manual
+single-rule invocation is now exposed:
+
+    POST /api/processes/13.0/manual
+
+The route takes a body naming the rule and the acting admin. The
+scheduled run of 13.0 remains trigger-only and has no HTTP surface.
+
+### Configuration soft-delete endpoints
+
+The freeze commit exposed deactivation for configuration entities
+but not soft delete. Soft delete now has its own route per
+soft-deletable entity, under the same process prefixes the freeze
+commit used:
+
+    POST /api/config/1.0/roles/{id}/soft-delete
+    POST /api/config/1.0/duties/{id}/soft-delete
+    POST /api/config/1.0/branches/{id}/soft-delete
+    POST /api/config/1.0/time-slots/{id}/soft-delete
+    POST /api/config/1.0/service-definitions/{id}/soft-delete
+    POST /api/config/1.0/service-schedules/{id}/soft-delete
+    POST /api/config/3.3/attendance-rules/{id}/soft-delete
+    POST /api/config/3.4/member-statuses/{id}/soft-delete
+    POST /api/config/3.5/attribute-types/{id}/soft-delete
+    POST /api/config/3.6/outcome-states/{id}/soft-delete
+    POST /api/config/3.6/assignment-statuses/{id}/soft-delete
+    POST /api/config/3.6/time-of-days/{id}/soft-delete
+    POST /api/config/3.6/service-types/{id}/soft-delete
+    POST /api/config/3.6/permission-tiers/{id}/soft-delete
+    POST /api/config/8.0/events/{id}/soft-delete
+
+Every soft-delete route takes a `LifecycleActionRequest` body
+naming the acting admin, the approving admin, a boolean
+acknowledgement, and an optional reason. The response follows the
+same envelope as the deactivation routes.
+
+The freeze-commit sections above remain historically accurate:
+they describe what the adapter looked like at the freeze.
+
+*Source: post-freeze endpoint sources; System Design Specification
+§9.7, §13.6, §16.*
