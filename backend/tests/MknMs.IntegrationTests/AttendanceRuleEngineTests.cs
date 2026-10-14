@@ -422,6 +422,29 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
         result.NotificationsDispatched.Should().Be(2);
     }
 
+    [Fact]
+    public async Task SetStatus_OnMemberAlreadyInTargetStatus_StateUnchanged()
+    {
+        // The member is already in the target status. The rule fires
+        // and the engine applies the write; the resulting state is
+        // unchanged. The counter records the write, not the
+        // difference. §13.6.
+        var f = await SeedAsync();
+        await AddRuleAsync("absent", "AbsenceDays", "90", "SetStatus", f.DefaultStatusId);
+
+        var service = new AttendanceRuleEngineService(_db, _notification, _clock);
+        var result = await service.RunAsync(new AttendanceRuleEngineCommand
+        {
+            TriggerType = "Scheduled",
+        });
+
+        result.Status.Should().Be("Success");
+        result.StatusChangesApplied.Should().Be(1);
+
+        var member = await _db.Members.FirstAsync();
+        member.MemberStatusId.Should().Be(f.DefaultStatusId);
+    }
+
     // -----------------------------------------------------------------
     // Idempotency (B10)
     // -----------------------------------------------------------------
@@ -564,6 +587,38 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
         member.MemberStatusId.Should().Be(f.DefaultStatusId);
     }
 
+    [Fact]
+    public async Task ManualInvocation_TwiceSameDay_OutcomeAppliedTwice()
+    {
+        // §13.6: repeat invocation applies the outcome again; the
+        // engine does not maintain per-rule execution history.
+        var f = await SeedAsync();
+        var ruleId = await AddRuleAsync("manual", "Manual", null, "SetStatus", f.OtherStatusId);
+
+        var service = new AttendanceRuleEngineService(_db, _notification, _clock);
+
+        var first = await service.RunAsync(new AttendanceRuleEngineCommand
+        {
+            TriggerType = "Manual",
+            RuleId = ruleId,
+            ActingAdminId = f.AdminId,
+        });
+        var second = await service.RunAsync(new AttendanceRuleEngineCommand
+        {
+            TriggerType = "Manual",
+            RuleId = ruleId,
+            ActingAdminId = f.AdminId,
+        });
+
+        first.Status.Should().Be("Success");
+        first.StatusChangesApplied.Should().Be(1);
+        second.Status.Should().Be("Success");
+        second.StatusChangesApplied.Should().Be(1);
+
+        var member = await _db.Members.FirstAsync();
+        member.MemberStatusId.Should().Be(f.OtherStatusId);
+    }
+
     // -----------------------------------------------------------------
     // ReadmissionCount
     // -----------------------------------------------------------------
@@ -651,6 +706,40 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
 
         result.Status.Should().Be("Success");
         result.StatusChangesApplied.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Engine_DoesNotWriteReadmission()
+    {
+        // §13.6: the engine reads Readmission and never writes it.
+        // 3.0 owns Readmission creation.
+        var f = await SeedAsync();
+
+        _db.Readmissions.Add(new Readmission
+        {
+            MemberId = f.MemberId,
+            ReadmissionDate = new DateOnly(2025, 1, 1),
+            PerformedByAdminId = f.AdminId,
+            Reason = null,
+        });
+        await _db.SaveChangesAsync();
+
+        var before = await _db.Readmissions.CountAsync();
+        before.Should().Be(1);
+
+        await AddRuleAsync("readmit", "ReadmissionCount", "1", "SetStatus", f.OtherStatusId);
+
+        var service = new AttendanceRuleEngineService(_db, _notification, _clock);
+        var result = await service.RunAsync(new AttendanceRuleEngineCommand
+        {
+            TriggerType = "Scheduled",
+        });
+
+        result.Status.Should().Be("Success");
+        result.StatusChangesApplied.Should().Be(1);
+
+        var after = await _db.Readmissions.CountAsync();
+        after.Should().Be(before);
     }
 
     // -----------------------------------------------------------------
