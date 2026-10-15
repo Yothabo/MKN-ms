@@ -38,6 +38,12 @@ namespace MknMs.Application.Processes.Operations.ManageConfirmation;
 /// sent, because the service has already happened. This compares dates
 /// only, using the same resolver the materializer uses.
 ///
+/// Concurrency: the respond path and each sweep iteration take the
+/// occurrence-level advisory lock before the capacity check, the
+/// status write, and any re-resolution. The lock is the same one 5.0
+/// and 12.0 use. Contention returns a Failure naming the occurrence;
+/// the caller retries. §10.3, §11.3, B6.
+///
 /// Invokes 9.0 Dispatch Notification on each replacement created.
 /// Fire-and-forget: the notification's success or failure does not
 /// affect the replacement's existence.
@@ -195,6 +201,44 @@ public sealed class ManageConfirmationService : IManageConfirmationService
         {
             throw new EntityNotFoundException(nameof(RosterAssignment), assignmentId);
         }
+
+        // B6, §10.3, §11.3: participate in the same occurrence-level
+        // lock 5.0 and 12.0 use. The lock is held across the B3
+        // capacity check, the status write, and any re-resolution, so
+        // the whole respond operation for this occurrence is
+        // serialized against concurrent writers. Contention returns a
+        // Failure naming the occurrence; the caller retries.
+        await using var lease = await _occurrenceLock.TryAcquireAsync(
+            assignment.OccurrenceId, cancellationToken);
+
+        if (lease is null)
+        {
+            return new ManageConfirmationResult
+            {
+                Status = "Failure",
+                AssignmentsTransitioned = 0,
+                ReplacementsCreated = 0,
+                SlotsLeftVacant = 0,
+                ErrorDetail =
+                    $"Another writer is filling occurrence {assignment.OccurrenceId}. "
+                    + "Retry the confirmation response.",
+            };
+        }
+
+        return await ApplyResponseUnderLockAsync(
+            assignment, targetStatus, cancellationToken);
+    }
+
+    /// <summary>
+    /// The body of a respond operation. Assumes the caller holds the
+    /// occurrence-level advisory lock for the assignment's occurrence.
+    /// </summary>
+    private async Task<ManageConfirmationResult> ApplyResponseUnderLockAsync(
+        RosterAssignment assignment,
+        AssignmentStatus targetStatus,
+        CancellationToken cancellationToken)
+    {
+        var assignmentId = assignment.AssignmentId;
 
         // §11.3 capacity invariant applied to a sequential transition.
         // §11.1.3 permits any transition, so this is not a state-machine
@@ -392,6 +436,22 @@ public sealed class ManageConfirmationService : IManageConfirmationService
         {
             var assignment = item.Assignment;
 
+            // B6, §10.3, §11.3: each sweep iteration takes the
+            // occurrence-level lock before its transition and any
+            // re-resolution, so the sweep is serialized against
+            // concurrent writers on the same occurrence. Contention
+            // leaves the assignment NULL; the next sweep picks it up.
+            await using var lease = await _occurrenceLock.TryAcquireAsync(
+                assignment.OccurrenceId, cancellationToken);
+
+            if (lease is null)
+            {
+                // Another writer holds the occurrence. The transition
+                // is not recorded; the assignment stays NULL and
+                // past its timeout, so the next sweep retries it.
+                continue;
+            }
+
             assignment.AssignmentStatusId = targetStatus.AssignmentStatusId;
             await _db.SaveChangesAsync(cancellationToken);
             transitions++;
@@ -442,6 +502,11 @@ public sealed class ManageConfirmationService : IManageConfirmationService
     /// §11.1.7: the candidate set excludes any member who has held a
     /// terminal assignment on this specific slot. That is derived from
     /// existing RosterAssignment rows — no new field or table.
+    ///
+    /// The caller must hold the occurrence-level advisory lock for the
+    /// assignment's occurrence. Re-resolution no longer acquires the
+    /// lock itself; the lock is held across the transition and the
+    /// re-resolution as one critical section.
     /// </remarks>
     private async Task<bool> ReResolveAsync(
         RosterAssignment terminalAssignment,
@@ -450,17 +515,6 @@ public sealed class ManageConfirmationService : IManageConfirmationService
     {
         var occurrenceId = terminalAssignment.OccurrenceId;
         var dutyId = terminalAssignment.DutyId;
-
-        // B6: re-resolution changes slot occupancy, so it participates
-        // in the same lock as 5.0 and 12.0. Contention leaves the slot
-        // vacant; a later sweep retries.
-        await using var lease = await _occurrenceLock.TryAcquireAsync(
-            occurrenceId, cancellationToken);
-
-        if (lease is null)
-        {
-            return false;
-        }
 
         // The duty's effective required slot count. If the occurrence
         // does not carry this duty, re-resolution is skipped — there is

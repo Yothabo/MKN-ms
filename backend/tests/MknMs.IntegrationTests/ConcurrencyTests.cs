@@ -473,4 +473,96 @@ public class ConcurrencyTests : IAsyncLifetime
                 + "live assignment regardless of which writer created it");
         }
     }
+
+    [Fact]
+    public async Task RespondAnd5_0_Concurrent_CapacityHolds()
+    {
+        // B6, §11.3: the respond path takes the occurrence lock before
+        // its B3 capacity check and its status write. This test runs
+        // the respond path in parallel with 5.0 against the same
+        // occurrence and asserts two things per iteration:
+        //
+        //   - the committed non-terminal count never exceeds the
+        //     required slot count of 1;
+        //   - a respond operation that lost the lock did not partially
+        //     commit its transition — the assignment's status is
+        //     unchanged.
+        for (var iteration = 0; iteration < Iterations; iteration++)
+        {
+            await using var seedDb = MakeContext();
+            await ResetDatabaseAsync(seedDb);
+            var f = await SeedFixtureAsync(seedDb);
+
+            // Seed M1 with a non-terminal assignment on the slot. The
+            // slot is full.
+            var existing = new RosterAssignment
+            {
+                MemberId = f.MemberOneId,
+                DutyId = f.DutyId,
+                OccurrenceId = f.OccurrenceId,
+                AssignmentStatusId = null,
+                ApprovedBy = null,
+                AssignmentSource = "Automatic",
+                AssignedBy = null,
+                CreatedAt = Now,
+            };
+            seedDb.RosterAssignments.Add(existing);
+            await seedDb.SaveChangesAsync();
+
+            var existingAssignmentId = existing.AssignmentId;
+
+            await using var dbA = MakeContext();
+            await using var dbB = MakeContext();
+
+            var notification = new FakeDispatchNotificationService();
+
+            var generator = new GenerateAssignmentService(
+                dbA, notification, MakeClock(), new OccurrenceLockService(dbA),
+                NullLogger<GenerateAssignmentService>.Instance);
+            var confirmation = new ManageConfirmationService(
+                dbB, notification, MakeClock(), new OccurrenceLockService(dbB),
+                NullLogger<ManageConfirmationService>.Instance);
+
+            // Task A: decline M1. The respond path acquires the shared
+            // lock before its B3 check and its status write.
+            var declineTask = confirmation.RunAsync(new ManageConfirmationCommand
+            {
+                Operation = ManageConfirmationOperation.Decline,
+                AssignmentId = existingAssignmentId,
+            });
+
+            // Task B: 5.0 concurrently fills the occurrence. It
+            // acquires the same lock.
+            var generateTask = generator.RunAsync(new GenerateAssignmentCommand
+            {
+                OccurrenceId = f.OccurrenceId,
+            });
+
+            await Task.WhenAll(declineTask, generateTask);
+            var declineResult = await declineTask;
+
+            await using var readDb = MakeContext();
+            var liveCount = await CountNonTerminalAsync(
+                readDb, f.OccurrenceId, f.DutyId);
+
+            liveCount.Should().BeLessThanOrEqualTo(1,
+                $"iteration {iteration}: the committed non-terminal count "
+                + "must never exceed the required slot count of 1");
+
+            // No partial commit: a decline that failed on lock
+            // contention left M1's assignment untouched.
+            if (declineResult.Status == "Failure"
+                && declineResult.ErrorDetail is not null
+                && declineResult.ErrorDetail.Contains("Another writer is filling occurrence"))
+            {
+                var after = await readDb.RosterAssignments
+                    .AsNoTracking()
+                    .FirstAsync(a => a.AssignmentId == existingAssignmentId);
+
+                after.AssignmentStatusId.Should().BeNull(
+                    $"iteration {iteration}: a respond that lost the lock "
+                    + "must not have transitioned the assignment");
+            }
+        }
+    }
 }
