@@ -14,11 +14,6 @@ namespace MknMs.IntegrationTests;
 /// <summary>
 /// Tests for ConfigurationCascadeService.
 /// </summary>
-/// <remarks>
-/// Covers the two rules implemented in E4a: Role and Duty. The
-/// remaining rules land with their entities' soft-delete methods in
-/// E4b–E4n.
-/// </remarks>
 public class ConfigurationCascadeServiceTests : IAsyncLifetime
 {
     private const string TestConnectionString =
@@ -199,15 +194,16 @@ public class ConfigurationCascadeServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task UnknownEntityType_NoCascade()
+    public async Task UnknownEntityType_Fails()
     {
         await SeedBasicsAsync();
 
         var service = new ConfigurationCascadeService(_db);
         var result = await service.ApplyAsync("SomethingElse", 1);
 
-        result.IsSuccess.Should().BeTrue();
-        result.Value!.IsBlocked.Should().BeFalse();
+        result.IsSuccess.Should().BeFalse();
+        result.Error!.Code.Should().Be(ConfigurationErrorCodes.InvalidValue);
+        result.Error.Message.Should().Contain("SomethingElse");
     }
 
     [Fact]

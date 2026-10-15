@@ -142,8 +142,11 @@ public sealed class ConfigurationCascadeService : IConfigurationCascadeService
                 return await ApplyAttendanceRuleCascadeAsync(entityId, cancellationToken);
 
             default:
-                return ConfigurationResult<CascadeOutcome>.Success(
-                    CascadeOutcome.Applied("No dependent changes apply."));
+                return ConfigurationResult<CascadeOutcome>.Failure(
+                    new ConfigurationError(
+                        ConfigurationErrorCodes.InvalidValue,
+                        $"Unknown entity type '{entityType}'. The cascade "
+                        + "cannot proceed; add an explicit arm for this type."));
         }
     }
 
