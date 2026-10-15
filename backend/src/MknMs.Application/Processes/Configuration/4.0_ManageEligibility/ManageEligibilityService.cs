@@ -139,6 +139,13 @@ public sealed class ManageEligibilityService : IManageEligibilityService
                     "Granting admin does not exist."));
         }
 
+        if (!admin.IsActive)
+        {
+            return ConfigurationResult<Eligibility>.Failure(
+                new ConfigurationError(ConfigurationErrorCodes.ReferencedEntityInactive,
+                    "Granting admin is not active."));
+        }
+
         var entity = new Eligibility
         {
             MemberId = memberId,

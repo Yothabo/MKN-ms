@@ -206,4 +206,31 @@ public class ManageProgramItemServiceTests : IAsyncLifetime
         second.IsSuccess.Should().BeFalse();
         second.Error!.Code.Should().Be(ConfigurationErrorCodes.AlreadyInactive);
     }
+
+    [Fact]
+    public async Task Create_WithInactiveAdmin_Fails()
+    {
+        // C6: the acting admin must resolve to an Admin row whose
+        // IsActive = true.
+        var f = await SeedAsync();
+        var service = MakeService();
+
+        var admin = await _db.Admins.FirstAsync(a => a.AdminId == f.AdminId);
+        admin.IsActive = false;
+        await _db.SaveChangesAsync();
+
+        var program = await _db.Programs.FirstAsync();
+
+        var result = await service.CreateAsync(
+            program.ProgramId,
+            1,
+            "New item",
+            new DateTimeOffset(2026, 11, 1, 9, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 11, 1, 10, 0, 0, TimeSpan.Zero),
+            serviceDefId: null,
+            actingAdminId: f.AdminId);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error!.Code.Should().Be(ConfigurationErrorCodes.ReferencedEntityInactive);
+    }
 }

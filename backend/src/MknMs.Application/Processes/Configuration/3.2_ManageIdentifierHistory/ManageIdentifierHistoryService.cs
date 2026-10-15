@@ -99,6 +99,13 @@ public sealed class ManageIdentifierHistoryService : IManageIdentifierHistorySer
                     "Authorizing admin does not exist."));
         }
 
+        if (!admin.IsActive)
+        {
+            return ConfigurationResult<IdentifierHistory>.Failure(
+                new ConfigurationError(ConfigurationErrorCodes.ReferencedEntityInactive,
+                    "Authorizing admin is not active."));
+        }
+
         var entity = new IdentifierHistory
         {
             MemberId = memberId,

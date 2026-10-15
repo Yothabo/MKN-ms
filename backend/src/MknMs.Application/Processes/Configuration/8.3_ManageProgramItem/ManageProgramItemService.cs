@@ -301,6 +301,12 @@ public sealed class ManageProgramItemService : IManageProgramItemService
                 "Acting administrator does not exist.");
         }
 
+        if (!admin.IsActive)
+        {
+            return new ConfigurationError(ConfigurationErrorCodes.ReferencedEntityInactive,
+                "Acting administrator is not active.");
+        }
+
         if (serviceDefId is int defId)
         {
             var def = await _db.ServiceDefinitions

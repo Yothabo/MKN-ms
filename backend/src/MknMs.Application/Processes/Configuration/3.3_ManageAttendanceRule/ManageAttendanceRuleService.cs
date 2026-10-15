@@ -1,4 +1,3 @@
-
 namespace MknMs.Application.Processes.Configuration.ManageAttendanceRule;
 
 /// <summary>
@@ -541,6 +540,12 @@ public sealed class ManageAttendanceRuleService : IManageAttendanceRuleService
         {
             return new ConfigurationError(ConfigurationErrorCodes.ReferencedEntityMissing,
                 "Acting administrator does not exist.");
+        }
+
+        if (!admin.IsActive)
+        {
+            return new ConfigurationError(ConfigurationErrorCodes.ReferencedEntityInactive,
+                "Acting administrator is not active.");
         }
 
         return null;

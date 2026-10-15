@@ -87,6 +87,11 @@ public sealed class CreateManualAssignmentService : ICreateManualAssignmentServi
                 return Failure($"Admin {command.ActingAdminId} does not exist.");
             }
 
+            if (!admin.IsActive)
+            {
+                return Failure($"Admin {command.ActingAdminId} is not active.");
+            }
+
             if (command.TargetStatusId is int statusId)
             {
                 var statusExists = await _db.AssignmentStatuses

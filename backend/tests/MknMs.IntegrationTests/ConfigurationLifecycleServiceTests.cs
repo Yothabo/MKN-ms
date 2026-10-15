@@ -467,4 +467,39 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
         rolesAfter.Should().Be(rolesBefore);
         policiesAfter.Should().Be(policiesBefore);
     }
+
+    [Fact]
+    public async Task Record_WithInactiveApprover_Fails()
+    {
+        // C6: the approver must resolve to an Admin row whose
+        // IsActive = true.
+        var (initiated, approved) = await SeedAdminsAsync();
+
+        var approver = await _db.Admins.FirstAsync(a => a.AdminId == approved);
+        approver.IsActive = false;
+        await _db.SaveChangesAsync();
+
+        var service = new ConfigurationLifecycleService(_db, _clock);
+        var result = await service.RecordAsync(ValidEvent(initiated, approved));
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error!.Code.Should().Be(ConfigurationErrorCodes.ReferencedEntityInactive);
+    }
+
+    [Fact]
+    public async Task Record_WithNonexistentApprover_Fails_NoTierRequired()
+    {
+        // C6: the approver lookup runs even when no EntityDeletionPolicy
+        // configures a required tier for the operation. An approver id
+        // that names no row is rejected.
+        var (initiated, _) = await SeedAdminsAsync();
+
+        var service = new ConfigurationLifecycleService(_db, _clock);
+        var result = await service.RecordAsync(ValidEvent(
+            initiatedBy: initiated,
+            approvedBy: 9999));
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error!.Code.Should().Be(ConfigurationErrorCodes.ReferencedEntityMissing);
+    }
 }

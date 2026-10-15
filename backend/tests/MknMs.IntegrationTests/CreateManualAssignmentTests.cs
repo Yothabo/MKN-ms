@@ -515,4 +515,34 @@ public class CreateManualAssignmentTests : IAsyncLifetime
         var total = await _db.RosterAssignments.CountAsync();
         total.Should().Be(2);
     }
+
+    [Fact]
+    public async Task Create_WithInactiveAdmin_Fails()
+    {
+        // C6 / §13.6: the acting admin must resolve to an Admin row
+        // whose IsActive = true. An inactive admin is rejected.
+        var f = await SeedFixtureAsync();
+
+        var admin = await _db.Admins.FirstAsync(a => a.AdminId == f.AdminId);
+        admin.IsActive = false;
+        await _db.SaveChangesAsync();
+
+        var service = new CreateManualAssignmentService(
+            _db, _notification, _clock, new OccurrenceLockService(_db));
+
+        var result = await service.RunAsync(new CreateManualAssignmentCommand
+        {
+            MemberId = f.EligibleMemberId,
+            DutyId = f.DutyId,
+            OccurrenceId = f.OccurrenceId,
+            TargetStatusId = null,
+            ActingAdminId = f.AdminId,
+        });
+
+        result.Status.Should().Be("Failure");
+        result.ErrorDetail.Should().Contain("is not active");
+
+        var count = await _db.RosterAssignments.CountAsync();
+        count.Should().Be(0);
+    }
 }

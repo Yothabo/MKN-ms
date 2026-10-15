@@ -1,4 +1,3 @@
-
 namespace MknMs.Application.Common;
 
 /// <summary>
@@ -145,22 +144,32 @@ public sealed class ConfigurationLifecycleService : IConfigurationLifecycleServi
                 + "be supplied.");
         }
 
-        // Approver tier check. The check reads the approver's persisted
-        // Admin row; it does not trust a tier id supplied by the
-        // caller.
+        // Approver resolution. The approver's persisted Admin row is
+        // always read; the service does not trust an id supplied by
+        // the caller. C6: the acting admin must resolve to a row
+        // whose IsActive = true.
+        var approver = await _db.Admins
+            .FirstOrDefaultAsync(a => a.AdminId == lifecycleEvent.ApprovedByAdminId,
+                cancellationToken);
+
+        if (approver is null)
+        {
+            return Failure(
+                ConfigurationErrorCodes.ReferencedEntityMissing,
+                $"Approver {lifecycleEvent.ApprovedByAdminId} does not exist.");
+        }
+
+        if (!approver.IsActive)
+        {
+            return Failure(
+                ConfigurationErrorCodes.ReferencedEntityInactive,
+                $"Approver {lifecycleEvent.ApprovedByAdminId} is not active.");
+        }
+
+        // Approver tier check. Only runs when the entity's policy
+        // configures a required tier for this operation.
         if (requiredTierId is int tierId)
         {
-            var approver = await _db.Admins
-                .FirstOrDefaultAsync(a => a.AdminId == lifecycleEvent.ApprovedByAdminId,
-                    cancellationToken);
-
-            if (approver is null)
-            {
-                return Failure(
-                    ConfigurationErrorCodes.ReferencedEntityMissing,
-                    $"Approver {lifecycleEvent.ApprovedByAdminId} does not exist.");
-            }
-
             if (approver.PermissionTierId != tierId)
             {
                 return Failure(

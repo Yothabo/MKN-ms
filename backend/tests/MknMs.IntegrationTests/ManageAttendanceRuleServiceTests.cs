@@ -254,4 +254,33 @@ public class ManageAttendanceRuleServiceTests : IAsyncLifetime
         result.IsSuccess.Should().BeFalse();
         result.Error!.Code.Should().Be(ConfigurationErrorCodes.ValidationFailed);
     }
+
+    [Fact]
+    public async Task Create_WithInactiveAdmin_Fails()
+    {
+        // C6: the acting admin must resolve to an Admin row whose
+        // IsActive = true.
+        var adminId = await SeedAdminAsync();
+
+        var admin = await _db.Admins.FirstAsync(a => a.AdminId == adminId);
+        admin.IsActive = false;
+        await _db.SaveChangesAsync();
+
+        var service = MakeService();
+
+        var result = await service.CreateAsync(new CreateAttendanceRuleRequest
+        {
+            Name = "rule",
+            TriggerType = "AbsenceDays",
+            TriggerValue = "90",
+            OutcomeType = "Notify",
+            OutcomeStatusId = null,
+            Enabled = true,
+            ScopeCriteria = null,
+            ActingAdminId = adminId,
+        });
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error!.Code.Should().Be(ConfigurationErrorCodes.ReferencedEntityInactive);
+    }
 }
