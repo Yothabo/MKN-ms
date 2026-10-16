@@ -611,16 +611,10 @@ public sealed class ConfigurationCascadeService : IConfigurationCascadeService
                 .Where(i => programIds.Contains(i.ProgramId))
                 .ToListAsync(cancellationToken);
 
-        var programItemIds = programItems.Select(i => i.ItemId).ToList();
-
-        // EventDuty rows referencing any of those ProgramItems. The
-        // EventDuty entity has no EventId; its Event association is
-        // via ProgramItem.Program.
-        var eventDuties = programItemIds.Count == 0
-            ? new List<EventDuty>()
-            : await _db.EventDuties
-                .Where(d => programItemIds.Contains(d.ProgramItemId))
-                .ToListAsync(cancellationToken);
+        // EventDuty rows referencing this Event directly.
+        var eventDuties = await _db.EventDuties
+            .Where(d => d.EventId == eventId)
+            .ToListAsync(cancellationToken);
 
         // Remove in dependency order.
         _db.EventDuties.RemoveRange(eventDuties);
@@ -664,20 +658,9 @@ public sealed class ConfigurationCascadeService : IConfigurationCascadeService
             .Where(i => i.ProgramId == programId)
             .ToListAsync(cancellationToken);
 
-        var itemIds = items.Select(i => i.ItemId).ToList();
-
-        var eventDuties = itemIds.Count == 0
-            ? new List<EventDuty>()
-            : await _db.EventDuties
-                .Where(d => itemIds.Contains(d.ProgramItemId))
-                .ToListAsync(cancellationToken);
-
-        _db.EventDuties.RemoveRange(eventDuties);
         _db.ProgramItems.RemoveRange(items);
 
-        var text =
-            $"{items.Count} Program Item(s) removed; "
-            + $"{eventDuties.Count} Event Duty row(s) removed.";
+        var text = $"{items.Count} Program Item(s) removed.";
 
         return ConfigurationResult<CascadeOutcome>.Success(
             CascadeOutcome.Applied(text));
@@ -704,14 +687,10 @@ public sealed class ConfigurationCascadeService : IConfigurationCascadeService
                     $"ProgramItem {itemId} does not exist."));
         }
 
-        var eventDuties = await _db.EventDuties
-            .Where(d => d.ProgramItemId == itemId)
-            .ToListAsync(cancellationToken);
-        _db.EventDuties.RemoveRange(eventDuties);
-
-        var text = $"{eventDuties.Count} Event Duty row(s) removed.";
+        // ProgramItem has no dependent rows. Its own soft delete is
+        // applied by the calling service.
         return ConfigurationResult<CascadeOutcome>.Success(
-            CascadeOutcome.Applied(text));
+            CascadeOutcome.Applied("No dependent changes apply."));
     }
 
     // -----------------------------------------------------------------

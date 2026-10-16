@@ -50,7 +50,7 @@ public class ManageProgramServiceTests : IAsyncLifetime
         return Task.CompletedTask;
     }
 
-    private sealed record Fixture(int ProgramId, int AdminId, int ItemId, int EventDutyId);
+    private sealed record Fixture(int ProgramId, int AdminId, int ItemId);
 
     private async Task<Fixture> SeedAsync()
     {
@@ -127,17 +127,7 @@ public class ManageProgramServiceTests : IAsyncLifetime
         _db.ProgramItems.Add(item);
         await _db.SaveChangesAsync();
 
-        var eventDuty = new EventDuty
-        {
-            ProgramItemId = item.ItemId,
-            DutyId = duty.DutyId,
-            AssignedMemberId = member.MemberId,
-            IsDeleted = false,
-        };
-        _db.EventDuties.Add(eventDuty);
-        await _db.SaveChangesAsync();
-
-        return new Fixture(program.ProgramId, admin.AdminId, item.ItemId, eventDuty.EventDutyId);
+        return new Fixture(program.ProgramId, admin.AdminId, item.ItemId);
     }
 
     private ManageProgramService MakeService() =>
@@ -146,7 +136,7 @@ public class ManageProgramServiceTests : IAsyncLifetime
             new ConfigurationCascadeService(_db));
 
     [Fact]
-    public async Task SoftDelete_RemovesItemsAndEventDuties_RetainsProgram()
+    public async Task SoftDelete_RemovesItems_RetainsProgram()
     {
         var f = await SeedAsync();
         var service = MakeService();
@@ -156,7 +146,6 @@ public class ManageProgramServiceTests : IAsyncLifetime
 
         result.IsSuccess.Should().BeTrue();
 
-        (await _db.EventDuties.CountAsync()).Should().Be(0);
         (await _db.ProgramItems.CountAsync()).Should().Be(0);
 
         var program = await _db.Programs

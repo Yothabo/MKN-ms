@@ -1,4 +1,3 @@
-
 namespace MknMs.Application.Processes.Configuration.ManageEventDuty;
 
 /// <summary>
@@ -6,39 +5,35 @@ namespace MknMs.Application.Processes.Configuration.ManageEventDuty;
 /// </summary>
 /// <remarks>
 /// Creates, edits, and removes EventDuty rows. An EventDuty is a
-/// requirement on a specific Program Item for a real Duty, with a
-/// required slot count and an optional Service Definition scope.
+/// requirement on a specific Event for a real Duty, with a required
+/// slot count and an optional Service Definition scope.
 ///
 /// DutyId references the Duty table. When ServiceDefId is set, the
 /// duty uses that service's per-service rules on this event; when
-/// null, the duty's global rules apply. AssignmentStatusId is
-/// optional and references the same lookup used by Roster
-/// Assignment.
+/// null, the duty's global rules apply.
 ///
-/// Specification: §4 (Event Duty), §9.1.11, §15.8.10.
+/// Specification: §4 (Event Duty), §9.1.11, §10.1.5, §15.8.10.
 /// </remarks>
 public interface IManageEventDutyService
 {
-    Task<IReadOnlyList<EventDuty>> ListForItemAsync(
-        int programItemId,
+    Task<IReadOnlyList<EventDuty>> ListForEventAsync(
+        int eventId,
         CancellationToken cancellationToken = default);
 
     Task<EventDuty?> GetAsync(int eventDutyId, CancellationToken cancellationToken = default);
 
     Task<ConfigurationResult<EventDuty>> CreateAsync(
-        int programItemId,
+        int eventId,
         int dutyId,
         int? serviceDefId,
-        int assignedMemberId,
-        int? assignmentStatusId,
+        int requiredSlotCount,
         CancellationToken cancellationToken = default);
 
     Task<ConfigurationResult<EventDuty>> UpdateAsync(
         int eventDutyId,
         int dutyId,
         int? serviceDefId,
-        int assignedMemberId,
-        int? assignmentStatusId,
+        int requiredSlotCount,
         CancellationToken cancellationToken = default);
 
     Task<ConfigurationResult<bool>> RemoveAsync(
@@ -55,12 +50,12 @@ public sealed class ManageEventDutyService : IManageEventDutyService
         _db = db;
     }
 
-    public async Task<IReadOnlyList<EventDuty>> ListForItemAsync(
-        int programItemId,
+    public async Task<IReadOnlyList<EventDuty>> ListForEventAsync(
+        int eventId,
         CancellationToken cancellationToken = default)
     {
         return await _db.EventDuties
-            .Where(d => d.ProgramItemId == programItemId)
+            .Where(d => d.EventId == eventId)
             .OrderBy(d => d.EventDutyId)
             .ToListAsync(cancellationToken);
     }
@@ -72,37 +67,34 @@ public sealed class ManageEventDutyService : IManageEventDutyService
     }
 
     public async Task<ConfigurationResult<EventDuty>> CreateAsync(
-        int programItemId,
+        int eventId,
         int dutyId,
         int? serviceDefId,
-        int assignedMemberId,
-        int? assignmentStatusId,
+        int requiredSlotCount,
         CancellationToken cancellationToken = default)
     {
         var validation = await ValidateAsync(
-            dutyId, serviceDefId, assignedMemberId, assignmentStatusId,
-            cancellationToken);
+            dutyId, serviceDefId, requiredSlotCount, cancellationToken);
         if (validation is not null)
         {
             return ConfigurationResult<EventDuty>.Failure(validation);
         }
 
-        var item = await _db.ProgramItems
-            .FirstOrDefaultAsync(i => i.ItemId == programItemId, cancellationToken);
-        if (item is null)
+        var evt = await _db.Events
+            .FirstOrDefaultAsync(e => e.EventId == eventId, cancellationToken);
+        if (evt is null)
         {
             return ConfigurationResult<EventDuty>.Failure(
                 new ConfigurationError(ConfigurationErrorCodes.ReferencedEntityMissing,
-                    "Program item does not exist."));
+                    "Event does not exist."));
         }
 
         var entity = new EventDuty
         {
-            ProgramItemId = programItemId,
+            EventId = eventId,
             DutyId = dutyId,
             ServiceDefId = serviceDefId,
-            AssignedMemberId = assignedMemberId,
-            AssignmentStatusId = assignmentStatusId,
+            RequiredSlotCount = requiredSlotCount,
             IsActive = true,
             IsDeleted = false,
         };
@@ -115,13 +107,11 @@ public sealed class ManageEventDutyService : IManageEventDutyService
         int eventDutyId,
         int dutyId,
         int? serviceDefId,
-        int assignedMemberId,
-        int? assignmentStatusId,
+        int requiredSlotCount,
         CancellationToken cancellationToken = default)
     {
         var validation = await ValidateAsync(
-            dutyId, serviceDefId, assignedMemberId, assignmentStatusId,
-            cancellationToken);
+            dutyId, serviceDefId, requiredSlotCount, cancellationToken);
         if (validation is not null)
         {
             return ConfigurationResult<EventDuty>.Failure(validation);
@@ -136,8 +126,7 @@ public sealed class ManageEventDutyService : IManageEventDutyService
 
         entity.DutyId = dutyId;
         entity.ServiceDefId = serviceDefId;
-        entity.AssignedMemberId = assignedMemberId;
-        entity.AssignmentStatusId = assignmentStatusId;
+        entity.RequiredSlotCount = requiredSlotCount;
         await _db.SaveChangesAsync(cancellationToken);
         return ConfigurationResult<EventDuty>.Success(entity);
     }
@@ -161,10 +150,15 @@ public sealed class ManageEventDutyService : IManageEventDutyService
     private async Task<ConfigurationError?> ValidateAsync(
         int dutyId,
         int? serviceDefId,
-        int assignedMemberId,
-        int? assignmentStatusId,
+        int requiredSlotCount,
         CancellationToken cancellationToken)
     {
+        if (!ConfigurationValidation.IsPositive(requiredSlotCount))
+        {
+            return new ConfigurationError(ConfigurationErrorCodes.InvalidValue,
+                "RequiredSlotCount must be a positive integer.");
+        }
+
         var duty = await _db.Duties
             .FirstOrDefaultAsync(d => d.DutyId == dutyId, cancellationToken);
         if (duty is null)
@@ -181,25 +175,6 @@ public sealed class ManageEventDutyService : IManageEventDutyService
             {
                 return new ConfigurationError(ConfigurationErrorCodes.ReferencedEntityMissing,
                     "Service definition does not exist.");
-            }
-        }
-
-        var member = await _db.Members
-            .FirstOrDefaultAsync(m => m.MemberId == assignedMemberId, cancellationToken);
-        if (member is null)
-        {
-            return new ConfigurationError(ConfigurationErrorCodes.ReferencedEntityMissing,
-                "Assigned member does not exist.");
-        }
-
-        if (assignmentStatusId is int statusId)
-        {
-            var status = await _db.AssignmentStatuses
-                .FirstOrDefaultAsync(s => s.AssignmentStatusId == statusId, cancellationToken);
-            if (status is null)
-            {
-                return new ConfigurationError(ConfigurationErrorCodes.ReferencedEntityMissing,
-                    "Assignment status does not exist.");
             }
         }
 

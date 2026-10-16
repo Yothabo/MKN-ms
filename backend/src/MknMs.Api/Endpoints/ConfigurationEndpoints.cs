@@ -617,20 +617,20 @@ public static class ConfigurationEndpoints
                 cancellationToken)));
 
         // Event Duty
-        routes.MapGet("/api/config/8.0/items/{itemId:int}/duties", async (
-            int itemId,
+        routes.MapGet("/api/config/8.0/events/{eventId:int}/duties", async (
+            int eventId,
             IManageEventDutyService service,
             CancellationToken cancellationToken) =>
-            Results.Ok(await service.ListForItemAsync(itemId, cancellationToken)));
+            Results.Ok(await service.ListForEventAsync(eventId, cancellationToken)));
 
-        routes.MapPost("/api/config/8.0/items/{itemId:int}/duties", async (
-            int itemId,
+        routes.MapPost("/api/config/8.0/events/{eventId:int}/duties", async (
+            int eventId,
             [FromBody] CreateEventDutyRequest request,
             IManageEventDutyService service,
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.CreateAsync(
-                itemId, request.DutyId, request.ServiceDefId,
-                request.AssignedMemberId, request.AssignmentStatusId,
+                eventId, request.DutyId, request.ServiceDefId,
+                request.RequiredSlotCount,
                 cancellationToken)));
 
         routes.MapDelete("/api/config/8.0/event-duties/{id:int}", async (
@@ -945,6 +945,5 @@ public sealed record CreateEventDutyRequest
 {
     public required int DutyId { get; init; }
     public int? ServiceDefId { get; init; }
-    public required int AssignedMemberId { get; init; }
-    public int? AssignmentStatusId { get; init; }
+    public required int RequiredSlotCount { get; init; }
 }

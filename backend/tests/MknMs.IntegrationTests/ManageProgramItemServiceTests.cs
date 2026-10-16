@@ -50,7 +50,7 @@ public class ManageProgramItemServiceTests : IAsyncLifetime
         return Task.CompletedTask;
     }
 
-    private sealed record Fixture(int ItemId, int AdminId, int EventDutyId);
+    private sealed record Fixture(int ItemId, int AdminId);
 
     private async Task<Fixture> SeedAsync()
     {
@@ -127,17 +127,7 @@ public class ManageProgramItemServiceTests : IAsyncLifetime
         _db.ProgramItems.Add(item);
         await _db.SaveChangesAsync();
 
-        var eventDuty = new EventDuty
-        {
-            ProgramItemId = item.ItemId,
-            DutyId = duty.DutyId,
-            AssignedMemberId = member.MemberId,
-            IsDeleted = false,
-        };
-        _db.EventDuties.Add(eventDuty);
-        await _db.SaveChangesAsync();
-
-        return new Fixture(item.ItemId, admin.AdminId, eventDuty.EventDutyId);
+        return new Fixture(item.ItemId, admin.AdminId);
     }
 
     private ManageProgramItemService MakeService() =>
@@ -146,7 +136,7 @@ public class ManageProgramItemServiceTests : IAsyncLifetime
             new ConfigurationCascadeService(_db));
 
     [Fact]
-    public async Task SoftDelete_RemovesEventDuties_RetainsItem()
+    public async Task SoftDelete_RetainsItem()
     {
         var f = await SeedAsync();
         var service = MakeService();
@@ -156,7 +146,7 @@ public class ManageProgramItemServiceTests : IAsyncLifetime
 
         result.IsSuccess.Should().BeTrue();
 
-        (await _db.EventDuties.CountAsync()).Should().Be(0);
+
 
         var item = await _db.ProgramItems
             .AsNoTracking()
@@ -164,7 +154,7 @@ public class ManageProgramItemServiceTests : IAsyncLifetime
         item.IsDeleted.Should().BeTrue();
 
         var audit = await _db.ConfigurationAuditLogs.SingleAsync();
-        audit.ConsequencesPreviewed.Should().Contain("removed");
+        audit.ConsequencesPreviewed.Should().Contain("No dependent changes apply");
     }
 
     [Fact]

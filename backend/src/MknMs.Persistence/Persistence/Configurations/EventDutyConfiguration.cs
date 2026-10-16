@@ -1,4 +1,3 @@
-
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -8,9 +7,10 @@ namespace MknMs.Persistence.Configurations;
 /// EF Core mapping for EventDuty.
 /// </summary>
 /// <remarks>
-/// DutyId is non-null as of Step 7. Label is retained until Step 8.
+/// An event's requirement for a Duty, with a required slot count and
+/// an optional Service Definition scope.
 ///
-/// Specification: §4 (Event Duty), §9.1.11, §9.7, §10.1.5, §15.8.10.
+/// Specification: §4 (Event Duty), §9.1.11, §10.1.5, §15.8.10.
 /// </remarks>
 public class EventDutyConfiguration : IEntityTypeConfiguration<EventDuty>
 {
@@ -18,17 +18,16 @@ public class EventDutyConfiguration : IEntityTypeConfiguration<EventDuty>
     {
         builder.HasKey(e => e.EventDutyId);
 
-        builder.Property(e => e.ProgramItemId).IsRequired();
+        builder.Property(e => e.EventId).IsRequired();
         builder.Property(e => e.DutyId).IsRequired();
         builder.Property(e => e.ServiceDefId);
-        builder.Property(e => e.AssignedMemberId).IsRequired();
-        builder.Property(e => e.AssignmentStatusId);
+        builder.Property(e => e.RequiredSlotCount).IsRequired();
         builder.Property(e => e.IsActive).IsRequired();
         builder.Property(e => e.IsDeleted).IsRequired();
 
-        builder.HasOne(e => e.ProgramItem)
+        builder.HasOne(e => e.Event)
             .WithMany()
-            .HasForeignKey(e => e.ProgramItemId)
+            .HasForeignKey(e => e.EventId)
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasOne(e => e.Duty)
@@ -42,22 +41,8 @@ public class EventDutyConfiguration : IEntityTypeConfiguration<EventDuty>
             .OnDelete(DeleteBehavior.Restrict)
             .IsRequired(false);
 
-        builder.HasOne(e => e.AssignedMember)
-            .WithMany()
-            .HasForeignKey(e => e.AssignedMemberId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        builder.HasOne(e => e.AssignmentStatus)
-            .WithMany()
-            .HasForeignKey(e => e.AssignmentStatusId)
-            .OnDelete(DeleteBehavior.Restrict)
-            .IsRequired(false);
-
-        builder.HasIndex(e => e.ProgramItemId)
-            .HasDatabaseName("ix_event_duty_program_item");
-
-        builder.HasIndex(e => e.AssignedMemberId)
-            .HasDatabaseName("ix_event_duty_assigned_member");
+        builder.HasIndex(e => e.EventId)
+            .HasDatabaseName("ix_event_duty_event");
 
         builder.HasIndex(e => e.DutyId)
             .HasDatabaseName("ix_event_duty_duty");

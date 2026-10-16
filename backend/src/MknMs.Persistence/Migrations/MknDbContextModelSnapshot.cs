@@ -1566,17 +1566,13 @@ namespace MknMs.Infrastructure.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("EventDutyId"));
 
-                    b.Property<int>("AssignedMemberId")
-                        .HasColumnType("integer")
-                        .HasColumnName("assigned_member_id");
-
-                    b.Property<int?>("AssignmentStatusId")
-                        .HasColumnType("integer")
-                        .HasColumnName("assignment_status_id");
-
                     b.Property<int>("DutyId")
                         .HasColumnType("integer")
                         .HasColumnName("duty_id");
+
+                    b.Property<int>("EventId")
+                        .HasColumnType("integer")
+                        .HasColumnName("event_id");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean")
@@ -1586,9 +1582,9 @@ namespace MknMs.Infrastructure.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_deleted");
 
-                    b.Property<int>("ProgramItemId")
+                    b.Property<int>("RequiredSlotCount")
                         .HasColumnType("integer")
-                        .HasColumnName("program_item_id");
+                        .HasColumnName("required_slot_count");
 
                     b.Property<int?>("ServiceDefId")
                         .HasColumnType("integer")
@@ -1597,17 +1593,11 @@ namespace MknMs.Infrastructure.Migrations
                     b.HasKey("EventDutyId")
                         .HasName("pk_event_duty");
 
-                    b.HasIndex("AssignedMemberId")
-                        .HasDatabaseName("ix_event_duty_assigned_member");
-
-                    b.HasIndex("AssignmentStatusId")
-                        .HasDatabaseName("ix_event_duty_assignment_status_id");
-
                     b.HasIndex("DutyId")
                         .HasDatabaseName("ix_event_duty_duty");
 
-                    b.HasIndex("ProgramItemId")
-                        .HasDatabaseName("ix_event_duty_program_item");
+                    b.HasIndex("EventId")
+                        .HasDatabaseName("ix_event_duty_event");
 
                     b.HasIndex("ServiceDefId");
 
@@ -2233,19 +2223,6 @@ namespace MknMs.Infrastructure.Migrations
 
             modelBuilder.Entity("MknMs.Domain.D9_EventProgram.EventDuty", b =>
                 {
-                    b.HasOne("MknMs.Domain.D4_Member.Member", "AssignedMember")
-                        .WithMany()
-                        .HasForeignKey("AssignedMemberId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_event_duty_member_assigned_member_id");
-
-                    b.HasOne("MknMs.Domain.D10_ConfigLookups.AssignmentStatus", "AssignmentStatus")
-                        .WithMany()
-                        .HasForeignKey("AssignmentStatusId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_event_duty_assignment_status_assignment_status_id");
-
                     b.HasOne("MknMs.Domain.D1_RoleDuty.Duty", "Duty")
                         .WithMany()
                         .HasForeignKey("DutyId")
@@ -2253,12 +2230,12 @@ namespace MknMs.Infrastructure.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_event_duty_duty_duty_id");
 
-                    b.HasOne("MknMs.Domain.D9_EventProgram.ProgramItem", "ProgramItem")
+                    b.HasOne("MknMs.Domain.D9_EventProgram.Event", "Event")
                         .WithMany()
-                        .HasForeignKey("ProgramItemId")
+                        .HasForeignKey("EventId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
-                        .HasConstraintName("fk_event_duty_program_items_program_item_id");
+                        .HasConstraintName("fk_event_duty_event_event_id");
 
                     b.HasOne("MknMs.Domain.D3_BranchTimeSlotService.ServiceDefinition", "ServiceDefinition")
                         .WithMany()
@@ -2266,13 +2243,9 @@ namespace MknMs.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_event_duty_service_definition_service_definition_temp_id1");
 
-                    b.Navigation("AssignedMember");
-
-                    b.Navigation("AssignmentStatus");
-
                     b.Navigation("Duty");
 
-                    b.Navigation("ProgramItem");
+                    b.Navigation("Event");
 
                     b.Navigation("ServiceDefinition");
                 });

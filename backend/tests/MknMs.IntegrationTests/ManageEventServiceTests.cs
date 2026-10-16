@@ -133,9 +133,9 @@ public class ManageEventServiceTests : IAsyncLifetime
 
         var eventDuty = new EventDuty
         {
-            ProgramItemId = item.ItemId,
+            EventId = evt.EventId,
             DutyId = duty.DutyId,
-            AssignedMemberId = member.MemberId,
+            RequiredSlotCount = 1,
             IsDeleted = false,
         };
         _db.EventDuties.Add(eventDuty);
