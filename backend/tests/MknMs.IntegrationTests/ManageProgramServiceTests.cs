@@ -7,6 +7,7 @@ using MknMs.Domain.D1_RoleDuty;
 using MknMs.Domain.D3_BranchTimeSlotService;
 using MknMs.Domain.D4_Member;
 using MknMs.Domain.D9_EventProgram;
+using MknMs.Domain.D14_ConfigurationAudit;
 using MknMs.Persistence;
 using Xunit;
 
@@ -72,6 +73,19 @@ public class ManageProgramServiceTests : IAsyncLifetime
         _db.PermissionTiers.Add(tier);
         _db.Duties.Add(duty);
         await _db.SaveChangesAsync();
+
+        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        {
+            EntityType = "Program",
+            RequiresApprovalForDelete = false,
+            RequiresApprovalForDeactivate = false,
+            RequiresReasonForDelete = true,
+            RequiresReasonForDeactivate = false,
+            IsActive = true,
+            IsDeleted = false,
+        });
+        await _db.SaveChangesAsync();
+
 
         var member = new Member
         {

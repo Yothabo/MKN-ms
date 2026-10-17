@@ -9,6 +9,8 @@ using MknMs.Domain.D3_BranchTimeSlotService;
 using MknMs.Domain.D4_Member;
 using MknMs.Persistence;
 using Xunit;
+using MknMs.Domain.D14_ConfigurationAudit;
+
 
 namespace MknMs.IntegrationTests;
 
@@ -81,6 +83,19 @@ public class ManageAttributeTypeServiceTests : IAsyncLifetime
         _db.AttributeTypes.Add(otherAttr);
         _db.Duties.Add(duty);
         await _db.SaveChangesAsync();
+
+        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        {
+            EntityType = "AttributeType",
+            RequiresApprovalForDelete = false,
+            RequiresApprovalForDeactivate = false,
+            RequiresReasonForDelete = true,
+            RequiresReasonForDeactivate = false,
+            IsActive = true,
+            IsDeleted = false,
+        });
+        await _db.SaveChangesAsync();
+
 
         var member = new Member
         {

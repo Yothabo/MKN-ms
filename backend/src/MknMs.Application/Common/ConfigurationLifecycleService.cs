@@ -22,10 +22,11 @@ namespace MknMs.Application.Common;
 /// boundary so the state change and the audit row are one atomic
 /// unit (§9.7, §9.8).
 ///
-/// A missing EntityDeletionPolicy row is treated as having no
-/// additional requirements: no approval, no required tier, no reason.
-/// That preserves the pre-E3 behaviour for entities whose policy has
-/// not been configured. It does not weaken a policy that exists.
+/// A missing EntityDeletionPolicy row is a configuration error. The
+/// operation refuses with ConfigurationMissing. §9.7 requires the
+/// policy to govern the lifecycle operation; a policy that is absent
+/// cannot silently mean "no approval, no tier, no reason", because
+/// that would bypass the requirement rather than satisfy it.
 ///
 /// Acknowledgement of the preview is enforced by the calling
 /// command's ConsequencesAcknowledged field, introduced in E3b. This
@@ -104,25 +105,37 @@ public sealed class ConfigurationLifecycleService : IConfigurationLifecycleServi
             return ConfigurationResult<ConfigurationAuditLog>.Failure(basicValidation);
         }
 
-        // Resolve the applicable policy row. Null means no additional
-        // requirements — not a bypass of a policy that exists.
+        // Resolve the applicable policy row. A missing policy is a
+        // configuration error, not a silent bypass. §9.7 requires the
+        // policy to govern the operation; if the policy that governs
+        // this entity type is not configured, the operation cannot
+        // proceed.
         var policy = await _db.EntityDeletionPolicies
             .FirstOrDefaultAsync(p => p.EntityType == lifecycleEvent.EntityType
                 && p.IsActive
                 && !p.IsDeleted,
                 cancellationToken);
 
+        if (policy is null)
+        {
+            return Failure(
+                ConfigurationErrorCodes.ConfigurationMissing,
+                $"No EntityDeletionPolicy is configured for entity type "
+                + $"'{lifecycleEvent.EntityType}'. The {lifecycleEvent.Action} "
+                + "cannot proceed without a policy.");
+        }
+
         var requiresApproval = lifecycleEvent.Action == ConfigurationLifecycleActions.SoftDelete
-            ? policy?.RequiresApprovalForDelete ?? false
-            : policy?.RequiresApprovalForDeactivate ?? false;
+            ? policy.RequiresApprovalForDelete
+            : policy.RequiresApprovalForDeactivate;
 
         var requiresReason = lifecycleEvent.Action == ConfigurationLifecycleActions.SoftDelete
-            ? policy?.RequiresReasonForDelete ?? true
-            : policy?.RequiresReasonForDeactivate ?? false;
+            ? policy.RequiresReasonForDelete
+            : policy.RequiresReasonForDeactivate;
 
         var requiredTierId = lifecycleEvent.Action == ConfigurationLifecycleActions.SoftDelete
-            ? policy?.RequiredDeletePermissionTierId
-            : policy?.RequiredDeactivatePermissionTierId;
+            ? policy.RequiredDeletePermissionTierId
+            : policy.RequiredDeactivatePermissionTierId;
 
         // Reason requirement.
         if (requiresReason && string.IsNullOrWhiteSpace(lifecycleEvent.Reason))

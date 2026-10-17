@@ -79,6 +79,19 @@ public class ConfigureRoleServiceTests : IAsyncLifetime
         _db.PermissionTiers.Add(tier);
         await _db.SaveChangesAsync();
 
+        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        {
+            EntityType = "Role",
+            RequiresApprovalForDelete = false,
+            RequiresApprovalForDeactivate = false,
+            RequiresReasonForDelete = true,
+            RequiresReasonForDeactivate = false,
+            IsActive = true,
+            IsDeleted = false,
+        });
+        await _db.SaveChangesAsync();
+
+
         var member = new Member
         {
             Name = "A", Surname = "One",

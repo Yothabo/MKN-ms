@@ -291,3 +291,58 @@ UPDATE permission_tier
 SET is_default = TRUE
 WHERE permission_tier_id = (SELECT MIN(permission_tier_id) FROM permission_tier)
   AND NOT EXISTS (SELECT 1 FROM permission_tier WHERE is_default = TRUE);
+
+
+-- ---------------------------------------------------------------------
+-- D14 Entity Deletion Policy
+--
+-- One row per configuration entity type that can be deactivated or
+-- soft-deleted. §9.7 requires the policy to govern every such
+-- operation; a missing policy row is a configuration error. The seed
+-- provides a complete set so that the fail-closed behaviour the
+-- ConfigurationLifecycleService enforces has a policy to resolve.
+--
+-- Approval: soft delete requires a second admin's approval;
+--           deactivate does not (reversible).
+-- Reason:    soft delete requires a reason; deactivate does not.
+-- Tier:      no specific tier is required by the seed. Deployments
+--            that want a stricter policy set RequiredDeletePermissionTierId
+--            on the row for the entity type.
+--
+-- Idempotent. Guarded by NOT EXISTS on (entity_type).
+-- ---------------------------------------------------------------------
+
+INSERT INTO entity_deletion_policy (entity_type, requires_approval_for_delete,
+                                    requires_approval_for_deactivate,
+                                    required_delete_permission_tier_id,
+                                    required_deactivate_permission_tier_id,
+                                    requires_reason_for_delete,
+                                    requires_reason_for_deactivate,
+                                    is_active, is_deleted)
+SELECT entity_type, TRUE, FALSE, NULL, NULL, TRUE, FALSE, TRUE, FALSE
+FROM (VALUES
+    ('Role'),
+    ('Duty'),
+    ('Branch'),
+    ('BranchTimeSlot'),
+    ('ServiceDefinition'),
+    ('ServiceDefinitionDuty'),
+    ('ServiceSchedule'),
+    ('DutyRule'),
+    ('Event'),
+    ('Program'),
+    ('ProgramItem'),
+    ('EventDuty'),
+    ('MemberStatus'),
+    ('AttributeType'),
+    ('OutcomeState'),
+    ('AssignmentStatus'),
+    ('TimeOfDay'),
+    ('ServiceType'),
+    ('PermissionTier'),
+    ('AttendanceRule')
+) AS v(entity_type)
+WHERE NOT EXISTS (
+    SELECT 1 FROM entity_deletion_policy p
+    WHERE p.entity_type = v.entity_type
+);

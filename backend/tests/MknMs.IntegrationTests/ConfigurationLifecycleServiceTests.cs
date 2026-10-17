@@ -135,6 +135,18 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
     public async Task Record_WithValidDeactivate_WritesRow()
     {
         var (initiated, approved) = await SeedAdminsAsync();
+        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        {
+            EntityType = "Role",
+            RequiresApprovalForDelete = false,
+            RequiresApprovalForDeactivate = false,
+            RequiresReasonForDelete = true,
+            RequiresReasonForDeactivate = false,
+            IsActive = true,
+            IsDeleted = false,
+        });
+        await _db.SaveChangesAsync();
+
         var service = new ConfigurationLifecycleService(_db, _clock);
 
         var result = await service.RecordAsync(
@@ -166,6 +178,18 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
     public async Task Record_WithValidSoftDeleteAndReason_WritesRow()
     {
         var (initiated, approved) = await SeedAdminsAsync();
+        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        {
+            EntityType = "Role",
+            RequiresApprovalForDelete = false,
+            RequiresApprovalForDeactivate = false,
+            RequiresReasonForDelete = true,
+            RequiresReasonForDeactivate = false,
+            IsActive = true,
+            IsDeleted = false,
+        });
+        await _db.SaveChangesAsync();
+
         var service = new ConfigurationLifecycleService(_db, _clock);
 
         var result = await service.RecordAsync(ValidEvent(
@@ -185,6 +209,18 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
     public async Task Record_TrimsReason()
     {
         var (initiated, approved) = await SeedAdminsAsync();
+        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        {
+            EntityType = "Role",
+            RequiresApprovalForDelete = false,
+            RequiresApprovalForDeactivate = false,
+            RequiresReasonForDelete = true,
+            RequiresReasonForDeactivate = false,
+            IsActive = true,
+            IsDeleted = false,
+        });
+        await _db.SaveChangesAsync();
+
         var service = new ConfigurationLifecycleService(_db, _clock);
 
         await service.RecordAsync(ValidEvent(
@@ -412,6 +448,18 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
     public async Task Record_PreviewIsServiceGenerated()
     {
         var (initiated, approved) = await SeedAdminsAsync();
+        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        {
+            EntityType = "Role",
+            RequiresApprovalForDelete = false,
+            RequiresApprovalForDeactivate = false,
+            RequiresReasonForDelete = true,
+            RequiresReasonForDeactivate = false,
+            IsActive = true,
+            IsDeleted = false,
+        });
+        await _db.SaveChangesAsync();
+
         var service = new ConfigurationLifecycleService(_db, _clock);
 
         await service.RecordAsync(ValidEvent(initiated, approved));
@@ -431,6 +479,18 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
         // controls the persistence boundary. A read from a fresh
         // context before the caller saves shows nothing.
         var (initiated, approved) = await SeedAdminsAsync();
+        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        {
+            EntityType = "Role",
+            RequiresApprovalForDelete = false,
+            RequiresApprovalForDeactivate = false,
+            RequiresReasonForDelete = true,
+            RequiresReasonForDeactivate = false,
+            IsActive = true,
+            IsDeleted = false,
+        });
+        await _db.SaveChangesAsync();
+
         var service = new ConfigurationLifecycleService(_db, _clock);
 
         await service.RecordAsync(ValidEvent(initiated, approved));
@@ -453,6 +513,18 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
     public async Task Record_DoesNotWriteAnythingElse()
     {
         var (initiated, approved) = await SeedAdminsAsync();
+        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        {
+            EntityType = "Role",
+            RequiresApprovalForDelete = false,
+            RequiresApprovalForDeactivate = false,
+            RequiresReasonForDelete = true,
+            RequiresReasonForDeactivate = false,
+            IsActive = true,
+            IsDeleted = false,
+        });
+        await _db.SaveChangesAsync();
+
         var service = new ConfigurationLifecycleService(_db, _clock);
 
         var rolesBefore = await _db.Roles.CountAsync();
@@ -474,6 +546,17 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
         // C6: the approver must resolve to an Admin row whose
         // IsActive = true.
         var (initiated, approved) = await SeedAdminsAsync();
+        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        {
+            EntityType = "Role",
+            RequiresApprovalForDelete = false,
+            RequiresApprovalForDeactivate = false,
+            RequiresReasonForDelete = true,
+            RequiresReasonForDeactivate = false,
+            IsActive = true,
+            IsDeleted = false,
+        });
+        await _db.SaveChangesAsync();
 
         var approver = await _db.Admins.FirstAsync(a => a.AdminId == approved);
         approver.IsActive = false;
@@ -493,6 +576,17 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
         // configures a required tier for the operation. An approver id
         // that names no row is rejected.
         var (initiated, _) = await SeedAdminsAsync();
+        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        {
+            EntityType = "Role",
+            RequiresApprovalForDelete = false,
+            RequiresApprovalForDeactivate = false,
+            RequiresReasonForDelete = true,
+            RequiresReasonForDeactivate = false,
+            IsActive = true,
+            IsDeleted = false,
+        });
+        await _db.SaveChangesAsync();
 
         var service = new ConfigurationLifecycleService(_db, _clock);
         var result = await service.RecordAsync(ValidEvent(

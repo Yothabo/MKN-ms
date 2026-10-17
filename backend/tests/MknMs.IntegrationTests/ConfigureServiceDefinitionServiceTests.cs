@@ -9,6 +9,8 @@ using MknMs.Domain.D3_BranchTimeSlotService;
 using MknMs.Domain.D4_Member;
 using MknMs.Persistence;
 using Xunit;
+using MknMs.Domain.D14_ConfigurationAudit;
+
 
 namespace MknMs.IntegrationTests;
 
@@ -69,6 +71,19 @@ public class ConfigureServiceDefinitionServiceTests : IAsyncLifetime
         _db.PermissionTiers.Add(tier);
         _db.ServiceTypes.Add(st);
         await _db.SaveChangesAsync();
+
+        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        {
+            EntityType = "ServiceDefinition",
+            RequiresApprovalForDelete = false,
+            RequiresApprovalForDeactivate = false,
+            RequiresReasonForDelete = true,
+            RequiresReasonForDeactivate = false,
+            IsActive = true,
+            IsDeleted = false,
+        });
+        await _db.SaveChangesAsync();
+
 
         var adminMember = new Member
         {

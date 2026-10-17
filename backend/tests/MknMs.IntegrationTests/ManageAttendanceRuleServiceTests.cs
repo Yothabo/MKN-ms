@@ -9,6 +9,8 @@ using MknMs.Domain.D3_BranchTimeSlotService;
 using MknMs.Domain.D4_Member;
 using MknMs.Persistence;
 using Xunit;
+using MknMs.Domain.D14_ConfigurationAudit;
+
 
 namespace MknMs.IntegrationTests;
 
@@ -69,6 +71,19 @@ public class ManageAttendanceRuleServiceTests : IAsyncLifetime
         _db.MemberStatuses.Add(status);
         _db.PermissionTiers.Add(tier);
         await _db.SaveChangesAsync();
+
+        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        {
+            EntityType = "AttendanceRule",
+            RequiresApprovalForDelete = false,
+            RequiresApprovalForDeactivate = false,
+            RequiresReasonForDelete = true,
+            RequiresReasonForDeactivate = false,
+            IsActive = true,
+            IsDeleted = false,
+        });
+        await _db.SaveChangesAsync();
+
 
         var member = new Member
         {

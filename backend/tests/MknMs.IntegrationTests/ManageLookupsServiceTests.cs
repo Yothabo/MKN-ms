@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using MknMs.Application.Common;
 using MknMs.Application.Processes.Configuration.ManageLookups;
 using MknMs.Domain.D10_ConfigLookups;
+using MknMs.Domain.D14_ConfigurationAudit;
 using MknMs.Domain.D11_SystemSetting;
 using MknMs.Domain.D1_RoleDuty;
 using MknMs.Domain.D3_BranchTimeSlotService;
@@ -90,6 +91,31 @@ public class ManageLookupsServiceTests : IAsyncLifetime
             PermissionTierId = tier.PermissionTierId,
         };
         _db.Admins.Add(admin);
+        await _db.SaveChangesAsync();
+
+        // Fail-closed policy: §9.7 requires every lifecycle operation
+        // to resolve an EntityDeletionPolicy. Seed the five entity
+        // types ManageLookupsService handles.
+        foreach (var entityType in new[]
+        {
+            "OutcomeState",
+            "AssignmentStatus",
+            "TimeOfDay",
+            "ServiceType",
+            "PermissionTier",
+        })
+        {
+            _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+            {
+                EntityType = entityType,
+                RequiresApprovalForDelete = false,
+                RequiresApprovalForDeactivate = false,
+                RequiresReasonForDelete = true,
+                RequiresReasonForDeactivate = false,
+                IsActive = true,
+                IsDeleted = false,
+            });
+        }
         await _db.SaveChangesAsync();
 
         return admin.AdminId;
