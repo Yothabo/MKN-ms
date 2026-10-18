@@ -45,13 +45,25 @@ Creates and maintains the Duty Rule rows that express how duties rank candidates
 
 ### 3.0 Manage Membership
 
-Creates and maintains Member records, Identifier History, Member Status, Attribute Type, Member Attribute Value, Readmission, and Attendance Rule.
+Creates and maintains Member records, Identifier History, Member
+Attribute Value, Readmission, Attendance Rule, and Notification
+Subscription. Member Status and Attribute Type are two-flag entities
+whose lifecycle is managed by their own processes (3.4 Manage Member
+Status and 3.5 Manage Attribute Type, respectively); the D10 Attribute
+Type vocabulary is a lookup family rather than a member-record
+subprocess.
 
 **Trigger:** Administrator action.
 
-**Reads:** D4, D5, D1 (Role), D3 (Branch).
+**Reads:** D4, D5, D13, D1 (Role), D3 (Branch), D10 (PermissionTier
+for NotificationSubscription recipient validation), D14
+(NotificationSubscription itself).
 
-**Writes:** D4, D5, D13 (Attendance Rule, Attendance Rule Scope, Readmission), and Member Status and Attribute Type lookups.
+**Writes:** D4 (Member, MemberAttributeValue), D5 (IdentifierHistory),
+D13 (AttendanceRule, AttendanceRuleScope, Readmission), and D14
+(NotificationSubscription). Member Status and Attribute Type
+lifecycle operations write their own entities via their own process
+surfaces (3.4 and 3.5 respectively).
 
 **Subprocesses:** 3.1 Manage member record, 3.2 Manage identifier history.
 

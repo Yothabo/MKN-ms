@@ -47,9 +47,13 @@ For entities that do carry lifecycle state, the rules are uniform:
 - **Every field is editable, always.** Edits take effect for future use. No backward propagation to operational records.
 - **No deletion, ever.** Configuration entities are historical facts about what the organization configured at a given time.
 
-Entities with lifecycle state: `Role`, `Duty`, `Branch`, `BranchTimeSlot`, `ServiceDefinition`, `ServiceDefinitionDuty`, `ServiceSchedule`, `Member`, `DutyRule`, `Event`, `Program`, `ProgramItem`, `EventDuty`.
+**Two-flag lifecycle entities (`IsActive` and `IsDeleted`):** `Role`, `Duty`, `Branch`, `BranchTimeSlot`, `ServiceDefinition`, `ServiceDefinitionDuty`, `ServiceSchedule`, `DutyRule`, `Event`, `Program`, `EventDuty`, `AttributeType`, `MemberStatus`, `AttendanceRule`, `NotificationSubscription`, `Capability`, `EntityDeletionPolicy`.
 
-Entities without lifecycle state: `IdentifierHistory`, `Eligibility`, `SystemSetting`, `Admin`, `D10` lookup values.
+**Single-flag lifecycle entities (`IsActive` only):** `Admin`. A member with an Admin row is deactivated by setting `Admin.IsActive = false`; the row remains for historical attribution.
+
+**Entities with no lifecycle flags:** `Member` (state is expressed by `MemberStatusID` only), `IdentifierHistory`, `Eligibility`, `SystemSetting`, `MemberAttributeValue`, `Readmission`, `AttendanceRuleScope`, `ConfigurationAuditLog`, and the D10 lookup values `OutcomeState`, `AssignmentStatus`, `PermissionTier`, `TimeOfDay`, `ServiceType`.
+
+**Entities whose lifecycle is derived from a parent:** `EventBranch` (from `Event`), `AttendanceRuleScope` (from `AttendanceRule`), `ProgramItem` (from `Program`; the entity carries `IsDeleted` but no `IsActive`, because deactivation is by parent).
 
 ---
 
