@@ -1103,7 +1103,7 @@ On soft delete, the following reference handling applies:
 | Permission Tier | Blocked if any Admin or Entity Deletion Policy references the tier. |
 | Capability | Removed; not soft-deleted independently, because nothing references it. |
 | Entity Deletion Policy | Removed; not soft-deleted independently. |
-| Notification Subscription | Removed; not soft-deleted independently. |
+| Notification Subscription | Soft-deleted; no cascade (nothing references it). The soft-delete operation exists and sets both flags; §14.1.9 relies on this and states that an inactive or soft-deleted subscription is not consulted by the authority-notification sweep. |
 | Attendance Rule | Soft-delete removes the rule's AttendanceRuleScope rows. Deactivate (`IsActive = false`) leaves scope rows in place. Disable (`Enabled = false`) leaves scope rows in place and does not change `IsActive`. The rule row itself is retained. |
 | Member | No soft-delete operation. A member's state is `MemberStatusID` only. The row is never removed through normal operations. |
 | Admin | No soft-delete operation. Revocation sets `IsActive = false`; the row remains. |
@@ -2377,6 +2377,7 @@ The following amendments were added after the original fifteen.
 | 15.8.34 | Attendance Rule ownership: Create, Update, Disable, Deactivate, Soft-delete commands formalized under 3.0 | Amendment | §9.7, §13.6 |
 | 15.8.35 | Specification stale text: AttendanceRecord.Source distinguishes Manual from Tap; 6.0 register-scope reads named | Amendment | §13.1.4, §13.2, §13.5 |
 | 15.8.36 | API reconciliation: adapter contract is authoritative; endpoint list gains 13.0 manual; 9.0 invoker list corrected to four | Amendment | §14, §16 |
+| 15.8.37 | NotificationSubscription soft-delete clarification: the §9.7 row "removed; not soft-deleted independently" meant the cascade has no dependents, not that the operation is absent. §9.7 row rewritten to say so; §14.1.9 already relies on the operation | Amendment | §9.7, §14.1.9 |
 
 ---
 
