@@ -8,7 +8,7 @@
 
 The system's default integration mechanism is **shared data**. Processes read from and write to common data stores. When one process's output needs to reach another process, it does so through a store, not through a call.
 
-Direct process invocation is the exception. It exists for the processes that must immediately hand an outbound notification to 9.0: assignment-producing processes when a response-requiring assignment is created, and 13.0 when an Attendance Rule with OutcomeType = Notify fires. No other process is ever invoked by another process.
+Direct process invocation is the exception. It exists for the processes that must immediately hand an outbound notification to 9.0: assignment-producing processes when a response-requiring assignment is created, and 13.0 when an Attendance Rule with OutcomeType = Notify fires. No process other than 9.0 Dispatch Notification is ever invoked by another process.
 
 Everywhere else, processes are independently executable. No process orchestrates another. The data stores are the interface.
 

@@ -924,7 +924,7 @@ Program is one per Event. ProgramItem carries SequenceOrder, Title, ScheduledSta
 
 When a ProgramItem links to a ServiceDefinition, an event-sourced ServiceOccurrence is created. It has EventID populated, ScheduleID null, Date and StartTime derived from ProgramItem.ScheduledStart, ServiceTypeID inherited from the linked ServiceDefinition, GeneratedBy = Administrator, and CreatedBy = the admin who performed the action. This is the only write the configuration layer performs to an operational store.
 
-EventDuty carries a free-text Label, a direct AssignedMemberID, and an optional AssignmentStatusID. It does not reference the Duty table.
+EventDuty carries an EventID, a DutyID, an optional ServiceDefID, a RequiredSlotCount, and the two lifecycle flags. It references the Duty table directly. When ServiceDefID is set, the duty uses that service's per-service rules on this event; when null, the duty's global rules apply.
 
 Event and EventBranch carry the following relational rules. `HostBranchID` must reference a Branch. `EventBranch` may contain zero or more branches. The host and attendee sets are independent: the host need not appear in `EventBranch`, and a branch may appear as both host and attendee. Inactive branches may remain referenced. The composite primary key on (EventID, BranchID) prevents duplicates. No constraint requires `HostBranchID` to appear in `EventBranch`.
 
@@ -1094,7 +1094,7 @@ On soft delete, the following reference handling applies:
 | Attribute Type | Member Attribute Value rows for this attribute are removed. Duty Rules whose CriteriaType = Member Attribute and whose CriteriaValue names this attribute are deleted. |
 | Event | Referencing Program and Event Duty rows are removed. Existing event-sourced Service Occurrence rows are preserved. |
 | Program | Referencing Program Item rows are removed. |
-| Program Item | Referencing Event Duty rows are removed. |
+| Program Item | No cascade to Event Duty. Event Duty references the Event, not the Program Item; a Program Item soft-delete is self-contained. Event Duty rows are removed only when the parent Event is removed. |
 | Event Duty | Removed; not soft-deleted independently. |
 | Outcome State | Blocked if any Service Occurrence or System Setting references the state. |
 | Assignment Status | Blocked if any Roster Assignment or System Setting references the status. |
@@ -2388,7 +2388,7 @@ The following amendments were added after the original fifteen.
 
 The system's default integration mechanism is **shared data**. Processes read from and write to common data stores. When one process's output needs to reach another process, it does so through a store, not through a call.
 
-Direct process invocation is the exception. It exists only where a process has just created a new RosterAssignment row that requires a response from a member — meaning 9.0 Dispatch Notification must be invoked at that moment, rather than deferred to a polling process. No other process is ever invoked by another process.
+Direct process invocation is the exception. It exists only where a process has just created a new RosterAssignment row that requires a response from a member — meaning 9.0 Dispatch Notification must be invoked at that moment, rather than deferred to a polling process. No process other than 9.0 Dispatch Notification is ever invoked by another process.
 
 The system distinguishes **invocation** from **triggering**. Invocation is a process-to-process call. Triggering is what starts a process running — an administrator action, a scheduled run, a member action, or an invocation by another process. A process may have more than one trigger, and it may both be invokable and carry its own independent triggers.
 

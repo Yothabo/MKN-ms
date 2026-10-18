@@ -135,9 +135,8 @@ A subsequent tap for an existing pair is a no-op.
 | Program | EventID | Event |
 | ProgramItem | ProgramID | Program |
 | ProgramItem | ServiceDefID | ServiceDefinition |
-| EventDuty | ProgramItemID | ProgramItem |
-| EventDuty | AssignedMemberID | Member |
-| EventDuty | AssignmentStatusID | AssignmentStatus |
+| EventDuty | EventID | Event |
+| EventDuty | ServiceDefID | ServiceDefinition |
 
 ---
 
