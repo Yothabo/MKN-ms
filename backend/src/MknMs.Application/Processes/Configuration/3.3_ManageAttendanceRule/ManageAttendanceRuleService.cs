@@ -209,10 +209,14 @@ public sealed class ManageAttendanceRuleService : IManageAttendanceRuleService
             IsActive = true,
             IsDeleted = false,
         };
+        await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
+
         _db.AttendanceRules.Add(entity);
         await _db.SaveChangesAsync(cancellationToken);
 
         await ReplaceScopeAsync(entity.AttendanceRuleId, request.ScopeCriteria, cancellationToken);
+
+        await transaction.CommitAsync(cancellationToken);
 
         return ConfigurationResult<AttendanceRule>.Success(entity);
     }
@@ -246,9 +250,14 @@ public sealed class ManageAttendanceRuleService : IManageAttendanceRuleService
         entity.OutcomeStatusId = request.OutcomeType == "SetStatus"
             ? request.OutcomeStatusId : null;
         entity.Enabled = request.Enabled;
+
+        await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
+
         await _db.SaveChangesAsync(cancellationToken);
 
         await ReplaceScopeAsync(entity.AttendanceRuleId, request.ScopeCriteria, cancellationToken);
+
+        await transaction.CommitAsync(cancellationToken);
 
         return ConfigurationResult<AttendanceRule>.Success(entity);
     }
