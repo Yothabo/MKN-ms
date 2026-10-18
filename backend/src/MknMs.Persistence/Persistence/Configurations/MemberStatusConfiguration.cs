@@ -38,5 +38,12 @@ public class MemberStatusConfiguration : IEntityTypeConfiguration<MemberStatus>
 
         builder.Property(e => e.IsDeleted)
             .IsRequired();
+
+        // §4: exactly one MemberStatus is the default. Same shape as
+        // the Role constraint.
+        builder.HasIndex(e => e.IsDefault)
+            .IsUnique()
+            .HasFilter("is_default = TRUE")
+            .HasDatabaseName("uq_member_status_single_default");
     }
 }

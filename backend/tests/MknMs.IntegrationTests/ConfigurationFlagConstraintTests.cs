@@ -46,7 +46,8 @@ public class ConfigurationFlagConstraintTests : IAsyncLifetime
         _db = new MknDbContext(options);
 
         await _db.Database.ExecuteSqlRawAsync(
-            "TRUNCATE TABLE role RESTART IDENTITY CASCADE;");
+            "TRUNCATE TABLE role, member_status, permission_tier "
+            + "RESTART IDENTITY CASCADE;");
     }
 
     public Task DisposeAsync()
@@ -93,5 +94,66 @@ public class ConfigurationFlagConstraintTests : IAsyncLifetime
 
         persisted.IsActive.Should().BeTrue();
         persisted.IsDeleted.Should().BeFalse();
+    }
+    [Fact]
+    public async Task Role_SecondDefault_DatabaseRejects()
+    {
+        var first = new MknMs.Domain.D1_RoleDuty.Role
+        {
+            Name = "DefaultRole", IsDefault = true, IsActive = true, IsDeleted = false,
+        };
+        _db.Roles.Add(first);
+        await _db.SaveChangesAsync();
+
+        var second = new MknMs.Domain.D1_RoleDuty.Role
+        {
+            Name = "SecondDefault", IsDefault = true, IsActive = true, IsDeleted = false,
+        };
+        _db.Roles.Add(second);
+        var act = async () => await _db.SaveChangesAsync();
+
+        await act.Should().ThrowAsync<DbUpdateException>();
+    }
+
+    [Fact]
+    public async Task MemberStatus_SecondDefault_DatabaseRejects()
+    {
+        var first = new MknMs.Domain.D4_Member.MemberStatus
+        {
+            Name = "DefaultStatus", IsRosterable = true, IsDefault = true,
+            IsActive = true, IsDeleted = false,
+        };
+        _db.MemberStatuses.Add(first);
+        await _db.SaveChangesAsync();
+
+        var second = new MknMs.Domain.D4_Member.MemberStatus
+        {
+            Name = "SecondDefault", IsRosterable = true, IsDefault = true,
+            IsActive = true, IsDeleted = false,
+        };
+        _db.MemberStatuses.Add(second);
+        var act = async () => await _db.SaveChangesAsync();
+
+        await act.Should().ThrowAsync<DbUpdateException>();
+    }
+
+    [Fact]
+    public async Task PermissionTier_SecondDefault_DatabaseRejects()
+    {
+        var first = new MknMs.Domain.D10_ConfigLookups.PermissionTier
+        {
+            Name = "DefaultTier", IsDefault = true, IsActive = true, IsDeleted = false,
+        };
+        _db.PermissionTiers.Add(first);
+        await _db.SaveChangesAsync();
+
+        var second = new MknMs.Domain.D10_ConfigLookups.PermissionTier
+        {
+            Name = "SecondDefault", IsDefault = true, IsActive = true, IsDeleted = false,
+        };
+        _db.PermissionTiers.Add(second);
+        var act = async () => await _db.SaveChangesAsync();
+
+        await act.Should().ThrowAsync<DbUpdateException>();
     }
 }

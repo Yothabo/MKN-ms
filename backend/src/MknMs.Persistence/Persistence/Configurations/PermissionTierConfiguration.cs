@@ -32,5 +32,12 @@ public class PermissionTierConfiguration : IEntityTypeConfiguration<PermissionTi
 
         builder.Property(e => e.IsDeleted)
             .IsRequired();
+
+        // §4: exactly one PermissionTier is the default. Same shape as
+        // the Role constraint.
+        builder.HasIndex(e => e.IsDefault)
+            .IsUnique()
+            .HasFilter("is_default = TRUE")
+            .HasDatabaseName("uq_permission_tier_single_default");
     }
 }

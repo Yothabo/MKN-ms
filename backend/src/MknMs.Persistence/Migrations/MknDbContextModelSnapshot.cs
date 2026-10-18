@@ -148,6 +148,11 @@ namespace MknMs.Infrastructure.Migrations
                     b.HasKey("PermissionTierId")
                         .HasName("pk_permission_tier");
 
+                    b.HasIndex("IsDefault")
+                        .IsUnique()
+                        .HasDatabaseName("uq_permission_tier_single_default")
+                        .HasFilter("is_default = TRUE");
+
                     b.ToTable("permission_tier");
                 });
 
@@ -662,6 +667,11 @@ namespace MknMs.Infrastructure.Migrations
 
                     b.HasKey("RoleId")
                         .HasName("pk_role");
+
+                    b.HasIndex("IsDefault")
+                        .IsUnique()
+                        .HasDatabaseName("uq_role_single_default")
+                        .HasFilter("is_default = TRUE");
 
                     b.ToTable("role");
                 });
@@ -1268,6 +1278,11 @@ namespace MknMs.Infrastructure.Migrations
 
                     b.HasKey("MemberStatusId")
                         .HasName("pk_member_status");
+
+                    b.HasIndex("IsDefault")
+                        .IsUnique()
+                        .HasDatabaseName("uq_member_status_single_default")
+                        .HasFilter("is_default = TRUE");
 
                     b.ToTable("member_status");
                 });

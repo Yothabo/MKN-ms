@@ -30,5 +30,13 @@ public class RoleConfiguration : IEntityTypeConfiguration<Role>
 
         builder.Property(e => e.IsDeleted)
             .IsRequired();
+
+        // §4: exactly one Role is the default. A partial unique index
+        // on is_default = TRUE enforces at-most-one at the database
+        // level; the write-path guard blocks removing the last default.
+        builder.HasIndex(e => e.IsDefault)
+            .IsUnique()
+            .HasFilter("is_default = TRUE")
+            .HasDatabaseName("uq_role_single_default");
     }
 }
