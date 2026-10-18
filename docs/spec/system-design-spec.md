@@ -2378,6 +2378,7 @@ The following amendments were added after the original fifteen.
 | 15.8.35 | Specification stale text: AttendanceRecord.Source distinguishes Manual from Tap; 6.0 register-scope reads named | Amendment | §13.1.4, §13.2, §13.5 |
 | 15.8.36 | API reconciliation: adapter contract is authoritative; endpoint list gains 13.0 manual; 9.0 invoker list corrected to four | Amendment | §14, §16 |
 | 15.8.37 | NotificationSubscription soft-delete clarification: the §9.7 row "removed; not soft-deleted independently" meant the cascade has no dependents, not that the operation is absent. §9.7 row rewritten to say so; §14.1.9 already relies on the operation | Amendment | §9.7, §14.1.9 |
+| 15.8.38 | Attribute Type create and list in scope: Set Member Attribute (§3.x) requires a live AttributeType as its only usable target; without a create path the AttributeType vocabulary is seed-only. No base-doc sentence is amended — the note that Attribute Type CRUD is out of E4 scope appears nowhere in the current tree. | Amendment | §4, §9.1.7 |
 
 ---
 
