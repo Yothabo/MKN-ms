@@ -132,12 +132,16 @@ public sealed class ManageProgramItemService : IManageProgramItemService
             ServiceDefId = serviceDefId,
         };
         _db.ProgramItems.Add(entity);
-        await _db.SaveChangesAsync(cancellationToken);
 
         if (serviceDefId is int defId)
         {
             await CreateEventSourcedOccurrenceAsync(entity, program.EventId, defId, actingAdminId, cancellationToken);
         }
+
+        // §9.8: the ProgramItem and the event-sourced occurrence are one
+        // atomic unit. Both are added to the context and committed by a
+        // single SaveChangesAsync below.
+        await _db.SaveChangesAsync(cancellationToken);
 
         return ConfigurationResult<ProgramItem>.Success(entity);
     }
@@ -175,8 +179,6 @@ public sealed class ManageProgramItemService : IManageProgramItemService
         entity.ScheduledEnd = scheduledEnd;
         entity.ServiceDefId = serviceDefId;
 
-        await _db.SaveChangesAsync(cancellationToken);
-
         // If the ServiceDefId transitioned from null to a value, create
         // the event-sourced occurrence. If it changed from one value to
         // another, the specification does not require deleting the old
@@ -188,6 +190,11 @@ public sealed class ManageProgramItemService : IManageProgramItemService
                 .FirstAsync(p => p.ProgramId == entity.ProgramId, cancellationToken);
             await CreateEventSourcedOccurrenceAsync(entity, program.EventId, defId, actingAdminId, cancellationToken);
         }
+
+        // §9.8: the ProgramItem field changes and the occurrence (when
+        // created) are one atomic unit. Both are tracked and committed
+        // by a single SaveChangesAsync below.
+        await _db.SaveChangesAsync(cancellationToken);
 
         return ConfigurationResult<ProgramItem>.Success(entity);
     }
@@ -339,7 +346,9 @@ public sealed class ManageProgramItemService : IManageProgramItemService
             ChangedBy = null,
         };
 
+        // The caller commits. §9.8: the ProgramItem mutation and this
+        // occurrence are one atomic unit; neither is committed before
+        // the other.
         _db.ServiceOccurrences.Add(occurrence);
-        await _db.SaveChangesAsync(cancellationToken);
     }
 }
