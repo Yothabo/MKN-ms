@@ -730,12 +730,12 @@ The process does not authenticate the caller. The process does not check whether
 | 3.2 Manage Identifier History | `AuthorizedByAdminID` or `ActingAdminID` on the command |
 | 3.x Member Management (Attendance Rule, Readmission, Attribute) | `ActingAdminID` on the command |
 | 3.0 Manage Notification Subscription | `ActingAdminID` on the command |
-| D10 Lookup creates (Capability, AttributeType) | `ActingAdminID` on the command |
+| D10 Lookup creates (AttributeType) | `ActingAdminID` on the command |
 | 4.0 Manage Eligibility | `GrantedByAdminID` or `ActingAdminID` on the command |
 | 8.1–8.4 Manage Events and Programs | `ActingAdminID` on the command |
 | 11.0 Materialize Occurrences | `TriggeredByAdminId` on the command, required only when `TriggerType` is Manual |
 | 12.0 Create Manual Assignment | `ActingAdminId` on the command |
-| 13.0 Attendance Rule Engine (manual invocation) | The invocation itself; no admin field is required by the current entity shape |
+| 13.0 Attendance Rule Engine (manual invocation) | `ActingAdminID` on the command, resolved to an active Admin; the scheduled run carries no admin |
 
 ### Processes that do not receive an identity
 
@@ -749,6 +749,7 @@ The process does not authenticate the caller. The process does not check whether
 | 10.0 Evaluate Fill Status | Reads and writes a mechanical classification; no identity needed |
 | 11.0 Materialize Occurrences (scheduled) | Triggered by the scheduler; `TriggeredByAdminId` is null |
 | 13.0 Attendance Rule Engine (scheduled run) | Triggered by the scheduler |
+| Capability create | Vocabulary-only. A Capability row is `{Name, Description, IsActive, IsDeleted}` — no attribution column, so the create does not resolve an acting admin. AttributeType create is the counter-example: `Set Member Attribute` depends on it, and `MemberAttributeValue.RecordedBy` carries the admin. |
 
 ### What the process does with the identity
 
