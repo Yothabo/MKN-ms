@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
@@ -526,5 +527,153 @@ public class HttpSurfaceTests : IClassFixture<WebApplicationFactory<Program>>, I
         var response = await client.SendAsync(request);
 
         await AssertNoServerErrorAsync(response, "/api/config/4.0/eligibility/1");
+    }
+    // -------------------------------------------------------------
+    // F-07 — malformed date and time input
+    // -------------------------------------------------------------
+
+    private static async Task AssertValidationFailureAsync(
+        HttpResponseMessage response, string fieldName)
+    {
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var body = await response.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(body);
+        var error = doc.RootElement.GetProperty("error");
+        error.GetProperty("code").GetString().Should().Be("validation_failed");
+        error.GetProperty("message").GetString().Should().Contain(fieldName);
+    }
+
+    [Fact]
+    public async Task CreateSchedule_MalformedStartTime_ReturnsValidationFailure()
+    {
+        var client = _factory.CreateClient();
+        var response = await client.PostAsJsonAsync(
+            "/api/config/1.0/service-schedules",
+            new
+            {
+                serviceDefId = 1,
+                timeSlotId = 1,
+                startTime = "not-a-time",
+                actingAdminId = 1,
+            });
+        await AssertValidationFailureAsync(response, "StartTime");
+    }
+
+    [Fact]
+    public async Task IssueIdentifier_MalformedAssignedDate_ReturnsValidationFailure()
+    {
+        var client = _factory.CreateClient();
+        var response = await client.PostAsJsonAsync(
+            "/api/config/3.0/members/1/identifiers",
+            new
+            {
+                type = "Card",
+                number = "X-1",
+                assignedDate = "not-a-date",
+                authorizedByAdminId = 1,
+            });
+        await AssertValidationFailureAsync(response, "AssignedDate");
+    }
+
+    [Fact]
+    public async Task RetireIdentifier_MalformedUnassignedDate_ReturnsValidationFailure()
+    {
+        var client = _factory.CreateClient();
+        var response = await client.SendAsync(new HttpRequestMessage(
+            HttpMethod.Delete, "/api/config/3.0/identifiers/1")
+        {
+            Content = JsonContent.Create(new { unassignedDate = "xyz", reason = "r" }),
+        });
+        await AssertValidationFailureAsync(response, "UnassignedDate");
+    }
+
+    [Fact]
+    public async Task GrantEligibility_MalformedGrantedDate_ReturnsValidationFailure()
+    {
+        var client = _factory.CreateClient();
+        var response = await client.PostAsJsonAsync(
+            "/api/config/4.0/members/1/eligibility",
+            new { dutyId = 1, grantedDate = "nope", grantedByAdminId = 1 });
+        await AssertValidationFailureAsync(response, "GrantedDate");
+    }
+
+    [Fact]
+    public async Task RevokeEligibility_MalformedRevokedDate_ReturnsValidationFailure()
+    {
+        var client = _factory.CreateClient();
+        var response = await client.SendAsync(new HttpRequestMessage(
+            HttpMethod.Delete, "/api/config/4.0/eligibility/1")
+        {
+            Content = JsonContent.Create(new { revokedDate = "nope" }),
+        });
+        await AssertValidationFailureAsync(response, "RevokedDate");
+    }
+
+    [Fact]
+    public async Task CreateEvent_MalformedStartDate_ReturnsValidationFailure()
+    {
+        var client = _factory.CreateClient();
+        var response = await client.PostAsJsonAsync(
+            "/api/config/8.0/events",
+            new
+            {
+                name = "X",
+                startDate = "not-a-date",
+                endDate = "2026-12-31",
+                type = "Conference",
+                hostBranchId = 1,
+            });
+        await AssertValidationFailureAsync(response, "StartDate");
+    }
+
+    [Fact]
+    public async Task CreateEvent_MalformedEndDate_ReturnsValidationFailure()
+    {
+        var client = _factory.CreateClient();
+        var response = await client.PostAsJsonAsync(
+            "/api/config/8.0/events",
+            new
+            {
+                name = "X",
+                startDate = "2026-12-01",
+                endDate = "not-a-date",
+                type = "Conference",
+                hostBranchId = 1,
+            });
+        await AssertValidationFailureAsync(response, "EndDate");
+    }
+
+    [Fact]
+    public async Task CreateProgramItem_MalformedScheduledStart_ReturnsValidationFailure()
+    {
+        var client = _factory.CreateClient();
+        var response = await client.PostAsJsonAsync(
+            "/api/config/8.0/programs/1/items",
+            new
+            {
+                sequenceOrder = 1,
+                title = "Item",
+                scheduledStart = "not-a-timestamp",
+                scheduledEnd = "2026-12-01T10:00:00Z",
+                actingAdminId = 1,
+            });
+        await AssertValidationFailureAsync(response, "ScheduledStart");
+    }
+
+    [Fact]
+    public async Task CreateProgramItem_MalformedScheduledEnd_ReturnsValidationFailure()
+    {
+        var client = _factory.CreateClient();
+        var response = await client.PostAsJsonAsync(
+            "/api/config/8.0/programs/1/items",
+            new
+            {
+                sequenceOrder = 1,
+                title = "Item",
+                scheduledStart = "2026-12-01T09:00:00Z",
+                scheduledEnd = "not-a-timestamp",
+                actingAdminId = 1,
+            });
+        await AssertValidationFailureAsync(response, "ScheduledEnd");
     }
 }

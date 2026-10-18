@@ -82,6 +82,64 @@ public static class ConfigurationEndpoints
         };
     }
 
+    // Request-boundary parsing. Malformed input is a caller error, not
+    // a server fault; the adapter contract requires it to surface as
+    // the documented validation response rather than as an unhandled
+    // exception. Each helper returns false and populates an IResult
+    // carrying the standard BadRequest shape when the field cannot be
+    // parsed.
+
+    private static bool TryParseIsoDate(
+        string? value, string fieldName, out DateOnly result, out IResult error)
+    {
+        if (DateOnly.TryParse(value, out result))
+        {
+            error = null!;
+            return true;
+        }
+        error = Results.BadRequest(new
+        {
+            error = new ConfigurationError(
+                ConfigurationErrorCodes.ValidationFailed,
+                $"{fieldName} must be an ISO 8601 date (yyyy-MM-dd)."),
+        });
+        return false;
+    }
+
+    private static bool TryParseTimestamp(
+        string? value, string fieldName, out DateTimeOffset result, out IResult error)
+    {
+        if (DateTimeOffset.TryParse(value, out result))
+        {
+            error = null!;
+            return true;
+        }
+        error = Results.BadRequest(new
+        {
+            error = new ConfigurationError(
+                ConfigurationErrorCodes.ValidationFailed,
+                $"{fieldName} must be an ISO 8601 timestamp."),
+        });
+        return false;
+    }
+
+    private static bool TryParseTimeOfDay(
+        string? value, string fieldName, out TimeOnly result, out IResult error)
+    {
+        if (TimeOnly.TryParse(value, out result))
+        {
+            error = null!;
+            return true;
+        }
+        error = Results.BadRequest(new
+        {
+            error = new ConfigurationError(
+                ConfigurationErrorCodes.ValidationFailed,
+                $"{fieldName} must be a time (HH:mm or HH:mm:ss)."),
+        });
+        return false;
+    }
+
     // -----------------------------------------------------------------
     // Lookups
     // -----------------------------------------------------------------
@@ -345,10 +403,16 @@ public static class ConfigurationEndpoints
             [FromBody] CreateScheduleRequest request,
             IConfigureServiceDutyAndScheduleService service,
             CancellationToken cancellationToken) =>
-            ToHttpResult(await service.CreateScheduleAsync(
+        {
+            if (!TryParseTimeOfDay(request.StartTime, "StartTime", out var startTime, out var startTimeError))
+            {
+                return startTimeError;
+            }
+            return ToHttpResult(await service.CreateScheduleAsync(
                 request.ServiceDefId, request.TimeSlotId,
-                TimeOnly.Parse(request.StartTime), request.ActingAdminId,
-                cancellationToken)));
+                startTime, request.ActingAdminId,
+                cancellationToken));
+        });
 
         routes.MapDelete("/api/config/1.0/service-schedules/{id:int}", async (
             int id,
@@ -467,24 +531,36 @@ public static class ConfigurationEndpoints
             [FromBody] IssueIdentifierRequest request,
             IManageIdentifierHistoryService service,
             CancellationToken cancellationToken) =>
-            ToHttpResult(await service.IssueAsync(
+        {
+            if (!TryParseIsoDate(request.AssignedDate, "AssignedDate", out var assignedDate, out var assignedError))
+            {
+                return assignedError;
+            }
+            return ToHttpResult(await service.IssueAsync(
                 memberId,
                 request.Type,
                 request.Number,
-                DateOnly.Parse(request.AssignedDate),
+                assignedDate,
                 request.AuthorizedByAdminId,
-                cancellationToken)));
+                cancellationToken));
+        });
 
         routes.MapDelete("/api/config/3.0/identifiers/{entryId:int}", async (
             int entryId,
             [FromBody] RetireIdentifierRequest request,
             IManageIdentifierHistoryService service,
             CancellationToken cancellationToken) =>
-            ToHttpResult(await service.RetireAsync(
+        {
+            if (!TryParseIsoDate(request.UnassignedDate, "UnassignedDate", out var unassignedDate, out var unassignedError))
+            {
+                return unassignedError;
+            }
+            return ToHttpResult(await service.RetireAsync(
                 entryId,
-                DateOnly.Parse(request.UnassignedDate),
+                unassignedDate,
                 request.Reason,
-                cancellationToken)));
+                cancellationToken));
+        });
     }
 
     // -----------------------------------------------------------------
@@ -511,23 +587,35 @@ public static class ConfigurationEndpoints
             [FromBody] GrantEligibilityRequest request,
             IManageEligibilityService service,
             CancellationToken cancellationToken) =>
-            ToHttpResult(await service.GrantAsync(
+        {
+            if (!TryParseIsoDate(request.GrantedDate, "GrantedDate", out var grantedDate, out var grantedError))
+            {
+                return grantedError;
+            }
+            return ToHttpResult(await service.GrantAsync(
                 memberId,
                 request.DutyId,
-                DateOnly.Parse(request.GrantedDate),
+                grantedDate,
                 request.GrantedByAdminId,
-                cancellationToken)));
+                cancellationToken));
+        });
 
         routes.MapDelete("/api/config/4.0/eligibility/{eligibilityId:int}", async (
             int eligibilityId,
             [FromBody] RevokeEligibilityRequest request,
             IManageEligibilityService service,
             CancellationToken cancellationToken) =>
-            ToHttpResult(await service.RevokeAsync(
+        {
+            if (!TryParseIsoDate(request.RevokedDate, "RevokedDate", out var revokedDate, out var revokedError))
+            {
+                return revokedError;
+            }
+            return ToHttpResult(await service.RevokeAsync(
                 eligibilityId,
-                DateOnly.Parse(request.RevokedDate),
+                revokedDate,
                 request.RevokedReason,
-                cancellationToken)));
+                cancellationToken));
+        });
     }
 
     // -----------------------------------------------------------------
@@ -547,15 +635,25 @@ public static class ConfigurationEndpoints
             [FromBody] CreateEventRequest request,
             IManageEventService service,
             CancellationToken cancellationToken) =>
-            ToHttpResult(await service.CreateAsync(
+        {
+            if (!TryParseIsoDate(request.StartDate, "StartDate", out var startDate, out var startErr))
+            {
+                return startErr;
+            }
+            if (!TryParseIsoDate(request.EndDate, "EndDate", out var endDate, out var endErr))
+            {
+                return endErr;
+            }
+            return ToHttpResult(await service.CreateAsync(
                 request.Name,
-                DateOnly.Parse(request.StartDate),
-                DateOnly.Parse(request.EndDate),
+                startDate,
+                endDate,
                 request.Type,
                 request.HostBranchId,
                 request.AttendingBranchIds,
                 request.UsesAttendanceRegister,
-                cancellationToken)));
+                cancellationToken));
+        });
 
         routes.MapDelete("/api/config/8.0/events/{id:int}", async (
             int id,
@@ -606,15 +704,25 @@ public static class ConfigurationEndpoints
             [FromBody] CreateProgramItemRequest request,
             IManageProgramItemService service,
             CancellationToken cancellationToken) =>
-            ToHttpResult(await service.CreateAsync(
+        {
+            if (!TryParseTimestamp(request.ScheduledStart, "ScheduledStart", out var sStart, out var sStartErr))
+            {
+                return sStartErr;
+            }
+            if (!TryParseTimestamp(request.ScheduledEnd, "ScheduledEnd", out var sEnd, out var sEndErr))
+            {
+                return sEndErr;
+            }
+            return ToHttpResult(await service.CreateAsync(
                 programId,
                 request.SequenceOrder,
                 request.Title,
-                DateTimeOffset.Parse(request.ScheduledStart),
-                DateTimeOffset.Parse(request.ScheduledEnd),
+                sStart,
+                sEnd,
                 request.ServiceDefId,
                 request.ActingAdminId,
-                cancellationToken)));
+                cancellationToken));
+        });
 
         // Event Duty
         routes.MapGet("/api/config/8.0/events/{eventId:int}/duties", async (
