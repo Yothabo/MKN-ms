@@ -1100,7 +1100,7 @@ On soft delete, the following reference handling applies:
 | Assignment Status | Blocked if any Roster Assignment or System Setting references the status. |
 | Time Of Day | Blocked if any Branch Time Slot references the Time Of Day. |
 | Service Type | Blocked if any Service Definition or Service Occurrence references the Service Type. |
-| Permission Tier | Blocked if any Admin or Entity Deletion Policy references the tier. |
+| Permission Tier | Blocked if this is the default Permission Tier, or if any Admin or Entity Deletion Policy references the tier. |
 | Capability | Removed; not soft-deleted independently, because nothing references it. |
 | Entity Deletion Policy | Removed; not soft-deleted independently. |
 | Notification Subscription | Soft-deleted; no cascade (nothing references it). The soft-delete operation exists and sets both flags; §14.1.9 relies on this and states that an inactive or soft-deleted subscription is not consulted by the authority-notification sweep. |
