@@ -5,9 +5,12 @@ namespace MknMs.Application.Processes.Configuration.ManageAttributeType;
 /// Subprocess 3.5 — Manage Attribute Type.
 /// </summary>
 /// <remarks>
-/// Only the soft-delete operation is implemented. §3.0 does not name
-/// Attribute Type CRUD, and the E4i scope is the soft-delete cascade
-/// from §9.7.
+/// List, create, and soft delete. §9.1.7 states that §3.0 does
+/// not name Attribute Type CRUD; the create and list operations
+/// are in scope because the Set Member Attribute command
+/// (contracts.md §3.x) requires a live AttributeType as its
+/// only usable target, and without a create path the vocabulary
+/// is seed-only. Soft delete remains the E4i cascade from §9.7.
 ///
 /// The Attribute Type cascade (removal of MemberAttributeValue rows
 /// for this attribute, soft delete of Duty Rules whose

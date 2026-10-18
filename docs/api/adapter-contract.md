@@ -174,8 +174,8 @@ The OpenAPI document is a byproduct of the adapter's implementation. It is not a
 ## Since the freeze
 
 The sections above describe the adapter contract at the freeze
-commit. Implementation has continued since, and two groups of
-endpoints have been added. They are recorded here so a reader
+commit. Implementation has continued since, and several groups
+of endpoints have been added. They are recorded here so a reader
 does not confuse the freeze-time inventory with the current one.
 The authoritative current list of routes lives in the endpoint
 sources under `backend/src/MknMs.Api/Endpoints/`; the routes below
@@ -218,6 +218,42 @@ Every soft-delete route takes a `LifecycleActionRequest` body
 naming the acting admin, the approving admin, a boolean
 acknowledgement, and an optional reason. The response follows the
 same envelope as the deactivation routes.
+
+### D10 vocabulary and member-data endpoints
+
+Four further endpoint families were added after the freeze.
+
+**Capability vocabulary.** List and create:
+
+    GET  /api/lookups/capabilities
+    POST /api/lookups/capabilities
+
+**Attribute Type vocabulary.** List and create. The create path exists
+because Set Member Attribute below requires a live AttributeType as
+its target; the soft-delete route above is unchanged:
+
+    GET  /api/config/3.5/attribute-types
+    POST /api/config/3.5/attribute-types
+
+**Set Member Attribute.** Upsert of the (MemberId, AttributeTypeId)
+pair per §4; see the Set Member Attribute command in
+`docs/processes/contracts.md` §3.x:
+
+    POST /api/config/3.0/members/{memberId}/attributes
+
+**Record Readmission.** One row per readmission event; see the
+Record Readmission command in `docs/processes/contracts.md` §3.x:
+
+    POST /api/config/3.0/members/{memberId}/readmissions
+
+**Notification Subscription.** Recipient configuration for the
+9.0 Path 2 authority-notification sweep:
+
+    GET    /api/config/3.0/notification-subscriptions
+    GET    /api/config/3.0/notification-subscriptions/{id}
+    POST   /api/config/3.0/notification-subscriptions
+    DELETE /api/config/3.0/notification-subscriptions/{id}
+    POST   /api/config/3.0/notification-subscriptions/{id}/soft-delete
 
 The freeze-commit sections above remain historically accurate:
 they describe what the adapter looked like at the freeze.

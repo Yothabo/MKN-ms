@@ -647,6 +647,8 @@ The process does not authenticate the caller. The process does not check whether
 | 3.1 Manage Member Record | `ActingAdminID` on the command |
 | 3.2 Manage Identifier History | `AuthorizedByAdminID` or `ActingAdminID` on the command |
 | 3.x Member Management (Attendance Rule, Readmission, Attribute) | `ActingAdminID` on the command |
+| 3.0 Manage Notification Subscription | `ActingAdminID` on the command |
+| D10 Lookup creates (Capability, AttributeType) | `ActingAdminID` on the command |
 | 4.0 Manage Eligibility | `GrantedByAdminID` or `ActingAdminID` on the command |
 | 8.1–8.4 Manage Events and Programs | `ActingAdminID` on the command |
 | 11.0 Materialize Occurrences | `TriggeredByAdminId` on the command, required only when `TriggerType` is Manual |
