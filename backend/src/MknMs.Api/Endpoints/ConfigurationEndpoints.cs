@@ -18,6 +18,7 @@ using MknMs.Application.Processes.Configuration.ManageMemberRecord;
 using MknMs.Application.Processes.Configuration.ManageAttributeType;
 using MknMs.Application.Processes.Configuration.ManageLookups;
 using MknMs.Application.Processes.Configuration.ManageMemberStatus;
+using MknMs.Application.Processes.Configuration.RecordReadmission;
 using MknMs.Application.Processes.Configuration.ManageProgram;
 using MknMs.Application.Processes.Configuration.ManageProgramItem;
 
@@ -45,6 +46,7 @@ public static class ConfigurationEndpoints
         MapManageEventsAndPrograms(routes);
         MapManageAttendanceRule(routes);
         MapManageMemberStatus(routes);
+        MapRecordReadmission(routes);
         MapManageAttributeType(routes);
         MapManageLookups(routes);
         return routes;
@@ -752,6 +754,35 @@ public static class ConfigurationEndpoints
     // 3.4 Manage Member Status
     // -----------------------------------------------------------------
 
+    // -----------------------------------------------------------------
+    // 3.7 Record Readmission
+    // -----------------------------------------------------------------
+
+    private static void MapRecordReadmission(IEndpointRouteBuilder routes)
+    {
+        routes.MapPost("/api/config/3.0/members/{memberId:int}/readmissions", async (
+            int memberId,
+            [FromBody] RecordReadmissionRequest request,
+            IRecordReadmissionService service,
+            CancellationToken cancellationToken) =>
+        {
+            if (!TryParseIsoDate(request.ReadmissionDate, "ReadmissionDate", out var readmissionDate, out var dateError))
+            {
+                return dateError;
+            }
+
+            return ToHttpResult(await service.RecordAsync(
+                new RecordReadmissionCommand
+                {
+                    MemberId = memberId,
+                    ReadmissionDate = readmissionDate,
+                    Reason = request.Reason,
+                    ActingAdminId = request.ActingAdminId,
+                },
+                cancellationToken));
+        });
+    }
+
     private static void MapManageMemberStatus(IEndpointRouteBuilder routes)
     {
         routes.MapPost("/api/config/3.4/member-statuses/{id:int}/soft-delete", async (
@@ -1047,6 +1078,13 @@ public sealed record LifecycleActionRequest
 public sealed record SetMemberStatusRequest
 {
     public required int MemberStatusId { get; init; }
+}
+
+public sealed record RecordReadmissionRequest
+{
+    public required string ReadmissionDate { get; init; }
+    public string? Reason { get; init; }
+    public required int ActingAdminId { get; init; }
 }
 
 public sealed record CreateEventDutyRequest
