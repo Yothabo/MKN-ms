@@ -144,6 +144,39 @@ public class MigrationSchemaTests : IClassFixture<MigrationSchemaFixture>
         var indexes = await _fixture.UniqueIndexesAsync("member_attribute_value");
         indexes.Should().Contain("uq_member_attribute_value_member_type");
     }
+
+    [Fact]
+    public async Task Role_HasSingleDefaultFilteredIndex()
+    {
+        var indexes = await _fixture.UniqueIndexesAsync("role");
+        indexes.Should().Contain("uq_role_single_default");
+
+        var filter = await _fixture.IndexFilterAsync(
+            "role", "uq_role_single_default");
+        filter.Should().NotBeNullOrWhiteSpace();
+    }
+
+    [Fact]
+    public async Task MemberStatus_HasSingleDefaultFilteredIndex()
+    {
+        var indexes = await _fixture.UniqueIndexesAsync("member_status");
+        indexes.Should().Contain("uq_member_status_single_default");
+
+        var filter = await _fixture.IndexFilterAsync(
+            "member_status", "uq_member_status_single_default");
+        filter.Should().NotBeNullOrWhiteSpace();
+    }
+
+    [Fact]
+    public async Task PermissionTier_HasSingleDefaultFilteredIndex()
+    {
+        var indexes = await _fixture.UniqueIndexesAsync("permission_tier");
+        indexes.Should().Contain("uq_permission_tier_single_default");
+
+        var filter = await _fixture.IndexFilterAsync(
+            "permission_tier", "uq_permission_tier_single_default");
+        filter.Should().NotBeNullOrWhiteSpace();
+    }
 }
 
 /// <summary>
