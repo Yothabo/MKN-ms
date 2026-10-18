@@ -263,9 +263,91 @@ These three sit within 3.0's ownership boundary as established by B12 and B14.
 | RecordedDate | date | Yes |
 | ActingAdminID | integer | Yes |
 
-**Result on Success:** The created `AttendanceRule`, `Readmission`, or `MemberAttributeValue` record.
+**Result on Success:**
 
-**Errors:** `ValidationFailed`, `NotFound`, `Conflict` (an AttendanceRule's TriggerType or OutcomeType is outside the vocabulary; a member attribute value already exists for the same pair and must be replaced).
+- Create or update Attendance Rule: the `AttendanceRule` row after the write.
+- Record Readmission: the created `Readmission` record.
+- Set Member Attribute: the `MemberAttributeValue` row after the write —
+  new on first set, the existing row updated on re-set.
+
+**Set Member Attribute is an upsert.** The (MemberID, AttributeTypeID)
+pair is unique per §4. Re-setting an existing pair replaces Value,
+RecordedDate, and RecordedBy on the existing row; the
+MemberAttributeValueID is preserved. The operation is not a Conflict
+when the pair already exists — the contract's earlier "must be
+replaced" clause is the operative statement, and the code implements
+it as replace, not refuse.
+
+**Errors:** `ValidationFailed` (an AttendanceRule's TriggerType or
+OutcomeType is outside the vocabulary; a required field is missing;
+a referenced AttributeType is soft-deleted), `NotFound` (the member,
+duty, admin, or target entity does not exist).
+
+#### 3.5 Attribute Type
+
+List, create, and soft-delete the Attribute Type vocabulary. The
+create and list operations are in scope because the Set Member
+Attribute command requires a live AttributeType as its only usable
+target; without a create path the vocabulary is seed-only and the
+command cannot be exercised through the application. §15.8.38
+records the amendment.
+
+**List command:** no fields; returns every AttributeType where
+`IsDeleted = false`, ordered by AttributeTypeID.
+
+**Create command:**
+
+| Field | Type | Required |
+| --- | --- | --- |
+| Name | string | Yes |
+| Description | string | No |
+| ActingAdminID | integer | Yes |
+
+**Result on Success:** The created `AttributeType` record.
+
+**Errors:** `ValidationFailed` (Name is missing), `NotFound`
+(ActingAdminID does not resolve to an active Admin).
+
+**Soft-delete command:** see the soft-delete section for
+configuration entities; `AttributeType` is a soft-deletable entity
+under §9.7.
+
+#### 3.0 Notification Subscription
+
+Create, list, get, deactivate, and soft-delete the recipient
+configuration for the 9.0 Path 2 authority-notification sweep. The
+entity is two-flag (`IsActive`, `IsDeleted`); §9.7 and §14.1.9 apply.
+§15.8.37 records the soft-delete clarification.
+
+**Create command:**
+
+| Field | Type | Required |
+| --- | --- | --- |
+| EventType | string | Yes — "Deactivate" or "SoftDelete" |
+| RecipientTierID | integer | Exactly one of RecipientTierID or RecipientAdminID |
+| RecipientAdminID | integer | Exactly one of RecipientTierID or RecipientAdminID |
+| ActingAdminID | integer | Yes |
+
+**Result on Success:** The created `NotificationSubscription` record.
+
+**Errors:** `ValidationFailed` (EventType is not one of the two
+recognised audit actions; both or neither recipient field is set),
+`NotFound` (the acting admin does not resolve to an active Admin, or
+the named recipient tier or admin does not exist), `ReferencedEntityInactive`
+(the named recipient tier is inactive or soft-deleted, or the named
+admin is inactive).
+
+**Deactivate and Soft-delete commands** follow the standard
+lifecycle shape under §9.7 with `LifecycleActionRequest` fields and
+`ConfigurationLifecycleService.RecordAsync`. The cascade arm for
+NotificationSubscription returns `NoDependents()` — nothing
+references the entity.
+
+**List and Get:** list returns every subscription where
+`IsDeleted = false`; an `includeInactive` flag selects between
+`IsActive = true` only (default) and `IsActive` unrestricted (active
+plus deactivated, never soft-deleted). Get returns a single
+subscription by ID or null when soft-deleted or absent.
 
 ### 4.0 Manage Eligibility
 
