@@ -20,6 +20,15 @@ namespace MknMs.Application.Processes.Configuration.ManageAttributeType;
 /// </remarks>
 public interface IManageAttributeTypeService
 {
+    Task<IReadOnlyList<AttributeType>> ListAsync(
+        CancellationToken cancellationToken = default);
+
+    Task<ConfigurationResult<AttributeType>> CreateAsync(
+        string name,
+        string? description,
+        int actingAdminId,
+        CancellationToken cancellationToken = default);
+
     Task<ConfigurationResult<AttributeType>> SoftDeleteAsync(
         int attributeTypeId,
         int actingAdminId,
@@ -43,6 +52,50 @@ public sealed class ManageAttributeTypeService : IManageAttributeTypeService
         _db = db;
         _lifecycle = lifecycle;
         _cascade = cascade;
+    }
+
+    public async Task<IReadOnlyList<AttributeType>> ListAsync(
+        CancellationToken cancellationToken = default)
+    {
+        return await _db.AttributeTypes
+            .Where(a => !a.IsDeleted)
+            .OrderBy(a => a.AttributeTypeId)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<ConfigurationResult<AttributeType>> CreateAsync(
+        string name,
+        string? description,
+        int actingAdminId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!ConfigurationValidation.IsValidName(name))
+        {
+            return ConfigurationResult<AttributeType>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.InvalidValue, "Name is required."));
+        }
+
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
+        {
+            return ConfigurationResult<AttributeType>.Failure(adminError);
+        }
+
+        var entity = new AttributeType
+        {
+            Name = name.Trim(),
+            Description = string.IsNullOrWhiteSpace(description)
+                ? null
+                : description.Trim(),
+            IsActive = true,
+            IsDeleted = false,
+        };
+
+        _db.AttributeTypes.Add(entity);
+        await _db.SaveChangesAsync(cancellationToken);
+        return ConfigurationResult<AttributeType>.Success(entity);
     }
 
     public async Task<ConfigurationResult<AttributeType>> SoftDeleteAsync(

@@ -243,4 +243,59 @@ public class ManageAttributeTypeServiceTests : IAsyncLifetime
         result.IsSuccess.Should().BeFalse();
         result.Error!.Code.Should().Be(ConfigurationErrorCodes.ValidationFailed);
     }
+
+    [Fact]
+    public async Task List_ReturnsNonDeletedOrdered()
+    {
+        var f = await SeedAsync();
+
+        var service = MakeService();
+        var list = await service.ListAsync();
+
+        list.Should().NotBeEmpty();
+        list.Should().OnlyContain(a => !a.IsDeleted);
+    }
+
+    [Fact]
+    public async Task Create_WithNameAndDescription_WritesRow()
+    {
+        var f = await SeedAsync();
+        var service = MakeService();
+
+        var result = await service.CreateAsync(
+            "Baptised", "Whether the member is baptised.", f.adminId);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.Name.Should().Be("Baptised");
+        result.Value.Description.Should().Be("Whether the member is baptised.");
+        result.Value.IsActive.Should().BeTrue();
+        result.Value.IsDeleted.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Create_WithBlankName_Fails()
+    {
+        var f = await SeedAsync();
+        var service = MakeService();
+
+        var result = await service.CreateAsync("   ", null, f.adminId);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error!.Code.Should().Be(ConfigurationErrorCodes.InvalidValue);
+    }
+
+    [Fact]
+    public async Task Create_WithInactiveAdmin_Fails()
+    {
+        var f = await SeedAsync();
+        var admin = await _db.Admins.FirstAsync(a => a.AdminId == f.adminId);
+        admin.IsActive = false;
+        await _db.SaveChangesAsync();
+
+        var service = MakeService();
+        var result = await service.CreateAsync("Tag", null, f.adminId);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error!.Code.Should().Be(ConfigurationErrorCodes.ReferencedEntityInactive);
+    }
 }

@@ -49,6 +49,7 @@ public static class ConfigurationEndpoints
         MapManageMemberStatus(routes);
         MapRecordReadmission(routes);
         MapManageAttributeType(routes);
+        MapSetMemberAttribute(routes);
         MapManageLookups(routes);
         return routes;
     }
@@ -872,6 +873,19 @@ public static class ConfigurationEndpoints
 
     private static void MapManageAttributeType(IEndpointRouteBuilder routes)
     {
+        routes.MapGet("/api/config/3.5/attribute-types", async (
+            IManageAttributeTypeService service,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await service.ListAsync(cancellationToken)));
+
+        routes.MapPost("/api/config/3.5/attribute-types", async (
+            [FromBody] CreateAttributeTypeRequest request,
+            IManageAttributeTypeService service,
+            CancellationToken cancellationToken) =>
+            ToHttpResult(await service.CreateAsync(
+                request.Name, request.Description,
+                request.ActingAdminId, cancellationToken)));
+
         routes.MapPost("/api/config/3.5/attribute-types/{id:int}/soft-delete", async (
             int id,
             [FromBody] LifecycleActionRequest request,
@@ -881,6 +895,36 @@ public static class ConfigurationEndpoints
                 id, request.ActingAdminId, request.ApprovedByAdminId,
                 request.ConsequencesAcknowledged, request.Reason ?? string.Empty,
                 cancellationToken)));
+    }
+
+    // -----------------------------------------------------------------
+    // 3.1 Set Member Attribute
+    // -----------------------------------------------------------------
+
+    private static void MapSetMemberAttribute(IEndpointRouteBuilder routes)
+    {
+        routes.MapPost("/api/config/3.0/members/{memberId:int}/attributes", async (
+            int memberId,
+            [FromBody] SetMemberAttributeRequest request,
+            ISetMemberAttributeService service,
+            CancellationToken cancellationToken) =>
+        {
+            if (!TryParseIsoDate(request.RecordedDate, "RecordedDate", out var recordedDate, out var dateError))
+            {
+                return dateError;
+            }
+
+            return ToHttpResult(await service.SetAsync(
+                new SetMemberAttributeCommand
+                {
+                    MemberId = memberId,
+                    AttributeTypeId = request.AttributeTypeId,
+                    Value = request.Value,
+                    RecordedDate = recordedDate,
+                    ActingAdminId = request.ActingAdminId,
+                },
+                cancellationToken));
+        });
     }
 
     // -----------------------------------------------------------------
@@ -968,6 +1012,21 @@ public static class ConfigurationEndpoints
 public sealed record CreateLookupRequest
 {
     public required string Name { get; init; }
+}
+
+public sealed record CreateAttributeTypeRequest
+{
+    public required string Name { get; init; }
+    public string? Description { get; init; }
+    public required int ActingAdminId { get; init; }
+}
+
+public sealed record SetMemberAttributeRequest
+{
+    public required int AttributeTypeId { get; init; }
+    public required string Value { get; init; }
+    public required string RecordedDate { get; init; }
+    public required int ActingAdminId { get; init; }
 }
 
 public sealed record CreateCapabilityRequest

@@ -75,6 +75,7 @@ builder.Services.AddScoped<IManageAttendanceRuleService, ManageAttendanceRuleSer
 builder.Services.AddScoped<IManageMemberStatusService, ManageMemberStatusService>();
 builder.Services.AddScoped<IRecordReadmissionService, RecordReadmissionService>();
 builder.Services.AddScoped<IManageAttributeTypeService, ManageAttributeTypeService>();
+builder.Services.AddScoped<ISetMemberAttributeService, SetMemberAttributeService>();
 builder.Services.AddScoped<IManageLookupsService, ManageLookupsService>();
 
 // 4.0 Manage Eligibility.
