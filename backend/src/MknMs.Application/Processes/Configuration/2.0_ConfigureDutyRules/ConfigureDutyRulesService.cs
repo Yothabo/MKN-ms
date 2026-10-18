@@ -100,7 +100,7 @@ public sealed class ConfigureDutyRulesService : IConfigureDutyRulesService
         bool includeInactive = false,
         CancellationToken cancellationToken = default)
     {
-        var query = _db.DutyRules.Where(r => r.DutyId == dutyId);
+        var query = _db.DutyRules.Where(r => r.DutyId == dutyId && !r.IsDeleted);
         if (!includeInactive)
         {
             query = query.Where(r => r.IsActive);
@@ -114,7 +114,7 @@ public sealed class ConfigureDutyRulesService : IConfigureDutyRulesService
 
     public async Task<DutyRule?> GetAsync(int ruleId, CancellationToken cancellationToken = default)
     {
-        return await _db.DutyRules.FirstOrDefaultAsync(r => r.RuleId == ruleId, cancellationToken);
+        return await _db.DutyRules.FirstOrDefaultAsync(r => r.RuleId == ruleId && !r.IsDeleted, cancellationToken);
     }
 
     public async Task<ConfigurationResult<DutyRule>> CreateAsync(

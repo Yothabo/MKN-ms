@@ -84,7 +84,7 @@ public sealed class ManageProgramItemService : IManageProgramItemService
         CancellationToken cancellationToken = default)
     {
         return await _db.ProgramItems
-            .Where(i => i.ProgramId == programId)
+            .Where(i => i.ProgramId == programId && !i.IsDeleted)
             .OrderBy(i => i.SequenceOrder)
             .ThenBy(i => i.ItemId)
             .ToListAsync(cancellationToken);
@@ -92,7 +92,7 @@ public sealed class ManageProgramItemService : IManageProgramItemService
 
     public async Task<ProgramItem?> GetAsync(int itemId, CancellationToken cancellationToken = default)
     {
-        return await _db.ProgramItems.FirstOrDefaultAsync(i => i.ItemId == itemId, cancellationToken);
+        return await _db.ProgramItems.FirstOrDefaultAsync(i => i.ItemId == itemId && !i.IsDeleted, cancellationToken);
     }
 
     public async Task<ConfigurationResult<ProgramItem>> CreateAsync(

@@ -236,4 +236,42 @@ public class ConfigureRoleServiceTests : IAsyncLifetime
         result.IsSuccess.Should().BeFalse();
         result.Error!.Code.Should().Be(ConfigurationErrorCodes.ReferencedEntityInactive);
     }
+    [Fact]
+    public async Task List_ExcludesSoftDeleted()
+    {
+        var (_, otherRoleId, actingAdminId) = await SeedAsync();
+        var service = MakeService();
+
+        await service.SoftDeleteAsync(
+            otherRoleId, actingAdminId, actingAdminId, true, "test");
+
+        var roles = await service.ListAsync();
+        roles.Should().NotContain(r => r.RoleId == otherRoleId);
+    }
+
+    [Fact]
+    public async Task List_IncludeInactive_ExcludesSoftDeleted()
+    {
+        var (_, otherRoleId, actingAdminId) = await SeedAsync();
+        var service = MakeService();
+
+        await service.SoftDeleteAsync(
+            otherRoleId, actingAdminId, actingAdminId, true, "test");
+
+        var roles = await service.ListAsync(includeInactive: true);
+        roles.Should().NotContain(r => r.RoleId == otherRoleId);
+    }
+
+    [Fact]
+    public async Task Get_SoftDeleted_ReturnsNull()
+    {
+        var (_, otherRoleId, actingAdminId) = await SeedAsync();
+        var service = MakeService();
+
+        await service.SoftDeleteAsync(
+            otherRoleId, actingAdminId, actingAdminId, true, "test");
+
+        var role = await service.GetAsync(otherRoleId);
+        role.Should().BeNull();
+    }
 }

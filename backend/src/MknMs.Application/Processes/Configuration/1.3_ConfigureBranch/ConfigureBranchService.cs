@@ -64,7 +64,7 @@ public sealed class ConfigureBranchService : IConfigureBranchService
 
     public async Task<IReadOnlyList<Branch>> ListAsync(bool includeInactive = false, CancellationToken cancellationToken = default)
     {
-        var query = _db.Branches.AsQueryable();
+        var query = _db.Branches.Where(b => !b.IsDeleted);
         if (!includeInactive)
         {
             query = query.Where(b => b.IsActive);
@@ -74,7 +74,7 @@ public sealed class ConfigureBranchService : IConfigureBranchService
 
     public async Task<Branch?> GetAsync(int branchId, CancellationToken cancellationToken = default)
     {
-        return await _db.Branches.FirstOrDefaultAsync(b => b.BranchId == branchId, cancellationToken);
+        return await _db.Branches.FirstOrDefaultAsync(b => b.BranchId == branchId && !b.IsDeleted, cancellationToken);
     }
 
     public async Task<ConfigurationResult<Branch>> CreateAsync(

@@ -54,7 +54,7 @@ public sealed class ConfigureDutyService : IConfigureDutyService
 
     public async Task<IReadOnlyList<Duty>> ListAsync(bool includeInactive = false, CancellationToken cancellationToken = default)
     {
-        var query = _db.Duties.AsQueryable();
+        var query = _db.Duties.Where(d => !d.IsDeleted);
         if (!includeInactive)
         {
             query = query.Where(d => d.IsActive);
@@ -64,7 +64,7 @@ public sealed class ConfigureDutyService : IConfigureDutyService
 
     public async Task<Duty?> GetAsync(int dutyId, CancellationToken cancellationToken = default)
     {
-        return await _db.Duties.FirstOrDefaultAsync(d => d.DutyId == dutyId, cancellationToken);
+        return await _db.Duties.FirstOrDefaultAsync(d => d.DutyId == dutyId && !d.IsDeleted, cancellationToken);
     }
 
     public async Task<ConfigurationResult<Duty>> CreateAsync(string name, int actingAdminId, CancellationToken cancellationToken = default)

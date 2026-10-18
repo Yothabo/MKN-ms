@@ -108,7 +108,7 @@ public sealed class ConfigureServiceDutyAndScheduleService : IConfigureServiceDu
         CancellationToken cancellationToken = default)
     {
         var query = _db.ServiceDefinitionDuties
-            .Where(d => d.ServiceDefId == serviceDefId);
+            .Where(d => d.ServiceDefId == serviceDefId && !d.IsDeleted);
         if (!includeInactive)
         {
             query = query.Where(d => d.IsActive);
@@ -288,7 +288,7 @@ public sealed class ConfigureServiceDutyAndScheduleService : IConfigureServiceDu
         bool includeInactive = false,
         CancellationToken cancellationToken = default)
     {
-        var query = _db.ServiceSchedules.AsQueryable();
+        var query = _db.ServiceSchedules.Where(s => !s.IsDeleted);
         if (serviceDefId is int id)
         {
             query = query.Where(s => s.ServiceDefId == id);

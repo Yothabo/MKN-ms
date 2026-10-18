@@ -31,6 +31,7 @@ public sealed class TimeOfDayService : ITimeOfDayService
     public async Task<IReadOnlyList<TimeOfDay>> ListAsync(CancellationToken cancellationToken = default)
     {
         return await _db.TimeOfDays
+            .Where(t => !t.IsDeleted)
             .OrderBy(t => t.TimeOfDayId)
             .ToListAsync(cancellationToken);
     }

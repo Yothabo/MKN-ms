@@ -55,7 +55,7 @@ public sealed class ManageEventDutyService : IManageEventDutyService
         CancellationToken cancellationToken = default)
     {
         return await _db.EventDuties
-            .Where(d => d.EventId == eventId)
+            .Where(d => d.EventId == eventId && !d.IsDeleted)
             .OrderBy(d => d.EventDutyId)
             .ToListAsync(cancellationToken);
     }
@@ -63,7 +63,7 @@ public sealed class ManageEventDutyService : IManageEventDutyService
     public async Task<EventDuty?> GetAsync(int eventDutyId, CancellationToken cancellationToken = default)
     {
         return await _db.EventDuties
-            .FirstOrDefaultAsync(d => d.EventDutyId == eventDutyId, cancellationToken);
+            .FirstOrDefaultAsync(d => d.EventDutyId == eventDutyId && !d.IsDeleted, cancellationToken);
     }
 
     public async Task<ConfigurationResult<EventDuty>> CreateAsync(

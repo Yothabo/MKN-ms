@@ -77,7 +77,7 @@ public sealed class ConfigureTimeSlotService : IConfigureTimeSlotService
         bool includeInactive = false,
         CancellationToken cancellationToken = default)
     {
-        var query = _db.BranchTimeSlots.AsQueryable();
+        var query = _db.BranchTimeSlots.Where(t => !t.IsDeleted);
         if (branchId is int id)
         {
             query = query.Where(t => t.BranchId == id);
@@ -91,7 +91,7 @@ public sealed class ConfigureTimeSlotService : IConfigureTimeSlotService
 
     public async Task<BranchTimeSlot?> GetAsync(int timeSlotId, CancellationToken cancellationToken = default)
     {
-        return await _db.BranchTimeSlots.FirstOrDefaultAsync(t => t.TimeSlotId == timeSlotId, cancellationToken);
+        return await _db.BranchTimeSlots.FirstOrDefaultAsync(t => t.TimeSlotId == timeSlotId && !t.IsDeleted, cancellationToken);
     }
 
     public async Task<ConfigurationResult<BranchTimeSlot>> CreateAsync(

@@ -30,6 +30,7 @@ public sealed class ServiceTypeService : IServiceTypeService
     public async Task<IReadOnlyList<ServiceType>> ListAsync(CancellationToken cancellationToken = default)
     {
         return await _db.ServiceTypes
+            .Where(t => !t.IsDeleted)
             .OrderBy(t => t.ServiceTypeId)
             .ToListAsync(cancellationToken);
     }

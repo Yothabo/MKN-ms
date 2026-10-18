@@ -54,7 +54,7 @@ public sealed class ConfigureRoleService : IConfigureRoleService
 
     public async Task<IReadOnlyList<Role>> ListAsync(bool includeInactive = false, CancellationToken cancellationToken = default)
     {
-        var query = _db.Roles.AsQueryable();
+        var query = _db.Roles.Where(r => !r.IsDeleted);
         if (!includeInactive)
         {
             query = query.Where(r => r.IsActive);
@@ -64,7 +64,7 @@ public sealed class ConfigureRoleService : IConfigureRoleService
 
     public async Task<Role?> GetAsync(int roleId, CancellationToken cancellationToken = default)
     {
-        return await _db.Roles.FirstOrDefaultAsync(r => r.RoleId == roleId, cancellationToken);
+        return await _db.Roles.FirstOrDefaultAsync(r => r.RoleId == roleId && !r.IsDeleted, cancellationToken);
     }
 
     public async Task<ConfigurationResult<Role>> CreateAsync(string name, int actingAdminId, CancellationToken cancellationToken = default)

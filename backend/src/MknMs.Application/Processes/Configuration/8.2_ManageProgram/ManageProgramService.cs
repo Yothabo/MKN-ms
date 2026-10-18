@@ -62,7 +62,7 @@ public sealed class ManageProgramService : IManageProgramService
 
     public async Task<Program?> GetForEventAsync(int eventId, CancellationToken cancellationToken = default)
     {
-        return await _db.Programs.FirstOrDefaultAsync(p => p.EventId == eventId, cancellationToken);
+        return await _db.Programs.FirstOrDefaultAsync(p => p.EventId == eventId && !p.IsDeleted, cancellationToken);
     }
 
     public async Task<ConfigurationResult<Program>> CreateAsync(

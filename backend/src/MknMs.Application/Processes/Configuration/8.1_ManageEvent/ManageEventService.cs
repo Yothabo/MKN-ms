@@ -102,7 +102,7 @@ public sealed class ManageEventService : IManageEventService
 
     public async Task<Event?> GetAsync(int eventId, CancellationToken cancellationToken = default)
     {
-        return await _db.Events.FirstOrDefaultAsync(e => e.EventId == eventId, cancellationToken);
+        return await _db.Events.FirstOrDefaultAsync(e => e.EventId == eventId && !e.IsDeleted, cancellationToken);
     }
 
     public async Task<IReadOnlyList<EventBranch>> ListBranchesAsync(

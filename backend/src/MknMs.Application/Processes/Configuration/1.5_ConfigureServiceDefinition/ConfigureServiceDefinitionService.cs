@@ -71,7 +71,7 @@ public sealed class ConfigureServiceDefinitionService : IConfigureServiceDefinit
         bool includeInactive = false,
         CancellationToken cancellationToken = default)
     {
-        var query = _db.ServiceDefinitions.AsQueryable();
+        var query = _db.ServiceDefinitions.Where(s => !s.IsDeleted);
         if (!includeInactive)
         {
             query = query.Where(s => s.IsActive);
@@ -82,7 +82,7 @@ public sealed class ConfigureServiceDefinitionService : IConfigureServiceDefinit
     public async Task<ServiceDefinition?> GetAsync(int serviceDefId, CancellationToken cancellationToken = default)
     {
         return await _db.ServiceDefinitions
-            .FirstOrDefaultAsync(s => s.ServiceDefId == serviceDefId, cancellationToken);
+            .FirstOrDefaultAsync(s => s.ServiceDefId == serviceDefId && !s.IsDeleted, cancellationToken);
     }
 
     public async Task<ConfigurationResult<ServiceDefinition>> CreateAsync(
