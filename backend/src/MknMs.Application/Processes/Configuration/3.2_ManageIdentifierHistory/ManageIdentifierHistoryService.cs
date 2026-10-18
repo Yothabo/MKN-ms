@@ -90,20 +90,11 @@ public sealed class ManageIdentifierHistoryService : IManageIdentifierHistorySer
                     "Member does not exist."));
         }
 
-        var admin = await _db.Admins
-            .FirstOrDefaultAsync(a => a.AdminId == authorizedByAdminId, cancellationToken);
-        if (admin is null)
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, authorizedByAdminId, cancellationToken);
+        if (adminError is not null)
         {
-            return ConfigurationResult<IdentifierHistory>.Failure(
-                new ConfigurationError(ConfigurationErrorCodes.ReferencedEntityMissing,
-                    "Authorizing admin does not exist."));
-        }
-
-        if (!admin.IsActive)
-        {
-            return ConfigurationResult<IdentifierHistory>.Failure(
-                new ConfigurationError(ConfigurationErrorCodes.ReferencedEntityInactive,
-                    "Authorizing admin is not active."));
+            return ConfigurationResult<IdentifierHistory>.Failure(adminError);
         }
 
         var entity = new IdentifierHistory

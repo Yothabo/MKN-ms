@@ -101,6 +101,13 @@ public sealed class ConfigureTimeSlotService : IConfigureTimeSlotService
         int actingAdminId,
         CancellationToken cancellationToken = default)
     {
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
+        {
+            return ConfigurationResult<BranchTimeSlot>.Failure(adminError);
+        }
+
         var branch = await _db.Branches.FirstOrDefaultAsync(b => b.BranchId == branchId, cancellationToken);
         if (branch is null)
         {
@@ -140,6 +147,13 @@ public sealed class ConfigureTimeSlotService : IConfigureTimeSlotService
         int actingAdminId,
         CancellationToken cancellationToken = default)
     {
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
+        {
+            return ConfigurationResult<BranchTimeSlot>.Failure(adminError);
+        }
+
         if (!ValidDays.Contains(dayOfWeek))
         {
             return ConfigurationResult<BranchTimeSlot>.Failure(
@@ -173,6 +187,13 @@ public sealed class ConfigureTimeSlotService : IConfigureTimeSlotService
         string? reason = null,
         CancellationToken cancellationToken = default)
     {
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
+        {
+            return ConfigurationResult<BranchTimeSlot>.Failure(adminError);
+        }
+
         var entity = await _db.BranchTimeSlots.FirstOrDefaultAsync(t => t.TimeSlotId == timeSlotId, cancellationToken);
         if (entity is null)
         {
@@ -222,6 +243,13 @@ public sealed class ConfigureTimeSlotService : IConfigureTimeSlotService
         string reason,
         CancellationToken cancellationToken = default)
     {
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
+        {
+            return ConfigurationResult<BranchTimeSlot>.Failure(adminError);
+        }
+
         if (!ConfigurationValidation.IsValidName(reason))
         {
             return ConfigurationResult<BranchTimeSlot>.Failure(

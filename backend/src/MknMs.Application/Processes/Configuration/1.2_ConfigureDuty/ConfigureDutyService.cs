@@ -69,6 +69,13 @@ public sealed class ConfigureDutyService : IConfigureDutyService
 
     public async Task<ConfigurationResult<Duty>> CreateAsync(string name, int actingAdminId, CancellationToken cancellationToken = default)
     {
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
+        {
+            return ConfigurationResult<Duty>.Failure(adminError);
+        }
+
         if (!ConfigurationValidation.IsValidName(name))
         {
             return ConfigurationResult<Duty>.Failure(
@@ -83,6 +90,13 @@ public sealed class ConfigureDutyService : IConfigureDutyService
 
     public async Task<ConfigurationResult<Duty>> RenameAsync(int dutyId, string newName, int actingAdminId, CancellationToken cancellationToken = default)
     {
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
+        {
+            return ConfigurationResult<Duty>.Failure(adminError);
+        }
+
         if (!ConfigurationValidation.IsValidName(newName))
         {
             return ConfigurationResult<Duty>.Failure(
@@ -108,6 +122,13 @@ public sealed class ConfigureDutyService : IConfigureDutyService
         string? reason = null,
         CancellationToken cancellationToken = default)
     {
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
+        {
+            return ConfigurationResult<Duty>.Failure(adminError);
+        }
+
         var entity = await _db.Duties.FirstOrDefaultAsync(d => d.DutyId == dutyId, cancellationToken);
         if (entity is null)
         {
@@ -157,6 +178,13 @@ public sealed class ConfigureDutyService : IConfigureDutyService
         string reason,
         CancellationToken cancellationToken = default)
     {
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
+        {
+            return ConfigurationResult<Duty>.Failure(adminError);
+        }
+
         if (!ConfigurationValidation.IsValidName(reason))
         {
             return ConfigurationResult<Duty>.Failure(

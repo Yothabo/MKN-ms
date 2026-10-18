@@ -223,4 +223,19 @@ public class ConfigureServiceDefinitionServiceTests : IAsyncLifetime
         result.IsSuccess.Should().BeFalse();
         result.Error!.Code.Should().Be(ConfigurationErrorCodes.ValidationFailed);
     }
+    [Fact]
+    public async Task Deactivate_WithInactiveAdmin_Fails()
+    {
+        var (defId, actingAdminId, _) = await SeedAsync();
+        var admin = await _db.Admins.FirstAsync(a => a.AdminId == actingAdminId);
+        admin.IsActive = false;
+        await _db.SaveChangesAsync();
+
+        var service = MakeService();
+        var result = await service.DeactivateAsync(
+            defId, actingAdminId, actingAdminId, true, "attempt");
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error!.Code.Should().Be(ConfigurationErrorCodes.ReferencedEntityInactive);
+    }
 }

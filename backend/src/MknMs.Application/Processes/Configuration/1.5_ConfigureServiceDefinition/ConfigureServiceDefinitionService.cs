@@ -92,6 +92,13 @@ public sealed class ConfigureServiceDefinitionService : IConfigureServiceDefinit
         int? owningBranchId = null,
         CancellationToken cancellationToken = default)
     {
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
+        {
+            return ConfigurationResult<ServiceDefinition>.Failure(adminError);
+        }
+
         if (!ConfigurationValidation.IsValidName(name))
         {
             return ConfigurationResult<ServiceDefinition>.Failure(
@@ -137,6 +144,13 @@ public sealed class ConfigureServiceDefinitionService : IConfigureServiceDefinit
         int actingAdminId,
         CancellationToken cancellationToken = default)
     {
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
+        {
+            return ConfigurationResult<ServiceDefinition>.Failure(adminError);
+        }
+
         if (!ConfigurationValidation.IsValidName(name))
         {
             return ConfigurationResult<ServiceDefinition>.Failure(
@@ -184,6 +198,13 @@ public sealed class ConfigureServiceDefinitionService : IConfigureServiceDefinit
         string? reason = null,
         CancellationToken cancellationToken = default)
     {
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
+        {
+            return ConfigurationResult<ServiceDefinition>.Failure(adminError);
+        }
+
         var entity = await _db.ServiceDefinitions
             .FirstOrDefaultAsync(s => s.ServiceDefId == serviceDefId, cancellationToken);
         if (entity is null)
@@ -234,6 +255,13 @@ public sealed class ConfigureServiceDefinitionService : IConfigureServiceDefinit
         string reason,
         CancellationToken cancellationToken = default)
     {
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
+        {
+            return ConfigurationResult<ServiceDefinition>.Failure(adminError);
+        }
+
         if (!ConfigurationValidation.IsValidName(reason))
         {
             return ConfigurationResult<ServiceDefinition>.Failure(

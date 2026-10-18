@@ -80,16 +80,11 @@ public sealed class CreateManualAssignmentService : ICreateManualAssignmentServi
                 return Failure($"Duty {command.DutyId} does not exist.");
             }
 
-            var admin = await _db.Admins
-                .FirstOrDefaultAsync(a => a.AdminId == command.ActingAdminId, cancellationToken);
-            if (admin is null)
+            var adminError = await AdminResolver.ResolveActiveAsync(
+                _db, command.ActingAdminId, cancellationToken);
+            if (adminError is not null)
             {
-                return Failure($"Admin {command.ActingAdminId} does not exist.");
-            }
-
-            if (!admin.IsActive)
-            {
-                return Failure($"Admin {command.ActingAdminId} is not active.");
+                return Failure(adminError.Message);
             }
 
             if (command.TargetStatusId is int statusId)

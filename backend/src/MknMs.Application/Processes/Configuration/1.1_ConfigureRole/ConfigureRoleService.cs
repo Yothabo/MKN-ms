@@ -69,6 +69,13 @@ public sealed class ConfigureRoleService : IConfigureRoleService
 
     public async Task<ConfigurationResult<Role>> CreateAsync(string name, int actingAdminId, CancellationToken cancellationToken = default)
     {
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
+        {
+            return ConfigurationResult<Role>.Failure(adminError);
+        }
+
         if (!ConfigurationValidation.IsValidName(name))
         {
             return ConfigurationResult<Role>.Failure(
@@ -83,6 +90,13 @@ public sealed class ConfigureRoleService : IConfigureRoleService
 
     public async Task<ConfigurationResult<Role>> RenameAsync(int roleId, string newName, int actingAdminId, CancellationToken cancellationToken = default)
     {
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
+        {
+            return ConfigurationResult<Role>.Failure(adminError);
+        }
+
         if (!ConfigurationValidation.IsValidName(newName))
         {
             return ConfigurationResult<Role>.Failure(
@@ -108,6 +122,13 @@ public sealed class ConfigureRoleService : IConfigureRoleService
         string? reason = null,
         CancellationToken cancellationToken = default)
     {
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
+        {
+            return ConfigurationResult<Role>.Failure(adminError);
+        }
+
         var entity = await _db.Roles.FirstOrDefaultAsync(r => r.RoleId == roleId, cancellationToken);
         if (entity is null)
         {
@@ -157,6 +178,13 @@ public sealed class ConfigureRoleService : IConfigureRoleService
         string reason,
         CancellationToken cancellationToken = default)
     {
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
+        {
+            return ConfigurationResult<Role>.Failure(adminError);
+        }
+
         if (!ConfigurationValidation.IsValidName(reason))
         {
             return ConfigurationResult<Role>.Failure(

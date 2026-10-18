@@ -260,4 +260,19 @@ public class ConfigureServiceScheduleSoftDeleteTests : IAsyncLifetime
         result.IsSuccess.Should().BeFalse();
         result.Error!.Code.Should().Be(ConfigurationErrorCodes.InvalidValue);
     }
+    [Fact]
+    public async Task SoftDelete_WithInactiveAdmin_Fails()
+    {
+        var (scheduleId, actingAdminId) = await SeedAsync();
+        var admin = await _db.Admins.FirstAsync(a => a.AdminId == actingAdminId);
+        admin.IsActive = false;
+        await _db.SaveChangesAsync();
+
+        var service = MakeService();
+        var result = await service.SoftDeleteScheduleAsync(
+            scheduleId, actingAdminId, actingAdminId, true, "attempt");
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error!.Code.Should().Be(ConfigurationErrorCodes.ReferencedEntityInactive);
+    }
 }

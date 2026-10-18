@@ -83,6 +83,13 @@ public sealed class ConfigureBranchService : IConfigureBranchService
         int actingAdminId,
         CancellationToken cancellationToken = default)
     {
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
+        {
+            return ConfigurationResult<Branch>.Failure(adminError);
+        }
+
         if (!ConfigurationValidation.IsValidName(name))
         {
             return ConfigurationResult<Branch>.Failure(
@@ -107,6 +114,13 @@ public sealed class ConfigureBranchService : IConfigureBranchService
         int actingAdminId,
         CancellationToken cancellationToken = default)
     {
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
+        {
+            return ConfigurationResult<Branch>.Failure(adminError);
+        }
+
         if (!ConfigurationValidation.IsValidName(name))
         {
             return ConfigurationResult<Branch>.Failure(
@@ -138,6 +152,13 @@ public sealed class ConfigureBranchService : IConfigureBranchService
         string? reason = null,
         CancellationToken cancellationToken = default)
     {
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
+        {
+            return ConfigurationResult<Branch>.Failure(adminError);
+        }
+
         var entity = await _db.Branches.FirstOrDefaultAsync(b => b.BranchId == branchId, cancellationToken);
         if (entity is null)
         {
@@ -187,6 +208,13 @@ public sealed class ConfigureBranchService : IConfigureBranchService
         string reason,
         CancellationToken cancellationToken = default)
     {
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
+        {
+            return ConfigurationResult<Branch>.Failure(adminError);
+        }
+
         if (!ConfigurationValidation.IsValidName(reason))
         {
             return ConfigurationResult<Branch>.Failure(

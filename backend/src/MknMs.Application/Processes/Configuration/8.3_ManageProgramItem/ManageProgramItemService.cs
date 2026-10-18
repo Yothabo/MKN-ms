@@ -293,18 +293,11 @@ public sealed class ManageProgramItemService : IManageProgramItemService
                 "ScheduledEnd cannot be before ScheduledStart.");
         }
 
-        var admin = await _db.Admins
-            .FirstOrDefaultAsync(a => a.AdminId == actingAdminId, cancellationToken);
-        if (admin is null)
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
         {
-            return new ConfigurationError(ConfigurationErrorCodes.ReferencedEntityMissing,
-                "Acting administrator does not exist.");
-        }
-
-        if (!admin.IsActive)
-        {
-            return new ConfigurationError(ConfigurationErrorCodes.ReferencedEntityInactive,
-                "Acting administrator is not active.");
+            return adminError;
         }
 
         if (serviceDefId is int defId)

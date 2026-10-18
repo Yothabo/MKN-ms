@@ -123,6 +123,13 @@ public sealed class ConfigureServiceDutyAndScheduleService : IConfigureServiceDu
         int actingAdminId,
         CancellationToken cancellationToken = default)
     {
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
+        {
+            return ConfigurationResult<ServiceDefinitionDuty>.Failure(adminError);
+        }
+
         if (!ConfigurationValidation.IsPositive(requiredSlotCount))
         {
             return ConfigurationResult<ServiceDefinitionDuty>.Failure(
@@ -185,6 +192,13 @@ public sealed class ConfigureServiceDutyAndScheduleService : IConfigureServiceDu
         int actingAdminId,
         CancellationToken cancellationToken = default)
     {
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
+        {
+            return ConfigurationResult<ServiceDefinitionDuty>.Failure(adminError);
+        }
+
         if (!ConfigurationValidation.IsPositive(requiredSlotCount))
         {
             return ConfigurationResult<ServiceDefinitionDuty>.Failure(
@@ -214,6 +228,13 @@ public sealed class ConfigureServiceDutyAndScheduleService : IConfigureServiceDu
         string? reason = null,
         CancellationToken cancellationToken = default)
     {
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
+        {
+            return ConfigurationResult<ServiceDefinitionDuty>.Failure(adminError);
+        }
+
         var entity = await _db.ServiceDefinitionDuties
             .FirstOrDefaultAsync(d => d.ServiceDefId == serviceDefId && d.DutyId == dutyId,
                 cancellationToken);
@@ -286,6 +307,13 @@ public sealed class ConfigureServiceDutyAndScheduleService : IConfigureServiceDu
         int actingAdminId,
         CancellationToken cancellationToken = default)
     {
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
+        {
+            return ConfigurationResult<ServiceSchedule>.Failure(adminError);
+        }
+
         var definition = await _db.ServiceDefinitions
             .FirstOrDefaultAsync(s => s.ServiceDefId == serviceDefId, cancellationToken);
         if (definition is null)
@@ -356,6 +384,13 @@ public sealed class ConfigureServiceDutyAndScheduleService : IConfigureServiceDu
         int actingAdminId,
         CancellationToken cancellationToken = default)
     {
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
+        {
+            return ConfigurationResult<ServiceSchedule>.Failure(adminError);
+        }
+
         var entity = await _db.ServiceSchedules
             .FirstOrDefaultAsync(s => s.ScheduleId == scheduleId, cancellationToken);
         if (entity is null)
@@ -376,6 +411,13 @@ public sealed class ConfigureServiceDutyAndScheduleService : IConfigureServiceDu
         string? reason = null,
         CancellationToken cancellationToken = default)
     {
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
+        {
+            return ConfigurationResult<ServiceSchedule>.Failure(adminError);
+        }
+
         var entity = await _db.ServiceSchedules
             .FirstOrDefaultAsync(s => s.ScheduleId == scheduleId, cancellationToken);
         if (entity is null)
@@ -427,6 +469,13 @@ public sealed class ConfigureServiceDutyAndScheduleService : IConfigureServiceDu
         string reason,
         CancellationToken cancellationToken = default)
     {
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
+        {
+            return ConfigurationResult<ServiceSchedule>.Failure(adminError);
+        }
+
         if (!ConfigurationValidation.IsValidName(reason))
         {
             return ConfigurationResult<ServiceSchedule>.Failure(

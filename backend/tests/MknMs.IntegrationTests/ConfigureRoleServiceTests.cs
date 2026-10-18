@@ -222,4 +222,18 @@ public class ConfigureRoleServiceTests : IAsyncLifetime
         persisted.IsDeleted.Should().BeFalse();
         persisted.IsActive.Should().BeTrue();
     }
+    [Fact]
+    public async Task Create_WithInactiveAdmin_Fails()
+    {
+        var (_, _, actingAdminId) = await SeedAsync();
+        var admin = await _db.Admins.FirstAsync(a => a.AdminId == actingAdminId);
+        admin.IsActive = false;
+        await _db.SaveChangesAsync();
+
+        var service = MakeService();
+        var result = await service.CreateAsync("NewRole", actingAdminId);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error!.Code.Should().Be(ConfigurationErrorCodes.ReferencedEntityInactive);
+    }
 }

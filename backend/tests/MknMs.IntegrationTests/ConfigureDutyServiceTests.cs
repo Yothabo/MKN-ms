@@ -213,4 +213,18 @@ public class ConfigureDutyServiceTests : IAsyncLifetime
         second.IsSuccess.Should().BeFalse();
         second.Error!.Code.Should().Be(ConfigurationErrorCodes.AlreadyInactive);
     }
+    [Fact]
+    public async Task Create_WithInactiveAdmin_Fails()
+    {
+        var (_, actingAdminId) = await SeedAsync();
+        var admin = await _db.Admins.FirstAsync(a => a.AdminId == actingAdminId);
+        admin.IsActive = false;
+        await _db.SaveChangesAsync();
+
+        var service = MakeService();
+        var result = await service.CreateAsync("NewDuty", actingAdminId);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error!.Code.Should().Be(ConfigurationErrorCodes.ReferencedEntityInactive);
+    }
 }

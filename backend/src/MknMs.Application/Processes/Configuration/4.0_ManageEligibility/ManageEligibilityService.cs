@@ -130,20 +130,11 @@ public sealed class ManageEligibilityService : IManageEligibilityService
                     "Duty does not exist."));
         }
 
-        var admin = await _db.Admins
-            .FirstOrDefaultAsync(a => a.AdminId == grantedByAdminId, cancellationToken);
-        if (admin is null)
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, grantedByAdminId, cancellationToken);
+        if (adminError is not null)
         {
-            return ConfigurationResult<Eligibility>.Failure(
-                new ConfigurationError(ConfigurationErrorCodes.ReferencedEntityMissing,
-                    "Granting admin does not exist."));
-        }
-
-        if (!admin.IsActive)
-        {
-            return ConfigurationResult<Eligibility>.Failure(
-                new ConfigurationError(ConfigurationErrorCodes.ReferencedEntityInactive,
-                    "Granting admin is not active."));
+            return ConfigurationResult<Eligibility>.Failure(adminError);
         }
 
         var entity = new Eligibility
