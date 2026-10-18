@@ -253,4 +253,36 @@ public class ManageEventServiceTests : IAsyncLifetime
         result.IsSuccess.Should().BeFalse();
         result.Error!.Code.Should().Be(ConfigurationErrorCodes.InvalidValue);
     }
+    [Fact]
+    public async Task List_ExcludesSoftDeleted()
+    {
+        var f = await SeedAsync();
+        var service = MakeService();
+        await service.SoftDeleteAsync(f.EventId, f.AdminId, f.AdminId, true, "test");
+
+        var events = await service.ListAsync();
+        events.Should().NotContain(e => e.EventId == f.EventId);
+    }
+
+    [Fact]
+    public async Task List_IncludeInactive_ExcludesSoftDeleted()
+    {
+        var f = await SeedAsync();
+        var service = MakeService();
+        await service.SoftDeleteAsync(f.EventId, f.AdminId, f.AdminId, true, "test");
+
+        var events = await service.ListAsync(includeInactive: true);
+        events.Should().NotContain(e => e.EventId == f.EventId);
+    }
+
+    [Fact]
+    public async Task Get_SoftDeleted_ReturnsNull()
+    {
+        var f = await SeedAsync();
+        var service = MakeService();
+        await service.SoftDeleteAsync(f.EventId, f.AdminId, f.AdminId, true, "test");
+
+        var evt = await service.GetAsync(f.EventId);
+        evt.Should().BeNull();
+    }
 }

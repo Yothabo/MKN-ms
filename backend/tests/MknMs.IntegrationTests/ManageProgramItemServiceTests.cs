@@ -237,4 +237,30 @@ public class ManageProgramItemServiceTests : IAsyncLifetime
         result.IsSuccess.Should().BeFalse();
         result.Error!.Code.Should().Be(ConfigurationErrorCodes.ReferencedEntityInactive);
     }
+    [Fact]
+    public async Task ListForProgram_ExcludesSoftDeleted()
+    {
+        var f = await SeedAsync();
+        var programId = await _db.ProgramItems
+            .Where(i => i.ItemId == f.ItemId)
+            .Select(i => i.ProgramId)
+            .FirstAsync();
+
+        var service = MakeService();
+        await service.SoftDeleteAsync(f.ItemId, f.AdminId, f.AdminId, true, "test");
+
+        var items = await service.ListForProgramAsync(programId);
+        items.Should().NotContain(i => i.ItemId == f.ItemId);
+    }
+
+    [Fact]
+    public async Task Get_SoftDeleted_ReturnsNull()
+    {
+        var f = await SeedAsync();
+        var service = MakeService();
+        await service.SoftDeleteAsync(f.ItemId, f.AdminId, f.AdminId, true, "test");
+
+        var item = await service.GetAsync(f.ItemId);
+        item.Should().BeNull();
+    }
 }

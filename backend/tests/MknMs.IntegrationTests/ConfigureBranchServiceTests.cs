@@ -228,4 +228,36 @@ public class ConfigureBranchServiceTests : IAsyncLifetime
         result.IsSuccess.Should().BeFalse();
         result.Error!.Code.Should().Be(ConfigurationErrorCodes.ReferencedEntityInactive);
     }
+    [Fact]
+    public async Task List_ExcludesSoftDeleted()
+    {
+        var (branchId, adminId) = await SeedAsync();
+        var service = MakeService();
+        await service.SoftDeleteAsync(branchId, adminId, adminId, true, "test");
+
+        var branches = await service.ListAsync();
+        branches.Should().NotContain(b => b.BranchId == branchId);
+    }
+
+    [Fact]
+    public async Task List_IncludeInactive_ExcludesSoftDeleted()
+    {
+        var (branchId, adminId) = await SeedAsync();
+        var service = MakeService();
+        await service.SoftDeleteAsync(branchId, adminId, adminId, true, "test");
+
+        var branches = await service.ListAsync(includeInactive: true);
+        branches.Should().NotContain(b => b.BranchId == branchId);
+    }
+
+    [Fact]
+    public async Task Get_SoftDeleted_ReturnsNull()
+    {
+        var (branchId, adminId) = await SeedAsync();
+        var service = MakeService();
+        await service.SoftDeleteAsync(branchId, adminId, adminId, true, "test");
+
+        var branch = await service.GetAsync(branchId);
+        branch.Should().BeNull();
+    }
 }
