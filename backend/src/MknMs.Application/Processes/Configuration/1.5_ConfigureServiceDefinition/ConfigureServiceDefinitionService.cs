@@ -183,6 +183,28 @@ public sealed class ConfigureServiceDefinitionService : IConfigureServiceDefinit
             }
         }
 
+        // §9.1.6 / B19: changing OwningBranchId to a non-null value
+        // must not break an existing schedule. Every schedule currently
+        // attached must have a time slot at the new owning branch.
+        if (owningBranchId is int newOwningBranchId
+            && entity.OwningBranchId != newOwningBranchId)
+        {
+            var mismatchCount = await _db.ServiceSchedules
+                .Where(s => s.ServiceDefId == serviceDefId)
+                .Where(s => s.TimeSlot.BranchId != newOwningBranchId)
+                .CountAsync(cancellationToken);
+
+            if (mismatchCount > 0)
+            {
+                return ConfigurationResult<ServiceDefinition>.Failure(
+                    new ConfigurationError(
+                        ConfigurationErrorCodes.InvalidValue,
+                        $"{mismatchCount} Service Schedule(s) for this definition "
+                        + "use a time slot at a different branch. Deactivate them "
+                        + "before changing the owning branch."));
+            }
+        }
+
         entity.Name = name.Trim();
         entity.ServiceTypeId = serviceTypeId;
         entity.OwningBranchId = owningBranchId;

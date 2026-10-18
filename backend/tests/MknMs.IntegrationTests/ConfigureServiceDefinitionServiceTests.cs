@@ -238,4 +238,62 @@ public class ConfigureServiceDefinitionServiceTests : IAsyncLifetime
         result.IsSuccess.Should().BeFalse();
         result.Error!.Code.Should().Be(ConfigurationErrorCodes.ReferencedEntityInactive);
     }
+    [Fact]
+    public async Task Update_OwningBranchChange_WithMismatchedSchedule_Fails()
+    {
+        var (defId, actingAdminId, stId) = await SeedAsync();
+
+        // Create a branch different from the current owning branch and
+        // attach a schedule at a time slot on it.
+        var otherBranch = new Branch { Name = "Other", Location = "Elsewhere" };
+        _db.Branches.Add(otherBranch);
+        var tod = new TimeOfDay { Name = "Morning" };
+        _db.TimeOfDays.Add(tod);
+        await _db.SaveChangesAsync();
+
+        var slot = new BranchTimeSlot
+        {
+            BranchId = otherBranch.BranchId,
+            DayOfWeek = "Sunday",
+            TimeOfDayId = tod.TimeOfDayId,
+        };
+        _db.BranchTimeSlots.Add(slot);
+        await _db.SaveChangesAsync();
+
+        _db.ServiceSchedules.Add(new ServiceSchedule
+        {
+            ServiceDefId = defId,
+            TimeSlotId = slot.TimeSlotId,
+            StartTime = new TimeOnly(9, 0),
+        });
+        await _db.SaveChangesAsync();
+
+        // Pick a different branch as the new owning branch.
+        var newOwningBranch = new Branch { Name = "Third", Location = "Third" };
+        _db.Branches.Add(newOwningBranch);
+        await _db.SaveChangesAsync();
+
+        var service = MakeService();
+        var result = await service.UpdateAsync(
+            defId, "Updated", stId, newOwningBranch.BranchId, actingAdminId);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error!.Code.Should().Be(ConfigurationErrorCodes.InvalidValue);
+    }
+
+    [Fact]
+    public async Task Update_OwningBranchChange_NoSchedules_Succeeds()
+    {
+        var (defId, actingAdminId, stId) = await SeedAsync();
+
+        var newOwningBranch = new Branch { Name = "Other", Location = "Elsewhere" };
+        _db.Branches.Add(newOwningBranch);
+        await _db.SaveChangesAsync();
+
+        var service = MakeService();
+        var result = await service.UpdateAsync(
+            defId, "Updated", stId, newOwningBranch.BranchId, actingAdminId);
+
+        result.IsSuccess.Should().BeTrue();
+    }
 }
