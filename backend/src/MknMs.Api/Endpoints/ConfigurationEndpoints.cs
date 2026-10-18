@@ -8,6 +8,7 @@ using MknMs.Application.Processes.Configuration.ConfigureServiceDefinition;
 using MknMs.Application.Processes.Configuration.ConfigureServiceDutyAndSchedule;
 using MknMs.Application.Processes.Configuration.ConfigureTimeSlot;
 using MknMs.Application.Processes.Configuration.Lookup_ServiceType;
+using MknMs.Application.Processes.Configuration.Lookup_Capability;
 using MknMs.Application.Processes.Configuration.Lookup_TimeOfDay;
 using MknMs.Application.Processes.Configuration.ManageAttendanceRule;
 using MknMs.Application.Processes.Configuration.ManageEligibility;
@@ -169,6 +170,18 @@ public static class ConfigurationEndpoints
             IServiceTypeService service,
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.CreateAsync(request.Name, cancellationToken)));
+
+        routes.MapGet("/api/lookups/capabilities", async (
+            ICapabilityService service,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await service.ListAsync(cancellationToken)));
+
+        routes.MapPost("/api/lookups/capabilities", async (
+            [FromBody] CreateCapabilityRequest request,
+            ICapabilityService service,
+            CancellationToken cancellationToken) =>
+            ToHttpResult(await service.CreateAsync(
+                request.Name, request.Description, cancellationToken)));
     }
 
     // -----------------------------------------------------------------
@@ -955,6 +968,12 @@ public static class ConfigurationEndpoints
 public sealed record CreateLookupRequest
 {
     public required string Name { get; init; }
+}
+
+public sealed record CreateCapabilityRequest
+{
+    public required string Name { get; init; }
+    public string? Description { get; init; }
 }
 
 public sealed record CreateNamedEntityRequest

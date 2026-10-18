@@ -8,6 +8,7 @@ using MknMs.Application.Processes.Configuration.ConfigureServiceDefinition;
 using MknMs.Application.Processes.Configuration.ConfigureServiceDutyAndSchedule;
 using MknMs.Application.Processes.Configuration.ConfigureTimeSlot;
 using MknMs.Application.Processes.Configuration.Lookup_ServiceType;
+using MknMs.Application.Processes.Configuration.Lookup_Capability;
 using MknMs.Application.Processes.Configuration.Lookup_TimeOfDay;
 using MknMs.Application.Processes.Configuration.ManageAttendanceRule;
 using MknMs.Application.Processes.Configuration.ManageEligibility;
@@ -54,6 +55,7 @@ builder.Services.AddSingleton(TimeProvider.System);
 // Lookups (D10).
 builder.Services.AddScoped<ITimeOfDayService, TimeOfDayService>();
 builder.Services.AddScoped<IServiceTypeService, ServiceTypeService>();
+builder.Services.AddScoped<ICapabilityService, CapabilityService>();
 
 // 1.0 Configure Vocabulary.
 builder.Services.AddScoped<IConfigureRoleService, ConfigureRoleService>();
