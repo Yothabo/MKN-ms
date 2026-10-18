@@ -191,6 +191,14 @@ public sealed class MigrationSchemaFixture : IAsyncLifetime
             await _db.DisposeAsync();
         }
 
+        // Npgsql pools physical connections by default. After the EF
+        // context is disposed, the underlying connection returns to
+        // the pool still open against the scratch database, and
+        // DROP DATABASE will fail against it. Clear the pool first;
+        // the subsequent pg_terminate_backend then finds nothing on
+        // the scratch database and DROP succeeds.
+        NpgsqlConnection.ClearAllPools();
+
         await using var admin = new NpgsqlConnection(AdminConnectionString);
         await admin.OpenAsync();
 

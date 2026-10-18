@@ -461,6 +461,21 @@ public sealed class AttendanceRuleEngineService : IAttendanceRuleEngineService
             case "SetStatus":
                 if (rule.OutcomeStatusId is int statusId)
                 {
+                    // The rule's OutcomeStatusId was validated at write
+                    // time, but the status may have been soft-deleted
+                    // since. Writing a soft-deleted status would violate
+                    // §9.7's "hidden from ordinary views" rule through a
+                    // back door. Skip the outcome rather than fail the
+                    // run — one misconfigured rule should not stop the
+                    // engine evaluating the rest.
+                    var statusExists = await _db.MemberStatuses
+                        .AnyAsync(s => s.MemberStatusId == statusId && !s.IsDeleted,
+                            cancellationToken);
+                    if (!statusExists)
+                    {
+                        return OutcomeApplied.NoOp;
+                    }
+
                     member.MemberStatusId = statusId;
                     await _db.SaveChangesAsync(cancellationToken);
                     return OutcomeApplied.StatusChange;

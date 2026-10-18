@@ -2,6 +2,7 @@ using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using MknMs.Application.Common;
 using MknMs.Application.Processes.Configuration.ManageMemberStatus;
+using MknMs.Application.Processes.Configuration.ManageMemberRecord;
 using MknMs.Domain.D10_ConfigLookups;
 using MknMs.Domain.D13_AttendanceRule;
 using MknMs.Domain.D1_RoleDuty;
@@ -354,5 +355,23 @@ public class ManageMemberStatusServiceTests : IAsyncLifetime
 
         result.IsSuccess.Should().BeFalse();
         result.Error!.Code.Should().Be(ConfigurationErrorCodes.InvalidValue);
+    }
+    [Fact]
+    public async Task SetStatus_SoftDeletedStatus_Fails()
+    {
+        var f = await SeedAsync();
+        var service = MakeService();
+
+        // Soft-delete the non-default status. §9.7 requires it to be
+        // hidden from ordinary views; a member must not be assigned to
+        // it via SetStatusAsync.
+        await service.SoftDeleteAsync(
+            f.OtherStatusId, f.AdminId, f.AdminId, true, "test");
+
+        var memberService = new ManageMemberRecordService(_db);
+        var result = await memberService.SetStatusAsync(f.MemberId, f.OtherStatusId);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error!.Code.Should().Be(ConfigurationErrorCodes.ReferencedEntityInactive);
     }
 }

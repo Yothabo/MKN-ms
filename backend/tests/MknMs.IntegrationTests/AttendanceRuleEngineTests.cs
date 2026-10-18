@@ -809,4 +809,34 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
         var member = await _db.Members.FirstAsync();
         member.MemberStatusId.Should().Be(f.DefaultStatusId);
     }
+    [Fact]
+    public async Task SetStatus_OutcomeStatusSoftDeleted_RuleSkipped()
+    {
+        var f = await SeedAsync();
+        var ruleId = await AddRuleAsync(
+            "status", "Manual", null, "SetStatus", f.OtherStatusId);
+
+        // Soft-delete the outcome status. The rule was valid at write
+        // time; the status is now soft-deleted. The engine must skip
+        // the outcome rather than write a soft-deleted status.
+        var status = await _db.MemberStatuses
+            .FirstAsync(s => s.MemberStatusId == f.OtherStatusId);
+        status.IsDeleted = true;
+        status.IsActive = false;
+        await _db.SaveChangesAsync();
+
+        var service = new AttendanceRuleEngineService(_db, _notification, _clock);
+        var result = await service.RunAsync(new AttendanceRuleEngineCommand
+        {
+            TriggerType = "Manual",
+            RuleId = ruleId,
+            ActingAdminId = f.AdminId,
+        });
+
+        result.Status.Should().Be("Success");
+        result.StatusChangesApplied.Should().Be(0);
+
+        var member = await _db.Members.FirstAsync();
+        member.MemberStatusId.Should().Be(f.DefaultStatusId);
+    }
 }

@@ -190,12 +190,13 @@ public sealed class ManageMemberRecordService : IManageMemberRecordService
         }
 
         var status = await _db.MemberStatuses
-            .FirstOrDefaultAsync(s => s.MemberStatusId == memberStatusId, cancellationToken);
+            .FirstOrDefaultAsync(s => s.MemberStatusId == memberStatusId && !s.IsDeleted,
+                cancellationToken);
         if (status is null)
         {
             return ConfigurationResult<Member>.Failure(
-                new ConfigurationError(ConfigurationErrorCodes.ReferencedEntityMissing,
-                    "MemberStatus does not exist."));
+                new ConfigurationError(ConfigurationErrorCodes.ReferencedEntityInactive,
+                    "MemberStatus does not exist or is soft-deleted."));
         }
 
         entity.MemberStatusId = memberStatusId;
@@ -250,11 +251,12 @@ public sealed class ManageMemberRecordService : IManageMemberRecordService
         }
 
         var status = await _db.MemberStatuses
-            .FirstOrDefaultAsync(s => s.MemberStatusId == memberStatusId, cancellationToken);
+            .FirstOrDefaultAsync(s => s.MemberStatusId == memberStatusId && !s.IsDeleted,
+                cancellationToken);
         if (status is null)
         {
-            return new ConfigurationError(ConfigurationErrorCodes.ReferencedEntityMissing,
-                "MemberStatus does not exist.");
+            return new ConfigurationError(ConfigurationErrorCodes.ReferencedEntityInactive,
+                "MemberStatus does not exist or is soft-deleted.");
         }
 
         return null;
