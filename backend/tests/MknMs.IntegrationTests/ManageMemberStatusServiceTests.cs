@@ -2,6 +2,8 @@ using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using MknMs.Application.Common;
 using MknMs.Application.Processes.Configuration.ManageMemberStatus;
+using MknMs.Application.Processes.Configuration.ConfigureRole;
+using MknMs.Application.Processes.Configuration.ConfigureBranch;
 using MknMs.Application.Processes.Configuration.ManageMemberRecord;
 using MknMs.Domain.D10_ConfigLookups;
 using MknMs.Domain.D13_AttendanceRule;
@@ -87,6 +89,30 @@ public class ManageMemberStatusServiceTests : IAsyncLifetime
         _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
         {
             EntityType = "MemberStatus",
+            RequiresApprovalForDelete = false,
+            RequiresApprovalForDeactivate = false,
+            RequiresReasonForDelete = true,
+            RequiresReasonForDeactivate = false,
+            IsActive = true,
+            IsDeleted = false,
+        });
+        // Residual 2: the two new facts soft-delete a Role and a Branch
+        // to exercise the member-write guard. Without a policy row for
+        // each entity type, RecordAsync refuses with
+        // ConfigurationMissing before the state check is reached.
+        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        {
+            EntityType = "Role",
+            RequiresApprovalForDelete = false,
+            RequiresApprovalForDeactivate = false,
+            RequiresReasonForDelete = true,
+            RequiresReasonForDeactivate = false,
+            IsActive = true,
+            IsDeleted = false,
+        });
+        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        {
+            EntityType = "Branch",
             RequiresApprovalForDelete = false,
             RequiresApprovalForDeactivate = false,
             RequiresReasonForDelete = true,
@@ -370,6 +396,85 @@ public class ManageMemberStatusServiceTests : IAsyncLifetime
 
         var memberService = new ManageMemberRecordService(_db);
         var result = await memberService.SetStatusAsync(f.MemberId, f.OtherStatusId);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error!.Code.Should().Be(ConfigurationErrorCodes.ReferencedEntityInactive);
+    }
+    [Fact]
+    public async Task Update_WithSoftDeletedRole_Fails()
+    {
+        var f = await SeedAsync();
+
+        var newRole = new Role { Name = "TempRole", IsActive = true, IsDeleted = false };
+        _db.Roles.Add(newRole);
+        await _db.SaveChangesAsync();
+
+        var roleService = new ConfigureRoleService(
+            _db,
+            new ConfigurationLifecycleService(_db, _clock),
+            new ConfigurationCascadeService(_db));
+        var roleDelete = await roleService.SoftDeleteAsync(
+            newRole.RoleId, f.AdminId, f.AdminId, true, "test");
+        roleDelete.IsSuccess.Should().BeTrue(
+            "the fixture must seed an EntityDeletionPolicy for Role; without it, the cascade blocks and the test premise fails");
+
+        var member = await _db.Members.FirstAsync(m => m.MemberId == f.MemberId);
+        var memberService = new ManageMemberRecordService(_db);
+        var result = await memberService.UpdateAsync(
+            member.MemberId,
+            new UpdateMemberRequest
+            {
+                Name = member.Name,
+                Surname = member.Surname,
+                DateOfBirth = member.DateOfBirth,
+                MembershipStage = member.MembershipStage,
+                Gender = member.Gender,
+                Phone = member.Phone,
+                Email = null,
+                BranchId = member.BranchId,
+                RoleId = newRole.RoleId,
+                MemberStatusId = f.DefaultStatusId,
+            });
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error!.Code.Should().Be(ConfigurationErrorCodes.ReferencedEntityInactive);
+    }
+
+    [Fact]
+    public async Task Update_WithSoftDeletedBranch_Fails()
+    {
+        var f = await SeedAsync();
+
+        var newBranch = new Branch { Name = "TempBranch", Location = "Elsewhere", IsActive = true, IsDeleted = false };
+        _db.Branches.Add(newBranch);
+        await _db.SaveChangesAsync();
+
+        var branchService = new ConfigureBranchService(
+            _db,
+            new ConfigurationLifecycleService(_db, _clock),
+            new ConfigurationCascadeService(_db));
+        var branchDelete = await branchService.SoftDeleteAsync(
+            newBranch.BranchId, f.AdminId, f.AdminId, true, "test");
+        branchDelete.IsSuccess.Should().BeTrue(
+            "the fixture must seed an EntityDeletionPolicy for Branch; without it, the cascade blocks and the test premise fails");
+
+        var member = await _db.Members.FirstAsync(m => m.MemberId == f.MemberId);
+        var memberService = new ManageMemberRecordService(_db);
+        var result = await memberService.UpdateAsync(
+            member.MemberId,
+            new UpdateMemberRequest
+            {
+                Name = member.Name,
+                Surname = member.Surname,
+                DateOfBirth = member.DateOfBirth,
+                MembershipStage = member.MembershipStage,
+                Gender = member.Gender,
+                Phone = member.Phone,
+                Email = null,
+                BranchId = newBranch.BranchId,
+                RoleId = member.RoleId,
+                MemberStatusId = f.DefaultStatusId,
+            });
 
         result.IsSuccess.Should().BeFalse();
         result.Error!.Code.Should().Be(ConfigurationErrorCodes.ReferencedEntityInactive);

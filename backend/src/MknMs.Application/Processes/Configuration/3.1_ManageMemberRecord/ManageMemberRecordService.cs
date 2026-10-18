@@ -236,18 +236,20 @@ public sealed class ManageMemberRecordService : IManageMemberRecordService
             return new ConfigurationError(ConfigurationErrorCodes.InvalidValue, "Phone is required.");
         }
 
-        var branch = await _db.Branches.FirstOrDefaultAsync(b => b.BranchId == branchId, cancellationToken);
+        var branch = await _db.Branches
+            .FirstOrDefaultAsync(b => b.BranchId == branchId && !b.IsDeleted, cancellationToken);
         if (branch is null)
         {
-            return new ConfigurationError(ConfigurationErrorCodes.ReferencedEntityMissing,
-                "Branch does not exist.");
+            return new ConfigurationError(ConfigurationErrorCodes.ReferencedEntityInactive,
+                "Branch does not exist or is soft-deleted.");
         }
 
-        var role = await _db.Roles.FirstOrDefaultAsync(r => r.RoleId == roleId, cancellationToken);
+        var role = await _db.Roles
+            .FirstOrDefaultAsync(r => r.RoleId == roleId && !r.IsDeleted, cancellationToken);
         if (role is null)
         {
-            return new ConfigurationError(ConfigurationErrorCodes.ReferencedEntityMissing,
-                "Role does not exist.");
+            return new ConfigurationError(ConfigurationErrorCodes.ReferencedEntityInactive,
+                "Role does not exist or is soft-deleted.");
         }
 
         var status = await _db.MemberStatuses
