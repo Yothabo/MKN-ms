@@ -141,6 +141,9 @@ public sealed class ConfigurationCascadeService : IConfigurationCascadeService
             case nameof(AttendanceRule):
                 return await ApplyAttendanceRuleCascadeAsync(entityId, cancellationToken);
 
+            case nameof(NotificationSubscription):
+                return await ApplyNotificationSubscriptionCascadeAsync(entityId, cancellationToken);
+
             default:
                 return ConfigurationResult<CascadeOutcome>.Failure(
                     new ConfigurationError(
@@ -950,5 +953,34 @@ public sealed class ConfigurationCascadeService : IConfigurationCascadeService
         var text = $"{scopes.Count} Attendance Rule Scope row(s) removed.";
         return ConfigurationResult<CascadeOutcome>.Success(
             CascadeOutcome.Applied(text));
+    }
+
+    // -----------------------------------------------------------------
+    // NotificationSubscription cascade (§9.7 row)
+    //
+    // Nothing references a NotificationSubscription. §9.7 describes it
+    // as "removed; not soft-deleted independently" — the clause is about
+    // the cascade having no dependents to act on, not about the entity
+    // lacking a soft-delete operation. The soft delete proceeds and the
+    // audit row is written; this arm simply asserts that no dependents
+    // need to be prepared.
+    // -----------------------------------------------------------------
+
+    private async Task<ConfigurationResult<CascadeOutcome>> ApplyNotificationSubscriptionCascadeAsync(
+        int subscriptionId,
+        CancellationToken cancellationToken)
+    {
+        var exists = await _db.NotificationSubscriptions
+            .AnyAsync(s => s.SubscriptionId == subscriptionId, cancellationToken);
+        if (!exists)
+        {
+            return ConfigurationResult<CascadeOutcome>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.NotFound,
+                    $"NotificationSubscription {subscriptionId} does not exist."));
+        }
+
+        return ConfigurationResult<CascadeOutcome>.Success(
+            CascadeOutcome.Applied("No dependent changes apply."));
     }
 }

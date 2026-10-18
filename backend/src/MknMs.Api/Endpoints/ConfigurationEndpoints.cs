@@ -18,6 +18,7 @@ using MknMs.Application.Processes.Configuration.ManageIdentifierHistory;
 using MknMs.Application.Processes.Configuration.ManageMemberRecord;
 using MknMs.Application.Processes.Configuration.ManageAttributeType;
 using MknMs.Application.Processes.Configuration.ManageLookups;
+using MknMs.Application.Processes.Configuration.ManageNotificationSubscription;
 using MknMs.Application.Processes.Configuration.ManageMemberStatus;
 using MknMs.Application.Processes.Configuration.RecordReadmission;
 using MknMs.Application.Processes.Configuration.ManageProgram;
@@ -51,6 +52,7 @@ public static class ConfigurationEndpoints
         MapManageAttributeType(routes);
         MapSetMemberAttribute(routes);
         MapManageLookups(routes);
+        MapManageNotificationSubscription(routes);
         return routes;
     }
 
@@ -868,6 +870,59 @@ public static class ConfigurationEndpoints
     }
 
     // -----------------------------------------------------------------
+    // 3.0 Manage Notification Subscription
+    // -----------------------------------------------------------------
+
+    private static void MapManageNotificationSubscription(IEndpointRouteBuilder routes)
+    {
+        routes.MapGet("/api/config/3.0/notification-subscriptions", async (
+            bool? includeInactive,
+            IManageNotificationSubscriptionService service,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await service.ListAsync(includeInactive ?? false, cancellationToken)));
+
+        routes.MapGet("/api/config/3.0/notification-subscriptions/{id:int}", async (
+            int id,
+            IManageNotificationSubscriptionService service,
+            CancellationToken cancellationToken) =>
+        {
+            var sub = await service.GetAsync(id, cancellationToken);
+            return sub is null ? Results.NotFound() : Results.Ok(sub);
+        });
+
+        routes.MapPost("/api/config/3.0/notification-subscriptions", async (
+            [FromBody] CreateNotificationSubscriptionRequest request,
+            IManageNotificationSubscriptionService service,
+            CancellationToken cancellationToken) =>
+            ToHttpResult(await service.CreateAsync(
+                request.EventType,
+                request.RecipientTierId,
+                request.RecipientAdminId,
+                request.ActingAdminId,
+                cancellationToken)));
+
+        routes.MapDelete("/api/config/3.0/notification-subscriptions/{id:int}", async (
+            int id,
+            [FromBody] LifecycleActionRequest request,
+            IManageNotificationSubscriptionService service,
+            CancellationToken cancellationToken) =>
+            ToHttpResult(await service.DeactivateAsync(
+                id, request.ActingAdminId, request.ApprovedByAdminId,
+                request.ConsequencesAcknowledged, request.Reason,
+                cancellationToken)));
+
+        routes.MapPost("/api/config/3.0/notification-subscriptions/{id:int}/soft-delete", async (
+            int id,
+            [FromBody] LifecycleActionRequest request,
+            IManageNotificationSubscriptionService service,
+            CancellationToken cancellationToken) =>
+            ToHttpResult(await service.SoftDeleteAsync(
+                id, request.ActingAdminId, request.ApprovedByAdminId,
+                request.ConsequencesAcknowledged, request.Reason ?? string.Empty,
+                cancellationToken)));
+    }
+
+    // -----------------------------------------------------------------
     // 3.5 Manage Attribute Type
     // -----------------------------------------------------------------
 
@@ -1026,6 +1081,14 @@ public sealed record SetMemberAttributeRequest
     public required int AttributeTypeId { get; init; }
     public required string Value { get; init; }
     public required string RecordedDate { get; init; }
+    public required int ActingAdminId { get; init; }
+}
+
+public sealed record CreateNotificationSubscriptionRequest
+{
+    public required string EventType { get; init; }
+    public int? RecipientTierId { get; init; }
+    public int? RecipientAdminId { get; init; }
     public required int ActingAdminId { get; init; }
 }
 

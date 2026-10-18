@@ -18,6 +18,7 @@ using MknMs.Application.Processes.Configuration.ManageIdentifierHistory;
 using MknMs.Application.Processes.Configuration.ManageMemberRecord;
 using MknMs.Application.Processes.Configuration.ManageAttributeType;
 using MknMs.Application.Processes.Configuration.ManageLookups;
+using MknMs.Application.Processes.Configuration.ManageNotificationSubscription;
 using MknMs.Application.Processes.Configuration.ManageMemberStatus;
 using MknMs.Application.Processes.Configuration.RecordReadmission;
 using MknMs.Application.Processes.Configuration.ManageProgram;
@@ -77,6 +78,7 @@ builder.Services.AddScoped<IRecordReadmissionService, RecordReadmissionService>(
 builder.Services.AddScoped<IManageAttributeTypeService, ManageAttributeTypeService>();
 builder.Services.AddScoped<ISetMemberAttributeService, SetMemberAttributeService>();
 builder.Services.AddScoped<IManageLookupsService, ManageLookupsService>();
+builder.Services.AddScoped<IManageNotificationSubscriptionService, ManageNotificationSubscriptionService>();
 
 // 4.0 Manage Eligibility.
 builder.Services.AddScoped<IManageEligibilityService, ManageEligibilityService>();

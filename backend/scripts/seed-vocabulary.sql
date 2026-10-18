@@ -266,6 +266,28 @@ VALUES ('YouthAgeMax', '35', TRUE,
 ON CONFLICT (key) DO NOTHING;
 
 -- ---------------------------------------------------------------------
+-- D14 Entity Deletion Policy — NotificationSubscription
+--
+-- §9.7 requires a policy row for every configuration entity that
+-- offers a soft delete. NotificationSubscription carries both
+-- IsActive and IsDeleted; the fail-closed rule from the 1.8 work
+-- item refuses a lifecycle operation on an entity type with no
+-- policy row. Reason is required for soft delete; approval is not.
+-- ---------------------------------------------------------------------
+
+INSERT INTO entity_deletion_policy (entity_type, requires_approval_for_delete,
+                                    requires_approval_for_deactivate,
+                                    required_delete_permission_tier_id,
+                                    required_deactivate_permission_tier_id,
+                                    requires_reason_for_delete,
+                                    requires_reason_for_deactivate,
+                                    is_active, is_deleted)
+SELECT 'NotificationSubscription', FALSE, FALSE, NULL, NULL, TRUE, FALSE, TRUE, FALSE
+WHERE NOT EXISTS (
+    SELECT 1 FROM entity_deletion_policy WHERE entity_type = 'NotificationSubscription'
+);
+
+-- ---------------------------------------------------------------------
 -- Default-flag backfill
 --
 -- §9.7 refers to 'the default Role' and 'the default Member Status'.
