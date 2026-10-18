@@ -101,6 +101,18 @@ public class CapabilityServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Create_SetsBothFlagsExplicitly()
+    {
+        var service = new CapabilityService(_db);
+
+        var result = await service.CreateAsync("Act", null);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.IsActive.Should().BeTrue();
+        result.Value.IsDeleted.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task Create_WithNullDescription_WritesNullDescription()
     {
         var service = new CapabilityService(_db);

@@ -63,6 +63,8 @@ public sealed class CapabilityService : ICapabilityService
             Description = string.IsNullOrWhiteSpace(description)
                 ? null
                 : description.Trim(),
+            IsActive = true,
+            IsDeleted = false,
         };
 
         _db.Capabilities.Add(entity);
