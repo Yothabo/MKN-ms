@@ -596,4 +596,19 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
         result.IsSuccess.Should().BeFalse();
         result.Error!.Code.Should().Be(ConfigurationErrorCodes.ReferencedEntityMissing);
     }
+    [Fact]
+    public async Task Record_MissingPolicy_Fails()
+    {
+        var (initiated, approved) = await SeedAdminsAsync();
+
+        // No policy is seeded for this entity type. §9.7 requires the
+        // policy to govern the operation; the service must refuse.
+        var service = new ConfigurationLifecycleService(_db, _clock);
+        var e = ValidEvent(initiated, approved) with { EntityType = "UnconfiguredEntity" };
+
+        var result = await service.RecordAsync(e);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error!.Code.Should().Be(ConfigurationErrorCodes.ConfigurationMissing);
+    }
 }
