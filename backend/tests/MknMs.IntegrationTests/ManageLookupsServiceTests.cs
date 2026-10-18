@@ -344,4 +344,28 @@ public class ManageLookupsServiceTests : IAsyncLifetime
         result.IsSuccess.Should().BeFalse();
         result.Error!.Code.Should().Be(ConfigurationErrorCodes.ValidationFailed);
     }
+    [Fact]
+    public async Task PermissionTier_DefaultWithoutReferences_IsBlocked()
+    {
+        // The seeded default tier is referenced by the seeded admin,
+        // so it would be blocked by the reference check regardless of
+        // its default status. To exercise the default arm in isolation,
+        // move the default flag to a new unreferenced tier first.
+        var admin = await SeedAdminAsync();
+
+        var currentDefault = await _db.PermissionTiers.FirstAsync(t => t.IsDefault);
+        currentDefault.IsDefault = false;
+
+        var newDefault = new PermissionTier { Name = "NewDefault", IsDefault = true };
+        _db.PermissionTiers.Add(newDefault);
+        await _db.SaveChangesAsync();
+
+        var service = MakeService();
+        var result = await service.SoftDeletePermissionTierAsync(
+            newDefault.PermissionTierId, admin, admin, true, "attempt");
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error!.Code.Should().Be(ConfigurationErrorCodes.LifecycleViolation);
+        result.Error.Message.Should().Contain("default");
+    }
 }

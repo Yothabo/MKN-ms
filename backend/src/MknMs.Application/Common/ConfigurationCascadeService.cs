@@ -839,11 +839,22 @@ public sealed class ConfigurationCascadeService : IConfigurationCascadeService
         int tierId,
         CancellationToken cancellationToken)
     {
-        var exists = await _db.PermissionTiers
-            .AnyAsync(t => t.PermissionTierId == tierId, cancellationToken);
-        if (!exists)
+        var tier = await _db.PermissionTiers
+            .FirstOrDefaultAsync(t => t.PermissionTierId == tierId, cancellationToken);
+        if (tier is null)
         {
             return NotFound(nameof(PermissionTier), tierId);
+        }
+
+        // §4: exactly one PermissionTier is the default; §9.7 blocks
+        // soft-deleting the default. Same rule as Role and MemberStatus
+        // — without this arm, an unreferenced default tier can be
+        // soft-deleted, leaving zero defaults.
+        if (tier.IsDefault)
+        {
+            return ConfigurationResult<CascadeOutcome>.Success(
+                CascadeOutcome.Blocked(
+                    "The default Permission Tier cannot be soft-deleted."));
         }
 
         var adminCount = await _db.Admins
