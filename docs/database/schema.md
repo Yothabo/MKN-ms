@@ -118,7 +118,7 @@ Configuration entities carry both `IsActive` and `IsDeleted`. Operational entiti
 | IsActive | boolean | No | True at creation |
 | IsDeleted | boolean | No | False at creation |
 
-Unique on (ServiceDefID, TimeSlotID) for active, not-deleted rows.
+Unique on (ServiceDefID, TimeSlotID) for rows where IsActive = true.
 
 ## ServiceOccurrence
 
