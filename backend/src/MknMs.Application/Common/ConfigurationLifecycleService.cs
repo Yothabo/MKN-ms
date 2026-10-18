@@ -82,6 +82,15 @@ public sealed record ConfigurationLifecycleEvent
     public required int InitiatedByAdminId { get; init; }
 
     public required int ApprovedByAdminId { get; init; }
+
+    /// <summary>
+    /// The caller has presented the consequences preview to an
+    /// administrator and that administrator has acknowledged it. §9.7
+    /// requires acknowledgement of the preview as a precondition to
+    /// any deactivation or soft delete. The value is checked by this
+    /// service after basic validation and before any policy lookup.
+    /// </summary>
+    public required bool ConsequencesAcknowledged { get; init; }
 }
 
 public sealed class ConfigurationLifecycleService : IConfigurationLifecycleService
@@ -103,6 +112,19 @@ public sealed class ConfigurationLifecycleService : IConfigurationLifecycleServi
         if (basicValidation is not null)
         {
             return ConfigurationResult<ConfigurationAuditLog>.Failure(basicValidation);
+        }
+
+        // §9.7: acknowledgement of the consequences preview is a
+        // precondition to any deactivation or soft delete. The calling
+        // service enforces the same precondition with a message naming
+        // the operation; this check is the policy-layer backstop so a
+        // future caller cannot omit it.
+        if (!lifecycleEvent.ConsequencesAcknowledged)
+        {
+            return Failure(
+                ConfigurationErrorCodes.ValidationFailed,
+                "The consequences of this " + lifecycleEvent.Action.ToLowerInvariant()
+                + " must be acknowledged.");
         }
 
         // Resolve the applicable policy row. A missing policy is a

@@ -268,6 +268,7 @@ public sealed class ConfigureServiceDutyAndScheduleService : IConfigureServiceDu
             Reason = reason,
             InitiatedByAdminId = actingAdminId,
             ApprovedByAdminId = approvedByAdminId,
+            ConsequencesAcknowledged = consequencesAcknowledged,
         }, cancellationToken);
 
         if (!audit.IsSuccess)
@@ -450,6 +451,7 @@ public sealed class ConfigureServiceDutyAndScheduleService : IConfigureServiceDu
             Reason = reason,
             InitiatedByAdminId = actingAdminId,
             ApprovedByAdminId = approvedByAdminId,
+            ConsequencesAcknowledged = consequencesAcknowledged,
         }, cancellationToken);
 
         if (!audit.IsSuccess)
@@ -535,6 +537,7 @@ public sealed class ConfigureServiceDutyAndScheduleService : IConfigureServiceDu
             ConsequencesText = cascade.Value.ConsequencesText,
             InitiatedByAdminId = actingAdminId,
             ApprovedByAdminId = approvedByAdminId,
+            ConsequencesAcknowledged = consequencesAcknowledged,
         }, cancellationToken);
 
         if (!audit.IsSuccess)

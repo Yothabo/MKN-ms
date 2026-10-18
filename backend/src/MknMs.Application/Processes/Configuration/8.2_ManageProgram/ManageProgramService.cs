@@ -191,6 +191,7 @@ public sealed class ManageProgramService : IManageProgramService
             ConsequencesText = cascade.Value.ConsequencesText,
             InitiatedByAdminId = actingAdminId,
             ApprovedByAdminId = approvedByAdminId,
+            ConsequencesAcknowledged = consequencesAcknowledged,
         }, cancellationToken);
 
         if (!audit.IsSuccess)

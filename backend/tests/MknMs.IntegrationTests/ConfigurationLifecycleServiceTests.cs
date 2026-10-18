@@ -119,7 +119,8 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
         int initiatedBy,
         int approvedBy,
         string action = ConfigurationLifecycleActions.Deactivate,
-        string? reason = null) =>
+        string? reason = null,
+        bool acknowledged = true) =>
         new()
         {
             EntityType = "Role",
@@ -129,6 +130,7 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
             Reason = reason,
             InitiatedByAdminId = initiatedBy,
             ApprovedByAdminId = approvedBy,
+            ConsequencesAcknowledged = acknowledged,
         };
 
     [Fact]
@@ -610,5 +612,30 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
 
         result.IsSuccess.Should().BeFalse();
         result.Error!.Code.Should().Be(ConfigurationErrorCodes.ConfigurationMissing);
+    }
+    [Fact]
+    public async Task Record_WithoutAcknowledgement_Fails()
+    {
+        var (initiated, approved) = await SeedAdminsAsync();
+
+        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        {
+            EntityType = "Role",
+            RequiresApprovalForDelete = false,
+            RequiresApprovalForDeactivate = false,
+            RequiresReasonForDelete = true,
+            RequiresReasonForDeactivate = false,
+            IsActive = true,
+            IsDeleted = false,
+        });
+        await _db.SaveChangesAsync();
+
+        var service = new ConfigurationLifecycleService(_db, _clock);
+        var e = ValidEvent(initiated, approved, acknowledged: false);
+
+        var result = await service.RecordAsync(e);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error!.Code.Should().Be(ConfigurationErrorCodes.ValidationFailed);
     }
 }

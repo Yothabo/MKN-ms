@@ -159,6 +159,7 @@ public sealed class ConfigureRoleService : IConfigureRoleService
             Reason = reason,
             InitiatedByAdminId = actingAdminId,
             ApprovedByAdminId = approvedByAdminId,
+            ConsequencesAcknowledged = consequencesAcknowledged,
         }, cancellationToken);
 
         if (!audit.IsSuccess)
@@ -246,6 +247,7 @@ public sealed class ConfigureRoleService : IConfigureRoleService
             ConsequencesText = cascade.Value.ConsequencesText,
             InitiatedByAdminId = actingAdminId,
             ApprovedByAdminId = approvedByAdminId,
+            ConsequencesAcknowledged = consequencesAcknowledged,
         }, cancellationToken);
 
         if (!audit.IsSuccess)

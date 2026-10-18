@@ -112,6 +112,7 @@ public sealed class ManageAttributeTypeService : IManageAttributeTypeService
             ConsequencesText = cascade.Value.ConsequencesText,
             InitiatedByAdminId = actingAdminId,
             ApprovedByAdminId = approvedByAdminId,
+            ConsequencesAcknowledged = consequencesAcknowledged,
         }, cancellationToken);
 
         if (!audit.IsSuccess)

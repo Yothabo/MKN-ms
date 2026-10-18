@@ -114,6 +114,7 @@ public sealed class ManageMemberStatusService : IManageMemberStatusService
             ConsequencesText = cascade.Value.ConsequencesText,
             InitiatedByAdminId = actingAdminId,
             ApprovedByAdminId = approvedByAdminId,
+            ConsequencesAcknowledged = consequencesAcknowledged,
         }, cancellationToken);
 
         if (!audit.IsSuccess)

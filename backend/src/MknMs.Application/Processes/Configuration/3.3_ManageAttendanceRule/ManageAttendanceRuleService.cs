@@ -340,6 +340,7 @@ public sealed class ManageAttendanceRuleService : IManageAttendanceRuleService
             Reason = reason,
             InitiatedByAdminId = actingAdminId,
             ApprovedByAdminId = approvedByAdminId,
+            ConsequencesAcknowledged = consequencesAcknowledged,
         }, cancellationToken);
 
         if (!audit.IsSuccess)
@@ -416,6 +417,7 @@ public sealed class ManageAttendanceRuleService : IManageAttendanceRuleService
             ConsequencesText = cascade.Value.ConsequencesText,
             InitiatedByAdminId = actingAdminId,
             ApprovedByAdminId = approvedByAdminId,
+            ConsequencesAcknowledged = consequencesAcknowledged,
         }, cancellationToken);
 
         if (!audit.IsSuccess)

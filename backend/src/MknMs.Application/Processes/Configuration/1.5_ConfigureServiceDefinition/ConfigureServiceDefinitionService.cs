@@ -258,6 +258,7 @@ public sealed class ConfigureServiceDefinitionService : IConfigureServiceDefinit
             Reason = reason,
             InitiatedByAdminId = actingAdminId,
             ApprovedByAdminId = approvedByAdminId,
+            ConsequencesAcknowledged = consequencesAcknowledged,
         }, cancellationToken);
 
         if (!audit.IsSuccess)
@@ -343,6 +344,7 @@ public sealed class ConfigureServiceDefinitionService : IConfigureServiceDefinit
             ConsequencesText = cascade.Value.ConsequencesText,
             InitiatedByAdminId = actingAdminId,
             ApprovedByAdminId = approvedByAdminId,
+            ConsequencesAcknowledged = consequencesAcknowledged,
         }, cancellationToken);
 
         if (!audit.IsSuccess)
