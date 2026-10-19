@@ -17,48 +17,29 @@ namespace MknMs.IntegrationTests;
 ///
 /// Reference: §7, §15.3.11, §15.8.33.
 /// </remarks>
-public class TimeZoneResolverTests : IAsyncLifetime
+public class TimeZoneResolverTests : IntegrationTestBase
 {
-    private const string TestConnectionString =
-        "Host=127.0.0.1;Port=5432;Database=mkn_test;Username=mkn_dev";
-
-    private MknDbContext _db = null!;
-
-    public async Task InitializeAsync()
+    protected override async Task OnInitializedAsync()
     {
-        var options = new DbContextOptionsBuilder<MknDbContext>()
-            .UseNpgsql(TestConnectionString)
-            .Options;
-
-        _db = new MknDbContext(options);
-
-        await _db.Database.ExecuteSqlRawAsync(
-            "TRUNCATE TABLE materializer_run, attendance_record, roster_assignment, " +
-            "service_occurrence_duty, service_occurrence, service_schedule, " +
-            "service_definition_duty, branch_time_slot, service_definition, " +
-            "service_type, time_of_day, branch, identifier_history, eligibility, " +
-            "duty_rule, admin, member, role, duty, system_setting, " +
-            "outcome_state, assignment_status, permission_tier RESTART IDENTITY CASCADE;");
-    }
-
-    public Task DisposeAsync()
-    {
-        _db.Dispose();
-        return Task.CompletedTask;
+        // Each fact in this class writes ApplicationTimeZone and asserts on
+        // its presence or absence. Clear SystemSetting rows before each fact
+        // so the facts are order-independent and do not collide on the key.
+        Db.SystemSettings.RemoveRange(Db.SystemSettings);
+        await Db.SaveChangesAsync();
     }
 
     [Fact]
     public async Task Resolve_WithConfiguredTimeZone_ReturnsThatZone()
     {
-        _db.SystemSettings.Add(new SystemSetting
+        Db.SystemSettings.Add(new SystemSetting
         {
             Key = "ApplicationTimeZone",
             Value = "Africa/Johannesburg",
             Required = true,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var result = await TimeZoneResolver.ResolveAsync(_db);
+        var result = await TimeZoneResolver.ResolveAsync(Db);
 
         result.IsSuccess.Should().BeTrue();
         result.Zone!.Id.Should().Be("Africa/Johannesburg");
@@ -67,7 +48,7 @@ public class TimeZoneResolverTests : IAsyncLifetime
     [Fact]
     public async Task Resolve_WithoutConfiguredTimeZone_ReturnsConfigurationMissing()
     {
-        var result = await TimeZoneResolver.ResolveAsync(_db);
+        var result = await TimeZoneResolver.ResolveAsync(Db);
 
         result.IsSuccess.Should().BeFalse();
         result.ErrorCode.Should().Be(ConfigurationErrorCodes.ConfigurationMissing);
@@ -76,15 +57,15 @@ public class TimeZoneResolverTests : IAsyncLifetime
     [Fact]
     public async Task Resolve_WithUnrecognisedValue_ReturnsConfigurationInvalid()
     {
-        _db.SystemSettings.Add(new SystemSetting
+        Db.SystemSettings.Add(new SystemSetting
         {
             Key = "ApplicationTimeZone",
             Value = "Not/ARealTimeZone",
             Required = true,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var result = await TimeZoneResolver.ResolveAsync(_db);
+        var result = await TimeZoneResolver.ResolveAsync(Db);
 
         result.IsSuccess.Should().BeFalse();
         result.ErrorCode.Should().Be(ConfigurationErrorCodes.ConfigurationInvalid);
@@ -97,15 +78,15 @@ public class TimeZoneResolverTests : IAsyncLifetime
         // 00:30 on the 7th in Johannesburg — the next day.
         var instant = new DateTimeOffset(2026, 10, 6, 22, 30, 0, TimeSpan.Zero);
 
-        _db.SystemSettings.Add(new SystemSetting
+        Db.SystemSettings.Add(new SystemSetting
         {
             Key = "ApplicationTimeZone",
             Value = "Africa/Johannesburg",
             Required = true,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var result = await TimeZoneResolver.ResolveAsync(_db);
+        var result = await TimeZoneResolver.ResolveAsync(Db);
         result.IsSuccess.Should().BeTrue();
 
         var date = TimeZoneResolver.ToDateInTimeZone(instant, result.Zone!);

@@ -109,10 +109,42 @@ public sealed class TestDatabaseFixture : IAsyncLifetime
             await terminate.ExecuteNonQueryAsync();
         }
 
-        await using (var drop = admin.CreateCommand())
+        // Termux Postgres occasionally stalls during DROP DATABASE. The
+        // command is accepted and then the read times out. A bounded retry
+        // usually succeeds because the stalled backend was terminated by
+        // pg_terminate_backend above. On final failure, leave the database
+        // rather than fail the test class: a leaked per-class DB is a
+        // lesser cost than a red suite for an infrastructure stall.
+        const int maxDropAttempts = 3;
+        for (var attempt = 1; attempt <= maxDropAttempts; attempt++)
         {
-            drop.CommandText = $"DROP DATABASE IF EXISTS {_databaseName}";
-            await drop.ExecuteNonQueryAsync();
+            try
+            {
+                await using var drop = admin.CreateCommand();
+                drop.CommandText = $"DROP DATABASE IF EXISTS {_databaseName}";
+                drop.CommandTimeout = 15;
+                await drop.ExecuteNonQueryAsync();
+                return;
+            }
+            catch (Exception) when (attempt < maxDropAttempts)
+            {
+                NpgsqlConnection.ClearAllPools();
+                await Task.Delay(TimeSpan.FromSeconds(2));
+
+                await using var terminate = admin.CreateCommand();
+                terminate.CommandText =
+                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                    + "WHERE datname = @db AND pid <> pg_backend_pid()";
+                terminate.Parameters.AddWithValue("@db", _databaseName);
+                try { await terminate.ExecuteNonQueryAsync(); }
+                catch { /* best-effort before retry */ }
+            }
+            catch (Exception)
+            {
+                // Final attempt failed. Leave the database; a subsequent
+                // InitializeAsync on a different class uses a new GUID-named
+                // database and is unaffected.
+            }
         }
     }
 }
