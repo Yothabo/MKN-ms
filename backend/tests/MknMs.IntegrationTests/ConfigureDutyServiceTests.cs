@@ -21,24 +21,13 @@ public class ConfigureDutyServiceTests : IntegrationTestBase
     private static readonly DateTimeOffset Now =
         new(2026, 10, 13, 12, 0, 0, TimeSpan.Zero);
 
-    private TimeProvider _clock = null!;
-
-    public ConfigureDutyServiceTests(TestDatabaseFixture fixture) : base(fixture) { }
-
-    public override Task InitializeAsync()
-    {
-        _clock = new FakeTimeProvider(Now);
-        return Task.CompletedTask;
-    }
+    private readonly TimeProvider _clock = new FakeTimeProvider(Now);
 
     private async Task<(int dutyId, int adminId)> SeedAsync()
     {
         var role = new Role { Name = "R", IsDefault = true, IsDeleted = false };
         var branch = new Branch { Name = "B", Location = "L", IsDeleted = false };
-        var status = new MemberStatus
-        {
-            Name = "Active", IsRosterable = true, IsDefault = true, IsDeleted = false,
-        };
+        var statusId = await TestSeed.EnsureDefaultMemberStatusAsync(Db);
         var tier = new PermissionTier
         {
             Name = "Full Admin", IsDefault = true, IsDeleted = false,
@@ -47,7 +36,6 @@ public class ConfigureDutyServiceTests : IntegrationTestBase
 
         Db.Roles.Add(role);
         Db.Branches.Add(branch);
-        Db.MemberStatuses.Add(status);
         Db.PermissionTiers.Add(tier);
         Db.Duties.Add(duty);
         await Db.SaveChangesAsync();
@@ -73,7 +61,7 @@ public class ConfigureDutyServiceTests : IntegrationTestBase
             MembershipStage = "Full", Gender = "Other",
             Phone = "+27-0", Email = null,
             BranchId = branch.BranchId, RoleId = role.RoleId,
-            MemberStatusId = status.MemberStatusId,
+            MemberStatusId = statusId,
         };
         Db.Members.Add(member);
         await Db.SaveChangesAsync();
@@ -90,9 +78,9 @@ public class ConfigureDutyServiceTests : IntegrationTestBase
     }
 
     private ConfigureDutyService MakeService() =>
-        new(_db,
-            new ConfigurationLifecycleService(_db, _clock),
-            new ConfigurationCascadeService(_db));
+        new(Db,
+            new ConfigurationLifecycleService(Db, _clock),
+            new ConfigurationCascadeService(Db));
 
     [Fact]
     public async Task SoftDelete_Unreferenced_Succeeds()
