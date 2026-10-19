@@ -14,52 +14,22 @@ namespace MknMs.IntegrationTests;
 /// <summary>
 /// Tests for ManageIdentifierHistoryService.
 /// </summary>
-public class ManageIdentifierHistoryServiceTests : IAsyncLifetime
+public class ManageIdentifierHistoryServiceTests : IntegrationTestBase
 {
-    private const string TestConnectionString =
-        "Host=127.0.0.1;Port=5432;Database=mkn_test;Username=mkn_dev";
-
-    private MknDbContext _db = null!;
-
-    public async Task InitializeAsync()
-    {
-        var options = new DbContextOptionsBuilder<MknDbContext>()
-            .UseNpgsql(TestConnectionString)
-            .Options;
-
-        _db = new MknDbContext(options);
-
-        await _db.Database.ExecuteSqlRawAsync(
-            "TRUNCATE TABLE configuration_audit_log, entity_deletion_policy, " +
-            "notification_subscription, identifier_history, member, member_status, " +
-            "branch, role, admin, permission_tier " +
-            "RESTART IDENTITY CASCADE;");
-    }
-
-    public Task DisposeAsync()
-    {
-        _db.Dispose();
-        return Task.CompletedTask;
-    }
-
     private async Task<(int memberId, int adminId)> SeedAsync()
     {
         var role = new Role { Name = "R", IsDefault = true, IsDeleted = false };
         var branch = new Branch { Name = "B", Location = "L", IsDeleted = false };
-        var status = new MemberStatus
-        {
-            Name = "Active", IsRosterable = true, IsDefault = true, IsDeleted = false,
-        };
+        var statusId = await TestSeed.EnsureDefaultMemberStatusAsync(Db);
         var tier = new PermissionTier
         {
             Name = "Full Admin", IsDefault = true, IsDeleted = false,
         };
 
-        _db.Roles.Add(role);
-        _db.Branches.Add(branch);
-        _db.MemberStatuses.Add(status);
-        _db.PermissionTiers.Add(tier);
-        await _db.SaveChangesAsync();
+        Db.Roles.Add(role);
+        Db.Branches.Add(branch);
+        Db.PermissionTiers.Add(tier);
+        await Db.SaveChangesAsync();
 
         var member = new Member
         {
@@ -69,18 +39,18 @@ public class ManageIdentifierHistoryServiceTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Other",
             Phone = "+27-0", Email = null,
             BranchId = branch.BranchId, RoleId = role.RoleId,
-            MemberStatusId = status.MemberStatusId,
+            MemberStatusId = statusId,
         };
-        _db.Members.Add(member);
-        await _db.SaveChangesAsync();
+        Db.Members.Add(member);
+        await Db.SaveChangesAsync();
 
         var admin = new Admin
         {
             MemberId = member.MemberId,
             PermissionTierId = tier.PermissionTierId,
         };
-        _db.Admins.Add(admin);
-        await _db.SaveChangesAsync();
+        Db.Admins.Add(admin);
+        await Db.SaveChangesAsync();
 
         return (member.MemberId, admin.AdminId);
     }
@@ -92,11 +62,11 @@ public class ManageIdentifierHistoryServiceTests : IAsyncLifetime
         // IsActive = true.
         var (memberId, adminId) = await SeedAsync();
 
-        var admin = await _db.Admins.FirstAsync(a => a.AdminId == adminId);
+        var admin = await Db.Admins.FirstAsync(a => a.AdminId == adminId);
         admin.IsActive = false;
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new ManageIdentifierHistoryService(_db);
+        var service = new ManageIdentifierHistoryService(Db);
 
         var result = await service.IssueAsync(
             memberId,
