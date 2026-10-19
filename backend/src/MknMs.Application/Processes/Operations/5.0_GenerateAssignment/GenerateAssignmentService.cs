@@ -728,12 +728,7 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
             return false;
         }
 
-        var age = today.Year - dateOfBirth.Year;
-        if (dateOfBirth > today.AddYears(-age))
-        {
-            age--;
-        }
-
+        var age = MemberAge.CompletedYears(dateOfBirth, today);
         return age >= min && age <= max;
     }
 
@@ -750,8 +745,7 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
             return false;
         }
 
-        var days = today.DayNumber - joinDate.DayNumber;
-        return days >= threshold;
+        return MemberTenure.DaysSince(joinDate, today) >= threshold;
     }
 
     private async Task<bool> EvaluateMemberAttributeAsync(
@@ -848,12 +842,7 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
             return false;
         }
 
-        var age = today.Year - member.DateOfBirth.Year;
-        if (member.DateOfBirth > today.AddYears(-age))
-        {
-            age--;
-        }
-
+        var age = MemberAge.CompletedYears(member.DateOfBirth, today);
         return age >= min && age <= max;
     }
 

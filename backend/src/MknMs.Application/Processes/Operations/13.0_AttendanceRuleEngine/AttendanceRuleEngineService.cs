@@ -514,12 +514,7 @@ public sealed class AttendanceRuleEngineService : IAttendanceRuleEngineService
             return false;
         }
 
-        var age = today.Year - dateOfBirth.Year;
-        if (dateOfBirth > today.AddYears(-age))
-        {
-            age--;
-        }
-
+        var age = MemberAge.CompletedYears(dateOfBirth, today);
         return age >= min && age <= max;
     }
 
@@ -533,7 +528,7 @@ public sealed class AttendanceRuleEngineService : IAttendanceRuleEngineService
             return false;
         }
 
-        return (today.DayNumber - joinDate.DayNumber) >= threshold;
+        return MemberTenure.DaysSince(joinDate, today) >= threshold;
     }
 
     private static AttendanceRuleEngineResult Failure(string code, string detail) =>

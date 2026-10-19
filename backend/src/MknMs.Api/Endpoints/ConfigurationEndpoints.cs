@@ -98,7 +98,7 @@ public static class ConfigurationEndpoints
     private static bool TryParseIsoDate(
         string? value, string fieldName, out DateOnly result, out IResult error)
     {
-        if (DateOnly.TryParse(value, out result))
+        if (IsoDate.TryParse(value, out result))
         {
             error = null!;
             return true;
