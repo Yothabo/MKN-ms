@@ -16,38 +16,18 @@ namespace MknMs.IntegrationTests;
 /// <summary>
 /// Tests for ConfigureDutyService.SoftDeleteAsync.
 /// </summary>
-public class ConfigureDutyServiceTests : IAsyncLifetime
+public class ConfigureDutyServiceTests : IntegrationTestBase
 {
-    private const string TestConnectionString =
-        "Host=127.0.0.1;Port=5432;Database=mkn_test;Username=mkn_dev";
-
     private static readonly DateTimeOffset Now =
         new(2026, 10, 13, 12, 0, 0, TimeSpan.Zero);
 
-    private MknDbContext _db = null!;
     private TimeProvider _clock = null!;
 
-    public async Task InitializeAsync()
-    {
-        var options = new DbContextOptionsBuilder<MknDbContext>()
-            .UseNpgsql(TestConnectionString)
-            .Options;
+    public ConfigureDutyServiceTests(TestDatabaseFixture fixture) : base(fixture) { }
 
-        _db = new MknDbContext(options);
+    public override Task InitializeAsync()
+    {
         _clock = new FakeTimeProvider(Now);
-
-        await _db.Database.ExecuteSqlRawAsync(
-            "TRUNCATE TABLE configuration_audit_log, entity_deletion_policy, " +
-            "notification_subscription, service_definition_duty, " +
-            "service_definition, service_type, event_duty, program_item, " +
-            "program, event, member, member_status, branch, role, duty, " +
-            "admin, permission_tier " +
-            "RESTART IDENTITY CASCADE;");
-    }
-
-    public Task DisposeAsync()
-    {
-        _db.Dispose();
         return Task.CompletedTask;
     }
 
@@ -65,14 +45,14 @@ public class ConfigureDutyServiceTests : IAsyncLifetime
         };
         var duty = new Duty { Name = "Reading", IsDeleted = false };
 
-        _db.Roles.Add(role);
-        _db.Branches.Add(branch);
-        _db.MemberStatuses.Add(status);
-        _db.PermissionTiers.Add(tier);
-        _db.Duties.Add(duty);
-        await _db.SaveChangesAsync();
+        Db.Roles.Add(role);
+        Db.Branches.Add(branch);
+        Db.MemberStatuses.Add(status);
+        Db.PermissionTiers.Add(tier);
+        Db.Duties.Add(duty);
+        await Db.SaveChangesAsync();
 
-        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        Db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
         {
             EntityType = "Duty",
             RequiresApprovalForDelete = false,
@@ -82,7 +62,7 @@ public class ConfigureDutyServiceTests : IAsyncLifetime
             IsActive = true,
             IsDeleted = false,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
 
         var member = new Member
@@ -95,16 +75,16 @@ public class ConfigureDutyServiceTests : IAsyncLifetime
             BranchId = branch.BranchId, RoleId = role.RoleId,
             MemberStatusId = status.MemberStatusId,
         };
-        _db.Members.Add(member);
-        await _db.SaveChangesAsync();
+        Db.Members.Add(member);
+        await Db.SaveChangesAsync();
 
         var admin = new Admin
         {
             MemberId = member.MemberId,
             PermissionTierId = tier.PermissionTierId,
         };
-        _db.Admins.Add(admin);
-        await _db.SaveChangesAsync();
+        Db.Admins.Add(admin);
+        await Db.SaveChangesAsync();
 
         return (duty.DutyId, admin.AdminId);
     }
@@ -125,11 +105,11 @@ public class ConfigureDutyServiceTests : IAsyncLifetime
 
         result.IsSuccess.Should().BeTrue();
 
-        var row = await _db.Duties.FirstAsync(d => d.DutyId == duty);
+        var row = await Db.Duties.FirstAsync(d => d.DutyId == duty);
         row.IsDeleted.Should().BeTrue();
         row.IsActive.Should().BeFalse();
 
-        var audit = await _db.ConfigurationAuditLogs.SingleAsync();
+        var audit = await Db.ConfigurationAuditLogs.SingleAsync();
         audit.Action.Should().Be(ConfigurationLifecycleActions.SoftDelete);
         audit.EntityType.Should().Be("Duty");
         audit.Reason.Should().Be("no longer required");
@@ -141,24 +121,24 @@ public class ConfigureDutyServiceTests : IAsyncLifetime
         var (duty, admin) = await SeedAsync();
 
         var serviceType = new ServiceType { Name = "Regular" };
-        _db.ServiceTypes.Add(serviceType);
-        await _db.SaveChangesAsync();
+        Db.ServiceTypes.Add(serviceType);
+        await Db.SaveChangesAsync();
 
         var definition = new ServiceDefinition
         {
             Name = "S", ServiceTypeId = serviceType.ServiceTypeId, IsDeleted = false,
         };
-        _db.ServiceDefinitions.Add(definition);
-        await _db.SaveChangesAsync();
+        Db.ServiceDefinitions.Add(definition);
+        await Db.SaveChangesAsync();
 
-        _db.ServiceDefinitionDuties.Add(new ServiceDefinitionDuty
+        Db.ServiceDefinitionDuties.Add(new ServiceDefinitionDuty
         {
             ServiceDefId = definition.ServiceDefId,
             DutyId = duty,
             RequiredSlotCount = 1,
             IsDeleted = false,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         var service = MakeService();
         var result = await service.SoftDeleteAsync(
@@ -167,11 +147,11 @@ public class ConfigureDutyServiceTests : IAsyncLifetime
         result.IsSuccess.Should().BeFalse();
         result.Error!.Code.Should().Be(ConfigurationErrorCodes.LifecycleViolation);
 
-        _db.ChangeTracker.Clear();
-        var persisted = await _db.Duties.AsNoTracking().FirstAsync(d => d.DutyId == duty);
+        Db.ChangeTracker.Clear();
+        var persisted = await Db.Duties.AsNoTracking().FirstAsync(d => d.DutyId == duty);
         persisted.IsDeleted.Should().BeFalse();
 
-        var auditCount = await _db.ConfigurationAuditLogs.CountAsync();
+        var auditCount = await Db.ConfigurationAuditLogs.CountAsync();
         auditCount.Should().Be(0);
     }
 
@@ -217,9 +197,9 @@ public class ConfigureDutyServiceTests : IAsyncLifetime
     public async Task Create_WithInactiveAdmin_Fails()
     {
         var (_, actingAdminId) = await SeedAsync();
-        var admin = await _db.Admins.FirstAsync(a => a.AdminId == actingAdminId);
+        var admin = await Db.Admins.FirstAsync(a => a.AdminId == actingAdminId);
         admin.IsActive = false;
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         var service = MakeService();
         var result = await service.CreateAsync("NewDuty", actingAdminId);

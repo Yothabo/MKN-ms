@@ -16,36 +16,18 @@ namespace MknMs.IntegrationTests;
 /// <summary>
 /// Tests for ConfigureRoleService.SoftDeleteAsync.
 /// </summary>
-public class ConfigureRoleServiceTests : IAsyncLifetime
+public class ConfigureRoleServiceTests : IntegrationTestBase
 {
-    private const string TestConnectionString =
-        "Host=127.0.0.1;Port=5432;Database=mkn_test;Username=mkn_dev";
-
     private static readonly DateTimeOffset Now =
         new(2026, 10, 13, 10, 0, 0, TimeSpan.Zero);
 
-    private MknDbContext _db = null!;
     private TimeProvider _clock = null!;
 
-    public async Task InitializeAsync()
-    {
-        var options = new DbContextOptionsBuilder<MknDbContext>()
-            .UseNpgsql(TestConnectionString)
-            .Options;
+    public ConfigureRoleServiceTests(TestDatabaseFixture fixture) : base(fixture) { }
 
-        _db = new MknDbContext(options);
+    public override Task InitializeAsync()
+    {
         _clock = new FakeTimeProvider(Now);
-
-        await _db.Database.ExecuteSqlRawAsync(
-            "TRUNCATE TABLE configuration_audit_log, entity_deletion_policy, " +
-            "notification_subscription, duty_rule, member, member_status, " +
-            "branch, role, duty, admin, permission_tier " +
-            "RESTART IDENTITY CASCADE;");
-    }
-
-    public Task DisposeAsync()
-    {
-        _db.Dispose();
         return Task.CompletedTask;
     }
 
@@ -72,14 +54,14 @@ public class ConfigureRoleServiceTests : IAsyncLifetime
             Name = "Full Admin", IsDefault = true, IsDeleted = false,
         };
 
-        _db.Roles.Add(defaultRole);
-        _db.Roles.Add(otherRole);
-        _db.Branches.Add(branch);
-        _db.MemberStatuses.Add(status);
-        _db.PermissionTiers.Add(tier);
-        await _db.SaveChangesAsync();
+        Db.Roles.Add(defaultRole);
+        Db.Roles.Add(otherRole);
+        Db.Branches.Add(branch);
+        Db.MemberStatuses.Add(status);
+        Db.PermissionTiers.Add(tier);
+        await Db.SaveChangesAsync();
 
-        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        Db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
         {
             EntityType = "Role",
             RequiresApprovalForDelete = false,
@@ -89,7 +71,7 @@ public class ConfigureRoleServiceTests : IAsyncLifetime
             IsActive = true,
             IsDeleted = false,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
 
         var member = new Member
@@ -102,16 +84,16 @@ public class ConfigureRoleServiceTests : IAsyncLifetime
             BranchId = branch.BranchId, RoleId = otherRole.RoleId,
             MemberStatusId = status.MemberStatusId,
         };
-        _db.Members.Add(member);
-        await _db.SaveChangesAsync();
+        Db.Members.Add(member);
+        await Db.SaveChangesAsync();
 
         var admin = new Admin
         {
             MemberId = member.MemberId,
             PermissionTierId = tier.PermissionTierId,
         };
-        _db.Admins.Add(admin);
-        await _db.SaveChangesAsync();
+        Db.Admins.Add(admin);
+        await Db.SaveChangesAsync();
 
         return (defaultRole.RoleId, otherRole.RoleId, admin.AdminId);
     }
@@ -173,14 +155,14 @@ public class ConfigureRoleServiceTests : IAsyncLifetime
 
         result.IsSuccess.Should().BeTrue();
 
-        var role = await _db.Roles.FirstAsync(r => r.RoleId == other);
+        var role = await Db.Roles.FirstAsync(r => r.RoleId == other);
         role.IsDeleted.Should().BeTrue();
         role.IsActive.Should().BeFalse();
 
-        var member = await _db.Members.FirstAsync();
+        var member = await Db.Members.FirstAsync();
         member.RoleId.Should().Be(defaultRole);
 
-        var audit = await _db.ConfigurationAuditLogs.SingleAsync();
+        var audit = await Db.ConfigurationAuditLogs.SingleAsync();
         audit.Action.Should().Be(ConfigurationLifecycleActions.SoftDelete);
         audit.EntityType.Should().Be("Role");
         audit.Reason.Should().Be("merged into default");
@@ -206,17 +188,17 @@ public class ConfigureRoleServiceTests : IAsyncLifetime
         var (defaultRole, _, admin) = await SeedAsync();
         var service = MakeService();
 
-        var before = await _db.ConfigurationAuditLogs.CountAsync();
+        var before = await Db.ConfigurationAuditLogs.CountAsync();
 
         await service.SoftDeleteAsync(
             defaultRole, admin, admin, true, "attempt");
 
-        _db.ChangeTracker.Clear();
+        Db.ChangeTracker.Clear();
 
-        var after = await _db.ConfigurationAuditLogs.CountAsync();
+        var after = await Db.ConfigurationAuditLogs.CountAsync();
         after.Should().Be(before);
 
-        var persisted = await _db.Roles
+        var persisted = await Db.Roles
             .AsNoTracking()
             .FirstAsync(r => r.RoleId == defaultRole);
         persisted.IsDeleted.Should().BeFalse();
@@ -226,9 +208,9 @@ public class ConfigureRoleServiceTests : IAsyncLifetime
     public async Task Create_WithInactiveAdmin_Fails()
     {
         var (_, _, actingAdminId) = await SeedAsync();
-        var admin = await _db.Admins.FirstAsync(a => a.AdminId == actingAdminId);
+        var admin = await Db.Admins.FirstAsync(a => a.AdminId == actingAdminId);
         admin.IsActive = false;
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         var service = MakeService();
         var result = await service.CreateAsync("NewRole", actingAdminId);
