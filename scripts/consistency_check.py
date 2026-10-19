@@ -82,6 +82,27 @@ STALE_PATTERNS = [
     (re.compile(r"\u00a71 through \u00a716\b"), "\u00a71 through \u00a716 (spec now reaches \u00a717)"),
     (re.compile(r"\u00a78\u2013\u00a714 derive\b"), "\u00a78\u2013\u00a714 derive (spec now reaches \u00a717)"),
     (re.compile(r"\u00a78\u2013\u00a714\b"), "\u00a78\u2013\u00a714 (spec now reaches \u00a717)"),
+
+    # EventDuty legacy prose (corrected 8bf4ef1).
+    (re.compile(r"EventDuty carries a free-text Label"),
+     "EventDuty 'carries a free-text Label' prose (corrected 8bf4ef1)"),
+
+    # EventDuty legacy FK rows in constraints.md (corrected 8bf4ef1).
+    # The current EventDuty references Event and ServiceDefinition.
+    (re.compile(r"\| EventDuty \| ProgramItemID \| ProgramItem \|"),
+     "EventDuty legacy FK to ProgramItem in constraints.md (corrected 8bf4ef1)"),
+    (re.compile(r"\| EventDuty \| AssignedMemberID \| Member \|"),
+     "EventDuty legacy FK to Member in constraints.md (corrected 8bf4ef1)"),
+    (re.compile(r"\| EventDuty \| AssignmentStatusID \| AssignmentStatus \|"),
+     "EventDuty legacy FK to AssignmentStatus in constraints.md (corrected 8bf4ef1)"),
+
+    # Invocation invariant wording (corrected 8bf4ef1).
+    (re.compile(r"No other process is ever invoked by another process"),
+     "'No other process is ever invoked' (corrected 8bf4ef1)"),
+
+    # Pre-amendment RA/preRA future-work paragraph (corrected 8bf4ef1).
+    (re.compile(r"no automated transition moves a member into them"),
+     "pre-amendment RA/preRA future-work paragraph (corrected 8bf4ef1)"),
 ]
 
 # Additional patterns with per-line exclusions. Each entry is

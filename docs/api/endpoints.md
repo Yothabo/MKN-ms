@@ -10,9 +10,9 @@ The technology stack is chosen: ASP.NET Core Web API, JSON request and response 
 
 ---
 
-## What will live here
+## The current surface
 
-This file lists the endpoints the system exposes, grouped by the process each endpoint serves.
+This file lists the endpoints the system exposes, grouped by the process each endpoint serves. Every route below is implemented in `MknMs.Api/Endpoints/`; the authoritative inventory with request and response shapes is in `adapter-contract.md`.
 
 ### Configuration endpoints
 
