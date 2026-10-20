@@ -16,38 +16,12 @@ namespace MknMs.IntegrationTests;
 /// is written. Policy enforcement (E3) and cascades (E4) are not
 /// exercised here.
 /// </remarks>
-public class ConfigurationLifecycleServiceTests : IAsyncLifetime
+public class ConfigurationLifecycleServiceTests : IntegrationTestBase
 {
-    private const string TestConnectionString =
-        "Host=127.0.0.1;Port=5432;Database=mkn_test;Username=mkn_dev";
-
     private static readonly DateTimeOffset Now =
         new(2026, 10, 12, 10, 0, 0, TimeSpan.Zero);
 
-    private MknDbContext _db = null!;
-    private TimeProvider _clock = null!;
-
-    public async Task InitializeAsync()
-    {
-        var options = new DbContextOptionsBuilder<MknDbContext>()
-            .UseNpgsql(TestConnectionString)
-            .Options;
-
-        _db = new MknDbContext(options);
-        _clock = new FakeTimeProvider(Now);
-
-        await _db.Database.ExecuteSqlRawAsync(
-            "TRUNCATE TABLE configuration_audit_log, entity_deletion_policy, " +
-            "notification_subscription, admin, member, member_status, role, " +
-            "branch, permission_tier " +
-            "RESTART IDENTITY CASCADE;");
-    }
-
-    public Task DisposeAsync()
-    {
-        _db.Dispose();
-        return Task.CompletedTask;
-    }
+    private readonly TimeProvider _clock = new FakeTimeProvider(Now);
 
     private async Task<(int adminId, int approverId)> SeedAdminsAsync()
     {
@@ -59,20 +33,16 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
         {
             Name = "B", Location = "L", IsDeleted = false,
         };
-        var status = new MknMs.Domain.D4_Member.MemberStatus
-        {
-            Name = "Active", IsRosterable = true, IsDefault = true, IsDeleted = false,
-        };
+        var statusId = await TestSeed.EnsureDefaultMemberStatusAsync(Db);
         var tier = new MknMs.Domain.D10_ConfigLookups.PermissionTier
         {
             Name = "Full Admin", IsDefault = true, IsDeleted = false,
         };
 
-        _db.Roles.Add(role);
-        _db.Branches.Add(branch);
-        _db.MemberStatuses.Add(status);
-        _db.PermissionTiers.Add(tier);
-        await _db.SaveChangesAsync();
+        Db.Roles.Add(role);
+        Db.Branches.Add(branch);
+        Db.PermissionTiers.Add(tier);
+        await Db.SaveChangesAsync();
 
         var m1 = new MknMs.Domain.D4_Member.Member
         {
@@ -82,7 +52,7 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Other",
             Phone = "+27-0", Email = null,
             BranchId = branch.BranchId, RoleId = role.RoleId,
-            MemberStatusId = status.MemberStatusId,
+            MemberStatusId = statusId,
         };
         var m2 = new MknMs.Domain.D4_Member.Member
         {
@@ -92,11 +62,11 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Other",
             Phone = "+27-1", Email = null,
             BranchId = branch.BranchId, RoleId = role.RoleId,
-            MemberStatusId = status.MemberStatusId,
+            MemberStatusId = statusId,
         };
-        _db.Members.Add(m1);
-        _db.Members.Add(m2);
-        await _db.SaveChangesAsync();
+        Db.Members.Add(m1);
+        Db.Members.Add(m2);
+        await Db.SaveChangesAsync();
 
         var a1 = new MknMs.Domain.D4_Member.Admin
         {
@@ -108,9 +78,9 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
             MemberId = m2.MemberId,
             PermissionTierId = tier.PermissionTierId,
         };
-        _db.Admins.Add(a1);
-        _db.Admins.Add(a2);
-        await _db.SaveChangesAsync();
+        Db.Admins.Add(a1);
+        Db.Admins.Add(a2);
+        await Db.SaveChangesAsync();
 
         return (a1.AdminId, a2.AdminId);
     }
@@ -137,7 +107,7 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
     public async Task Record_WithValidDeactivate_WritesRow()
     {
         var (initiated, approved) = await SeedAdminsAsync();
-        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        Db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
         {
             EntityType = "Role",
             RequiresApprovalForDelete = false,
@@ -147,18 +117,18 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
             IsActive = true,
             IsDeleted = false,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new ConfigurationLifecycleService(_db, _clock);
+        var service = new ConfigurationLifecycleService(Db, _clock);
 
         var result = await service.RecordAsync(
             ValidEvent(initiated, approved));
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         result.IsSuccess.Should().BeTrue();
         result.Value!.AuditId.Should().BeGreaterThan(0);
 
-        var row = await _db.ConfigurationAuditLogs.SingleAsync();
+        var row = await Db.ConfigurationAuditLogs.SingleAsync();
         row.EntityType.Should().Be("Role");
         row.EntityId.Should().Be(42);
         row.EntityName.Should().Be("Coordinator");
@@ -180,7 +150,7 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
     public async Task Record_WithValidSoftDeleteAndReason_WritesRow()
     {
         var (initiated, approved) = await SeedAdminsAsync();
-        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        Db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
         {
             EntityType = "Role",
             RequiresApprovalForDelete = false,
@@ -190,19 +160,19 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
             IsActive = true,
             IsDeleted = false,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new ConfigurationLifecycleService(_db, _clock);
+        var service = new ConfigurationLifecycleService(Db, _clock);
 
         var result = await service.RecordAsync(ValidEvent(
             initiated, approved,
             ConfigurationLifecycleActions.SoftDelete,
             "no longer used"));
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         result.IsSuccess.Should().BeTrue();
 
-        var row = await _db.ConfigurationAuditLogs.SingleAsync();
+        var row = await Db.ConfigurationAuditLogs.SingleAsync();
         row.Action.Should().Be(ConfigurationLifecycleActions.SoftDelete);
         row.Reason.Should().Be("no longer used");
     }
@@ -211,7 +181,7 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
     public async Task Record_TrimsReason()
     {
         var (initiated, approved) = await SeedAdminsAsync();
-        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        Db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
         {
             EntityType = "Role",
             RequiresApprovalForDelete = false,
@@ -221,17 +191,17 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
             IsActive = true,
             IsDeleted = false,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new ConfigurationLifecycleService(_db, _clock);
+        var service = new ConfigurationLifecycleService(Db, _clock);
 
         await service.RecordAsync(ValidEvent(
             initiated, approved,
             ConfigurationLifecycleActions.SoftDelete,
             "   spaced   "));
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var row = await _db.ConfigurationAuditLogs.SingleAsync();
+        var row = await Db.ConfigurationAuditLogs.SingleAsync();
         row.Reason.Should().Be("spaced");
     }
 
@@ -239,7 +209,7 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
     public async Task Record_WithUnknownAction_Fails()
     {
         var (initiated, approved) = await SeedAdminsAsync();
-        var service = new ConfigurationLifecycleService(_db, _clock);
+        var service = new ConfigurationLifecycleService(Db, _clock);
 
         var result = await service.RecordAsync(ValidEvent(
             initiated, approved, action: "Explode"));
@@ -247,7 +217,7 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
         result.IsSuccess.Should().BeFalse();
         result.Error!.Code.Should().Be(ConfigurationErrorCodes.InvalidValue);
 
-        var count = await _db.ConfigurationAuditLogs.CountAsync();
+        var count = await Db.ConfigurationAuditLogs.CountAsync();
         count.Should().Be(0);
     }
 
@@ -255,7 +225,7 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
     public async Task Record_WithMissingEntityName_Fails()
     {
         var (initiated, approved) = await SeedAdminsAsync();
-        var service = new ConfigurationLifecycleService(_db, _clock);
+        var service = new ConfigurationLifecycleService(Db, _clock);
 
         var e = ValidEvent(initiated, approved) with { EntityName = "" };
         var result = await service.RecordAsync(e);
@@ -268,7 +238,7 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
     public async Task Record_WithMissingInitiatedBy_Fails()
     {
         var (initiated, approved) = await SeedAdminsAsync();
-        var service = new ConfigurationLifecycleService(_db, _clock);
+        var service = new ConfigurationLifecycleService(Db, _clock);
 
         var e = ValidEvent(initiated, approved) with { InitiatedByAdminId = 0 };
         var result = await service.RecordAsync(e);
@@ -281,7 +251,7 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
     {
         var (initiated, approved) = await SeedAdminsAsync();
 
-        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        Db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
         {
             EntityType = "Role",
             RequiresApprovalForDelete = false,
@@ -290,9 +260,9 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
             RequiresReasonForDeactivate = false,
             IsDeleted = false,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new ConfigurationLifecycleService(_db, _clock);
+        var service = new ConfigurationLifecycleService(Db, _clock);
         var result = await service.RecordAsync(ValidEvent(
             initiated, approved,
             ConfigurationLifecycleActions.SoftDelete,
@@ -307,7 +277,7 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
     {
         var (initiated, approved) = await SeedAdminsAsync();
 
-        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        Db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
         {
             EntityType = "Role",
             RequiresApprovalForDelete = false,
@@ -316,9 +286,9 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
             RequiresReasonForDeactivate = true,
             IsDeleted = false,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new ConfigurationLifecycleService(_db, _clock);
+        var service = new ConfigurationLifecycleService(Db, _clock);
         var result = await service.RecordAsync(ValidEvent(
             initiated, approved,
             ConfigurationLifecycleActions.Deactivate,
@@ -333,7 +303,7 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
     {
         var (initiated, _) = await SeedAdminsAsync();
 
-        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        Db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
         {
             EntityType = "Role",
             RequiresApprovalForDelete = false,
@@ -342,9 +312,9 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
             RequiresReasonForDeactivate = false,
             IsDeleted = false,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new ConfigurationLifecycleService(_db, _clock);
+        var service = new ConfigurationLifecycleService(Db, _clock);
         var result = await service.RecordAsync(ValidEvent(
             initiatedBy: initiated,
             approvedBy: initiated));
@@ -360,12 +330,12 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
 
         // Give the approver a tier that matches the policy's required
         // tier. SeedAdminsAsync creates both admins with the same tier.
-        var tierId = await _db.Admins
+        var tierId = await Db.Admins
             .Where(a => a.AdminId == approved)
             .Select(a => a.PermissionTierId)
             .FirstAsync();
 
-        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        Db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
         {
             EntityType = "Role",
             RequiresApprovalForDelete = false,
@@ -375,9 +345,9 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
             RequiresReasonForDeactivate = false,
             IsDeleted = false,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new ConfigurationLifecycleService(_db, _clock);
+        var service = new ConfigurationLifecycleService(Db, _clock);
         var result = await service.RecordAsync(ValidEvent(initiated, approved));
 
         result.IsSuccess.Should().BeTrue();
@@ -396,10 +366,10 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
             IsDefault = false,
             IsDeleted = false,
         };
-        _db.PermissionTiers.Add(otherTier);
-        await _db.SaveChangesAsync();
+        Db.PermissionTiers.Add(otherTier);
+        await Db.SaveChangesAsync();
 
-        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        Db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
         {
             EntityType = "Role",
             RequiresApprovalForDelete = false,
@@ -409,9 +379,9 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
             RequiresReasonForDeactivate = false,
             IsDeleted = false,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new ConfigurationLifecycleService(_db, _clock);
+        var service = new ConfigurationLifecycleService(Db, _clock);
         var result = await service.RecordAsync(ValidEvent(initiated, approved));
 
         result.IsSuccess.Should().BeFalse();
@@ -425,7 +395,7 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
 
         // Policy has no approval requirement; the acting admin is
         // recorded as both initiator and approver.
-        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        Db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
         {
             EntityType = "Role",
             RequiresApprovalForDelete = false,
@@ -434,9 +404,9 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
             RequiresReasonForDeactivate = false,
             IsDeleted = false,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new ConfigurationLifecycleService(_db, _clock);
+        var service = new ConfigurationLifecycleService(Db, _clock);
         var result = await service.RecordAsync(ValidEvent(
             initiatedBy: initiated,
             approvedBy: initiated,
@@ -450,7 +420,7 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
     public async Task Record_PreviewIsServiceGenerated()
     {
         var (initiated, approved) = await SeedAdminsAsync();
-        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        Db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
         {
             EntityType = "Role",
             RequiresApprovalForDelete = false,
@@ -460,14 +430,14 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
             IsActive = true,
             IsDeleted = false,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new ConfigurationLifecycleService(_db, _clock);
+        var service = new ConfigurationLifecycleService(Db, _clock);
 
         await service.RecordAsync(ValidEvent(initiated, approved));
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var row = await _db.ConfigurationAuditLogs.SingleAsync();
+        var row = await Db.ConfigurationAuditLogs.SingleAsync();
         row.ConsequencesPreviewed.Should().Contain("Role");
         row.ConsequencesPreviewed.Should().Contain("Coordinator");
         row.ConsequencesPreviewed.Should().Contain("deactivated");
@@ -481,7 +451,7 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
         // controls the persistence boundary. A read from a fresh
         // context before the caller saves shows nothing.
         var (initiated, approved) = await SeedAdminsAsync();
-        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        Db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
         {
             EntityType = "Role",
             RequiresApprovalForDelete = false,
@@ -491,19 +461,19 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
             IsActive = true,
             IsDeleted = false,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new ConfigurationLifecycleService(_db, _clock);
+        var service = new ConfigurationLifecycleService(Db, _clock);
 
         await service.RecordAsync(ValidEvent(initiated, approved));
 
         // Same context, but explicitly clear the tracker and re-query
         // without saving. The row was added but never committed, so a
         // fresh context sees no row.
-        _db.ChangeTracker.Clear();
+        Db.ChangeTracker.Clear();
 
         var options = new DbContextOptionsBuilder<MknDbContext>()
-            .UseNpgsql(TestConnectionString)
+            .UseNpgsql(ConnectionString)
             .Options;
         await using var fresh = new MknDbContext(options);
         var count = await fresh.ConfigurationAuditLogs.CountAsync();
@@ -515,7 +485,7 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
     public async Task Record_DoesNotWriteAnythingElse()
     {
         var (initiated, approved) = await SeedAdminsAsync();
-        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        Db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
         {
             EntityType = "Role",
             RequiresApprovalForDelete = false,
@@ -525,18 +495,18 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
             IsActive = true,
             IsDeleted = false,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new ConfigurationLifecycleService(_db, _clock);
+        var service = new ConfigurationLifecycleService(Db, _clock);
 
-        var rolesBefore = await _db.Roles.CountAsync();
-        var policiesBefore = await _db.EntityDeletionPolicies.CountAsync();
+        var rolesBefore = await Db.Roles.CountAsync();
+        var policiesBefore = await Db.EntityDeletionPolicies.CountAsync();
 
         await service.RecordAsync(ValidEvent(initiated, approved));
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var rolesAfter = await _db.Roles.CountAsync();
-        var policiesAfter = await _db.EntityDeletionPolicies.CountAsync();
+        var rolesAfter = await Db.Roles.CountAsync();
+        var policiesAfter = await Db.EntityDeletionPolicies.CountAsync();
 
         rolesAfter.Should().Be(rolesBefore);
         policiesAfter.Should().Be(policiesBefore);
@@ -548,7 +518,7 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
         // C6: the approver must resolve to an Admin row whose
         // IsActive = true.
         var (initiated, approved) = await SeedAdminsAsync();
-        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        Db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
         {
             EntityType = "Role",
             RequiresApprovalForDelete = false,
@@ -558,13 +528,13 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
             IsActive = true,
             IsDeleted = false,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var approver = await _db.Admins.FirstAsync(a => a.AdminId == approved);
+        var approver = await Db.Admins.FirstAsync(a => a.AdminId == approved);
         approver.IsActive = false;
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new ConfigurationLifecycleService(_db, _clock);
+        var service = new ConfigurationLifecycleService(Db, _clock);
         var result = await service.RecordAsync(ValidEvent(initiated, approved));
 
         result.IsSuccess.Should().BeFalse();
@@ -578,7 +548,7 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
         // configures a required tier for the operation. An approver id
         // that names no row is rejected.
         var (initiated, _) = await SeedAdminsAsync();
-        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        Db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
         {
             EntityType = "Role",
             RequiresApprovalForDelete = false,
@@ -588,9 +558,9 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
             IsActive = true,
             IsDeleted = false,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new ConfigurationLifecycleService(_db, _clock);
+        var service = new ConfigurationLifecycleService(Db, _clock);
         var result = await service.RecordAsync(ValidEvent(
             initiatedBy: initiated,
             approvedBy: 9999));
@@ -605,7 +575,7 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
 
         // No policy is seeded for this entity type. §9.7 requires the
         // policy to govern the operation; the service must refuse.
-        var service = new ConfigurationLifecycleService(_db, _clock);
+        var service = new ConfigurationLifecycleService(Db, _clock);
         var e = ValidEvent(initiated, approved) with { EntityType = "UnconfiguredEntity" };
 
         var result = await service.RecordAsync(e);
@@ -618,7 +588,7 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
     {
         var (initiated, approved) = await SeedAdminsAsync();
 
-        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        Db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
         {
             EntityType = "Role",
             RequiresApprovalForDelete = false,
@@ -628,9 +598,9 @@ public class ConfigurationLifecycleServiceTests : IAsyncLifetime
             IsActive = true,
             IsDeleted = false,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new ConfigurationLifecycleService(_db, _clock);
+        var service = new ConfigurationLifecycleService(Db, _clock);
         var e = ValidEvent(initiated, approved, acknowledged: false);
 
         var result = await service.RecordAsync(e);
