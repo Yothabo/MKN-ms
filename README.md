@@ -15,3 +15,4 @@ Architecture and schema design are complete. Implementation is in progress.
 ## Authority
 
 The documents in [`docs/spec/`](docs/spec/) are the authoritative specification. Every other document in the tree is derived from them. Where a derived document conflicts with the specification, the specification wins.
+
