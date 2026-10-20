@@ -1,4 +1,4 @@
-name: Documentation Consistency
+name: Documentation Consistency and Tests
 
 on:
   push:
@@ -25,3 +25,92 @@ jobs:
 
       - name: Run consistency check
         run: python3 scripts/consistency_check.py
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore backend/MknMs.sln
+
+      # TreatWarningsAsErrors is set in backend/Directory.Build.props, so a
+      # build that produces any warning fails this step. EnforceCodeStyleInBuild
+      # is also set, so the analyzers run as part of the build.
+      - name: Build
+        run: dotnet build backend/MknMs.sln --configuration Release --no-restore
+
+  unit-tests:
+    name: Unit tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore backend/tests/MknMs.UnitTests/MknMs.UnitTests.csproj
+
+      - name: Run unit tests
+        run: dotnet test backend/tests/MknMs.UnitTests/MknMs.UnitTests.csproj --configuration Release --no-restore --logger "console;verbosity=normal"
+
+  integration-tests:
+    name: Integration tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          # POSTGRES_USER on a services: postgres block is a superuser, so
+          # CREATEDB is inherited. TestDatabaseFixture and MigrationSchemaFixture
+          # both create databases on demand; the superuser grant is required.
+          POSTGRES_USER: mkn_dev
+          POSTGRES_PASSWORD: mkn_dev
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore backend/tests/MknMs.IntegrationTests/MknMs.IntegrationTests.csproj
+
+      - name: Run integration tests
+        env:
+          # The fixtures read this variable via TestSeed.BaseConnectionString.
+          # The default hardcode points at 127.0.0.1:5432 with Username=mkn_dev;
+          # on the runner the postgres service is exposed on localhost:5432
+          # and the user is set by the services block above. Password is
+          # required here because services: postgres always sets one.
+          MKN_TEST_ADMIN_CONNECTION: "Host=localhost;Port=5432;Username=mkn_dev;Password=mkn_dev"
+          # The Quartz trigger timezones need an IANA tzdata tree. The
+          # runner image has one; set TZDIR to be explicit and match the
+          # developer environment convention.
+          TZDIR: /usr/share/zoneinfo
+        run: dotnet test backend/tests/MknMs.IntegrationTests/MknMs.IntegrationTests.csproj --configuration Release --no-restore --logger "console;verbosity=normal"
