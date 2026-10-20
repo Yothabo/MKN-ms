@@ -2,10 +2,8 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using MknMs.Domain.D10_ConfigLookups;
 using MknMs.Domain.D11_SystemSetting;
 using MknMs.Domain.D1_RoleDuty;
@@ -45,19 +43,26 @@ namespace MknMs.IntegrationTests;
 /// and strengthened after a DELETE endpoint returned 500 because its
 /// test sent no body.
 /// </remarks>
-public class HttpSurfaceTests : IClassFixture<HttpSurfaceFactory>, IAsyncLifetime
+public class HttpSurfaceTests : IClassFixture<WebApplicationFactory<Program>>, IAsyncLifetime
 {
+    static HttpSurfaceTests()
+    {
+        Environment.SetEnvironmentVariable(
+            "ConnectionStrings__MknDb",
+            TestSeed.PerClassConnectionString("mkn_test"));
+    }
+
     private static readonly string TestConnectionString =
         TestSeed.PerClassConnectionString("mkn_test");
 
-    private readonly HttpSurfaceFactory _factory;
+    private readonly WebApplicationFactory<Program> _factory;
     private MknDbContext _db = null!;
 
-    public HttpSurfaceTests(HttpSurfaceFactory factory)
+    public HttpSurfaceTests(WebApplicationFactory<Program> factory)
     {
-        // The factory is per-class (IClassFixture). Its host is bound to
-        // mkn_test via appsettings.Development.json. The class uses
-        // mkn_test — not the per-class fixture DB — because Quartz's
+        // The factory is per-class (IClassFixture). The environment
+        // variable is set by the static constructor before the host starts.
+        // The class uses mkn_test because Quartz's
         // static LogProvider retains the first LoggerFactory it sees;
         // per-fact factory construction and disposal fails every
         // subsequent fact with ObjectDisposedException. The class
@@ -692,17 +697,3 @@ public class HttpSurfaceTests : IClassFixture<HttpSurfaceFactory>, IAsyncLifetim
 /// requires — disposing the host mid-class leaves the next fact's Quartz
 /// reference pointing at a disposed LoggerFactory.
 /// </remarks>
-public sealed class HttpSurfaceFactory : WebApplicationFactory<Program>
-{
-    protected override void ConfigureWebHost(IWebHostBuilder builder)
-    {
-        builder.ConfigureAppConfiguration((_, config) =>
-        {
-            config.AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["ConnectionStrings:MknDb"] =
-                    TestSeed.PerClassConnectionString("mkn_test"),
-            });
-        });
-    }
-}
