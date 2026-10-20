@@ -53,10 +53,16 @@ public class HttpSurfaceTests : IClassFixture<WebApplicationFactory<Program>>, I
 
     public HttpSurfaceTests(WebApplicationFactory<Program> factory)
     {
-        _factory = factory.WithWebHostBuilder(builder =>
-        {
-            builder.UseSetting("ConnectionStrings:MknDb", TestConnectionString);
-        });
+        // The factory is per-class (IClassFixture). Its host is bound to
+        // mkn_test via appsettings.Development.json. The class uses
+        // mkn_test — not the per-class fixture DB — because Quartz's
+        // static LogProvider retains the first LoggerFactory it sees;
+        // per-fact factory construction and disposal fails every
+        // subsequent fact with ObjectDisposedException. The class
+        // resets mkn_test in InitializeAsync, which is sufficient for
+        // the HTTP-surface smoke tests, whose whole purpose is that
+        // the endpoints are reached.
+        _factory = factory;
     }
 
     public async Task InitializeAsync()
@@ -203,10 +209,6 @@ public class HttpSurfaceTests : IClassFixture<WebApplicationFactory<Program>>, I
         });
         await _db.SaveChangesAsync();
 
-        // Settings the processes read.
-        // ApplicationTimeZone and AttendanceRegisterEnabled are
-        // inserted by TestSeed.EnsureRequiredSettingsAsync in
-        // InitializeAsync; do not duplicate them here.
         _db.SystemSettings.AddRange(
             new SystemSetting { Key = "OccurrenceHorizonDays", Value = "30", Required = true },
             new SystemSetting { Key = "InitialAssignmentStatusID", Value = confirmed.AssignmentStatusId.ToString(), Required = true },
@@ -219,28 +221,16 @@ public class HttpSurfaceTests : IClassFixture<WebApplicationFactory<Program>>, I
             new SystemSetting { Key = "NotificationChannel", Value = "Log", Required = false });
         await _db.SaveChangesAsync();
 
-        // Additional entities the soft-delete smoke tests exercise.
-        // Each is chosen so its cascade either succeeds or blocks as
-        // the test intends.
-
-        // A default Role, so the smoke soft delete of a non-default
-        // Role has a fallback target.
         _db.Roles.Add(new Role { Name = "SmokeDefault", IsDefault = true });
-        // A non-default Role with no member and no rule referring to
-        // it — the successful case.
         _db.Roles.Add(new Role { Name = "SmokeRole" });
 
-        // A second Branch with no Member assigned — the successful
-        // Branch soft delete case.
         _db.Branches.Add(new Branch
         {
             Name = "SmokeBranch", Location = "Nowhere",
         });
 
-        // An OutcomeState not referenced by any setting or occurrence.
         _db.OutcomeStates.Add(new OutcomeState { Name = "SmokeOutcomeState" });
 
-        // An Event with no Programs — the successful Event cascade.
         _db.Events.Add(new MknMs.Domain.D9_EventProgram.Event
         {
             Name = "SmokeEvent",

@@ -24,46 +24,16 @@ namespace MknMs.IntegrationTests;
 ///
 /// Specification: 5.0 doc lines 62-66, line 97; 9.0 doc lines 66, 70.
 /// </summary>
-public class SpecComplianceTests : IAsyncLifetime
+public class SpecComplianceTests : IntegrationTestBase
 {
-    private const string TestConnectionString =
-        "Host=127.0.0.1;Port=5432;Database=mkn_test;Username=mkn_dev";
-
     private static readonly DateTimeOffset Now = new(2026, 10, 7, 12, 0, 0, TimeSpan.Zero);
 
-    private MknDbContext _db = null!;
-    private FakeDispatchNotificationService _notification = null!;
-    private TimeProvider _clock = null!;
+    private readonly FakeDispatchNotificationService _notification = new FakeDispatchNotificationService();
+    private readonly TimeProvider _clock = new FakeTimeProvider(Now);
 
-    public async Task InitializeAsync()
+    protected override async Task OnInitializedAsync()
     {
-        var options = new DbContextOptionsBuilder<MknDbContext>()
-            .UseNpgsql(TestConnectionString)
-            .Options;
-
-        _db = new MknDbContext(options);
-        _notification = new FakeDispatchNotificationService();
-        _clock = new FakeTimeProvider(Now);
-
-        await _db.Database.ExecuteSqlRawAsync(
-            "TRUNCATE TABLE materializer_run, attendance_record, roster_assignment, " +
-            "service_occurrence_duty, service_occurrence, service_schedule, " +
-            "service_definition_duty, branch_time_slot, service_definition, " +
-            "service_type, time_of_day, branch, identifier_history, eligibility, " +
-            "duty_rule, admin, member, member_attribute_value, member_status, " +
-            "attendance_rule_scope, attendance_rule, readmission, role, duty, " +
-            "system_setting, outcome_state, assignment_status, permission_tier, " +
-            "attribute_type, capability, event_branch, configuration_audit_log, " +
-            "entity_deletion_policy, notification_subscription " +
-            "RESTART IDENTITY CASCADE;");
-
-        await TestSeed.EnsureRequiredSettingsAsync(_db);
-    }
-
-    public Task DisposeAsync()
-    {
-        _db.Dispose();
-        return Task.CompletedTask;
+        await TestSeed.EnsureRequiredSettingsAsync(Db);
     }
 
     // -----------------------------------------------------------------
@@ -73,19 +43,19 @@ public class SpecComplianceTests : IAsyncLifetime
     private async Task<(int OccurrenceId, int DutyId, int MemberId, int AdminId, int BranchId)> SeedBasicAsync(
         string branchName = "Main")
     {
-        _db.ServiceTypes.Add(new ServiceType { Name = "Regular" });
-        _db.TimeOfDays.Add(new TimeOfDay { Name = "Slot" });
+        Db.ServiceTypes.Add(new ServiceType { Name = "Regular" });
+        Db.TimeOfDays.Add(new TimeOfDay { Name = "Slot" });
         var role = new Role { Name = "Member", IsActive = true };
-        _db.Roles.Add(role);
+        Db.Roles.Add(role);
         var duty = new Duty { Name = "Reading duty", IsActive = true };
-        _db.Duties.Add(duty);
+        Db.Duties.Add(duty);
         var branch = new Branch { Name = branchName, Location = "Here", IsActive = true };
-        _db.Branches.Add(branch);
+        Db.Branches.Add(branch);
         var tier = new PermissionTier { Name = "Full Admin" };
-        _db.PermissionTiers.Add(tier);
-        await _db.SaveChangesAsync();
+        Db.PermissionTiers.Add(tier);
+        await Db.SaveChangesAsync();
 
-        var statusId = await TestSeed.EnsureDefaultMemberStatusAsync(_db);
+        var statusId = await TestSeed.EnsureDefaultMemberStatusAsync(Db);
 
         var alex = new Member
         {
@@ -97,32 +67,32 @@ public class SpecComplianceTests : IAsyncLifetime
             BranchId = branch.BranchId, RoleId = role.RoleId,
             MemberStatusId = statusId,
         };
-        _db.Members.Add(alex);
-        await _db.SaveChangesAsync();
+        Db.Members.Add(alex);
+        await Db.SaveChangesAsync();
 
         var admin = new Admin { MemberId = alex.MemberId, PermissionTierId = tier.PermissionTierId };
-        _db.Admins.Add(admin);
-        await _db.SaveChangesAsync();
+        Db.Admins.Add(admin);
+        await Db.SaveChangesAsync();
 
         var slot = new BranchTimeSlot
         {
             BranchId = branch.BranchId,
             DayOfWeek = "Sunday",
-            TimeOfDayId = _db.TimeOfDays.Local.First().TimeOfDayId,
+            TimeOfDayId = Db.TimeOfDays.Local.First().TimeOfDayId,
         };
-        _db.BranchTimeSlots.Add(slot);
-        await _db.SaveChangesAsync();
+        Db.BranchTimeSlots.Add(slot);
+        await Db.SaveChangesAsync();
 
         var definition = new ServiceDefinition
         {
             Name = "Service",
-            ServiceTypeId = _db.ServiceTypes.Local.First().ServiceTypeId,
+            ServiceTypeId = Db.ServiceTypes.Local.First().ServiceTypeId,
             OwningBranchId = null,
         };
-        _db.ServiceDefinitions.Add(definition);
-        await _db.SaveChangesAsync();
+        Db.ServiceDefinitions.Add(definition);
+        await Db.SaveChangesAsync();
 
-        _db.ServiceDefinitionDuties.Add(new ServiceDefinitionDuty
+        Db.ServiceDefinitionDuties.Add(new ServiceDefinitionDuty
         {
             ServiceDefId = definition.ServiceDefId,
             DutyId = duty.DutyId,
@@ -135,8 +105,8 @@ public class SpecComplianceTests : IAsyncLifetime
             TimeSlotId = slot.TimeSlotId,
             StartTime = new TimeOnly(9, 0),
         };
-        _db.ServiceSchedules.Add(schedule);
-        await _db.SaveChangesAsync();
+        Db.ServiceSchedules.Add(schedule);
+        await Db.SaveChangesAsync();
 
         var occurrence = new ServiceOccurrence
         {
@@ -150,8 +120,8 @@ public class SpecComplianceTests : IAsyncLifetime
             CreatedBy = null,
             ChangedBy = null,
         };
-        _db.ServiceOccurrences.Add(occurrence);
-        await _db.SaveChangesAsync();
+        Db.ServiceOccurrences.Add(occurrence);
+        await Db.SaveChangesAsync();
 
         return (occurrence.OccurrenceId, duty.DutyId, alex.MemberId, admin.AdminId, branch.BranchId);
     }
@@ -175,7 +145,7 @@ public class SpecComplianceTests : IAsyncLifetime
         //
         // Test: only a future grant exists. The member must NOT be
         // eligible.
-        _db.Eligibilities.Add(new Eligibility
+        Db.Eligibilities.Add(new Eligibility
         {
             MemberId = memberId,
             DutyId = dutyId,
@@ -184,9 +154,9 @@ public class SpecComplianceTests : IAsyncLifetime
             RevokedDate = null,
             RevokedReason = null,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<GenerateAssignmentService>.Instance);
+        var service = new GenerateAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = occurrenceId,
@@ -194,7 +164,7 @@ public class SpecComplianceTests : IAsyncLifetime
 
         // §10.1.4: a member becomes eligible only when GrantedDate is in
         // the past. A future grant alone does not make them eligible.
-        var assignments = await _db.RosterAssignments
+        var assignments = await Db.RosterAssignments
             .Where(a => a.MemberId == memberId)
             .CountAsync();
 
@@ -210,7 +180,7 @@ public class SpecComplianceTests : IAsyncLifetime
         // A current grant with a RevokedDate in the future. §10.1.4:
         // a future RevokedDate does not revoke. The member is currently
         // eligible.
-        _db.Eligibilities.Add(new Eligibility
+        Db.Eligibilities.Add(new Eligibility
         {
             MemberId = memberId,
             DutyId = dutyId,
@@ -219,15 +189,15 @@ public class SpecComplianceTests : IAsyncLifetime
             RevokedDate = new DateOnly(2027, 1, 1),
             RevokedReason = null,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<GenerateAssignmentService>.Instance);
+        var service = new GenerateAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
         await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = occurrenceId,
         });
 
-        var assignments = await _db.RosterAssignments
+        var assignments = await Db.RosterAssignments
             .Where(a => a.MemberId == memberId)
             .CountAsync();
 
@@ -249,26 +219,26 @@ public class SpecComplianceTests : IAsyncLifetime
 
         // A second branch.
         var otherBranch = new Branch { Name = "Other", Location = "Elsewhere", IsActive = true };
-        _db.Branches.Add(otherBranch);
-        await _db.SaveChangesAsync();
+        Db.Branches.Add(otherBranch);
+        await Db.SaveChangesAsync();
 
         var otherSlot = new BranchTimeSlot
         {
             BranchId = otherBranch.BranchId,
             DayOfWeek = "Sunday",
-            TimeOfDayId = _db.TimeOfDays.Local.First().TimeOfDayId,
+            TimeOfDayId = Db.TimeOfDays.Local.First().TimeOfDayId,
         };
-        _db.BranchTimeSlots.Add(otherSlot);
-        await _db.SaveChangesAsync();
+        Db.BranchTimeSlots.Add(otherSlot);
+        await Db.SaveChangesAsync();
 
         var otherDefinition = new ServiceDefinition
         {
             Name = "Other Service",
-            ServiceTypeId = _db.ServiceTypes.Local.First().ServiceTypeId,
+            ServiceTypeId = Db.ServiceTypes.Local.First().ServiceTypeId,
             OwningBranchId = null,
         };
-        _db.ServiceDefinitions.Add(otherDefinition);
-        await _db.SaveChangesAsync();
+        Db.ServiceDefinitions.Add(otherDefinition);
+        await Db.SaveChangesAsync();
 
         var otherSchedule = new ServiceSchedule
         {
@@ -276,8 +246,8 @@ public class SpecComplianceTests : IAsyncLifetime
             TimeSlotId = otherSlot.TimeSlotId,
             StartTime = new TimeOnly(9, 0),
         };
-        _db.ServiceSchedules.Add(otherSchedule);
-        await _db.SaveChangesAsync();
+        Db.ServiceSchedules.Add(otherSchedule);
+        await Db.SaveChangesAsync();
 
         var otherOccurrence = new ServiceOccurrence
         {
@@ -291,11 +261,11 @@ public class SpecComplianceTests : IAsyncLifetime
             CreatedBy = null,
             ChangedBy = null,
         };
-        _db.ServiceOccurrences.Add(otherOccurrence);
-        await _db.SaveChangesAsync();
+        Db.ServiceOccurrences.Add(otherOccurrence);
+        await Db.SaveChangesAsync();
 
         // Attendance at the OTHER branch.
-        _db.AttendanceRecords.Add(new AttendanceRecord
+        Db.AttendanceRecords.Add(new AttendanceRecord
         {
             MemberId = memberId,
             OccurrenceId = otherOccurrence.OccurrenceId,
@@ -304,7 +274,7 @@ public class SpecComplianceTests : IAsyncLifetime
         });
 
         // Eligibility + DutyRule: Branch-Attendance Recency, value "Target".
-        _db.Eligibilities.Add(new Eligibility
+        Db.Eligibilities.Add(new Eligibility
         {
             MemberId = memberId,
             DutyId = dutyId,
@@ -313,22 +283,22 @@ public class SpecComplianceTests : IAsyncLifetime
             RevokedDate = null,
             RevokedReason = null,
         });
-        _db.DutyRules.Add(new DutyRule
+        Db.DutyRules.Add(new DutyRule
         {
             DutyId = dutyId,
             TierOrder = 1,
             CriteriaType = "BranchAttendanceRecency",
             CriteriaValue = "30",
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<GenerateAssignmentService>.Instance);
+        var service = new GenerateAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
         await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = occurrenceId,
         });
 
-        var assignments = await _db.RosterAssignments
+        var assignments = await Db.RosterAssignments
             .Where(a => a.MemberId == memberId)
             .CountAsync();
 
@@ -342,10 +312,10 @@ public class SpecComplianceTests : IAsyncLifetime
         var (occurrenceId, dutyId, memberId, adminId, _) = await SeedBasicAsync(branchName: "Target");
 
         // Attendance at the SAME branch as the occurrence.
-        var occurrence = await _db.ServiceOccurrences
+        var occurrence = await Db.ServiceOccurrences
             .FirstAsync(o => o.OccurrenceId == occurrenceId);
 
-        _db.AttendanceRecords.Add(new AttendanceRecord
+        Db.AttendanceRecords.Add(new AttendanceRecord
         {
             MemberId = memberId,
             OccurrenceId = occurrence.OccurrenceId,
@@ -353,7 +323,7 @@ public class SpecComplianceTests : IAsyncLifetime
             Source = "Manual",
         });
 
-        _db.Eligibilities.Add(new Eligibility
+        Db.Eligibilities.Add(new Eligibility
         {
             MemberId = memberId,
             DutyId = dutyId,
@@ -362,22 +332,22 @@ public class SpecComplianceTests : IAsyncLifetime
             RevokedDate = null,
             RevokedReason = null,
         });
-        _db.DutyRules.Add(new DutyRule
+        Db.DutyRules.Add(new DutyRule
         {
             DutyId = dutyId,
             TierOrder = 1,
             CriteriaType = "BranchAttendanceRecency",
             CriteriaValue = "30",
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<GenerateAssignmentService>.Instance);
+        var service = new GenerateAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
         await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = occurrenceId,
         });
 
-        var assignments = await _db.RosterAssignments
+        var assignments = await Db.RosterAssignments
             .Where(a => a.MemberId == memberId)
             .CountAsync();
 
@@ -396,17 +366,17 @@ public class SpecComplianceTests : IAsyncLifetime
 
         // Required setting, absent. §14.1.2 + 9.0 doc line 70:
         // 9.0 refuses to send and surfaces a configuration error.
-        _db.SystemSettings.Add(new SystemSetting
+        Db.SystemSettings.Add(new SystemSetting
         {
             Key = "NotificationChannel",
             Value = null,
             Required = true,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         var notification = new FakeDispatchNotificationService();
         var service = new MknMs.Application.Processes.Operations.DispatchNotification
-            .DispatchNotificationService(_db, new CapturingLogger<MknMs.Application.Processes.Operations.DispatchNotification.DispatchNotificationService>());
+            .DispatchNotificationService(Db, new CapturingLogger<MknMs.Application.Processes.Operations.DispatchNotification.DispatchNotificationService>());
 
         var assignment = new RosterAssignment
         {
@@ -419,8 +389,8 @@ public class SpecComplianceTests : IAsyncLifetime
             AssignedBy = null,
             CreatedAt = Now,
         };
-        _db.RosterAssignments.Add(assignment);
-        await _db.SaveChangesAsync();
+        Db.RosterAssignments.Add(assignment);
+        await Db.SaveChangesAsync();
 
         var act = async () => await service.DispatchAssignmentNoticeAsync(assignment);
 
@@ -435,17 +405,17 @@ public class SpecComplianceTests : IAsyncLifetime
 
         // Optional setting, absent. §14.1.2 + 9.0 doc line 70:
         // no notification is sent.
-        _db.SystemSettings.Add(new SystemSetting
+        Db.SystemSettings.Add(new SystemSetting
         {
             Key = "NotificationChannel",
             Value = null,
             Required = false,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         var logger = new CapturingLogger<MknMs.Application.Processes.Operations.DispatchNotification.DispatchNotificationService>();
         var service = new MknMs.Application.Processes.Operations.DispatchNotification
-            .DispatchNotificationService(_db, logger);
+            .DispatchNotificationService(Db, logger);
 
         var assignment = new RosterAssignment
         {
@@ -458,8 +428,8 @@ public class SpecComplianceTests : IAsyncLifetime
             AssignedBy = null,
             CreatedAt = Now,
         };
-        _db.RosterAssignments.Add(assignment);
-        await _db.SaveChangesAsync();
+        Db.RosterAssignments.Add(assignment);
+        await Db.SaveChangesAsync();
 
         await service.DispatchAssignmentNoticeAsync(assignment);
 
@@ -472,17 +442,17 @@ public class SpecComplianceTests : IAsyncLifetime
     {
         var (occurrenceId, dutyId, memberId, adminId, _) = await SeedBasicAsync();
 
-        _db.SystemSettings.Add(new SystemSetting
+        Db.SystemSettings.Add(new SystemSetting
         {
             Key = "NotificationChannel",
             Value = "Not/AChannel",
             Required = false,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         var logger = new CapturingLogger<MknMs.Application.Processes.Operations.DispatchNotification.DispatchNotificationService>();
         var service = new MknMs.Application.Processes.Operations.DispatchNotification
-            .DispatchNotificationService(_db, logger);
+            .DispatchNotificationService(Db, logger);
 
         var assignment = new RosterAssignment
         {
@@ -495,8 +465,8 @@ public class SpecComplianceTests : IAsyncLifetime
             AssignedBy = null,
             CreatedAt = Now,
         };
-        _db.RosterAssignments.Add(assignment);
-        await _db.SaveChangesAsync();
+        Db.RosterAssignments.Add(assignment);
+        await Db.SaveChangesAsync();
 
         await service.DispatchAssignmentNoticeAsync(assignment);
 

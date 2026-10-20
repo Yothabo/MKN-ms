@@ -24,38 +24,12 @@ namespace MknMs.IntegrationTests;
 /// seam now would create a production abstraction with no current
 /// functional need. Revisit when the transport is real.
 /// </remarks>
-public class AuthorityNotificationSweepTests : IAsyncLifetime
+public class AuthorityNotificationSweepTests : IntegrationTestBase
 {
-    private const string TestConnectionString =
-        "Host=127.0.0.1;Port=5432;Database=mkn_test;Username=mkn_dev";
-
     private static readonly DateTimeOffset Now =
         new(2026, 10, 14, 12, 0, 0, TimeSpan.Zero);
 
-    private MknDbContext _db = null!;
-    private TimeProvider _clock = null!;
-
-    public async Task InitializeAsync()
-    {
-        var options = new DbContextOptionsBuilder<MknDbContext>()
-            .UseNpgsql(TestConnectionString)
-            .Options;
-
-        _db = new MknDbContext(options);
-        _clock = new FakeTimeProvider(Now);
-
-        await _db.Database.ExecuteSqlRawAsync(
-            "TRUNCATE TABLE configuration_audit_log, entity_deletion_policy, " +
-            "notification_subscription, admin, member, member_status, branch, " +
-            "role, permission_tier, system_setting " +
-            "RESTART IDENTITY CASCADE;");
-    }
-
-    public Task DisposeAsync()
-    {
-        _db.Dispose();
-        return Task.CompletedTask;
-    }
+    private readonly TimeProvider _clock = new FakeTimeProvider(Now);
 
     private sealed record Fixture(int AdminIdA, int AdminIdB, int TierId);
 
@@ -63,23 +37,19 @@ public class AuthorityNotificationSweepTests : IAsyncLifetime
     {
         var role = new Role { Name = "R", IsDefault = true, IsDeleted = false };
         var branch = new Branch { Name = "B", Location = "L", IsDeleted = false };
-        var status = new MemberStatus
-        {
-            Name = "Active", IsRosterable = true, IsDefault = true, IsDeleted = false,
-        };
+        var statusId = await TestSeed.EnsureDefaultMemberStatusAsync(Db);
         var tier = new PermissionTier
         {
             Name = "Full Admin", IsDefault = true, IsDeleted = false,
         };
 
-        _db.Roles.Add(role);
-        _db.Branches.Add(branch);
-        _db.MemberStatuses.Add(status);
-        _db.PermissionTiers.Add(tier);
+        Db.Roles.Add(role);
+        Db.Branches.Add(branch);
+        Db.PermissionTiers.Add(tier);
 
         if (channel is not null)
         {
-            _db.SystemSettings.Add(new SystemSetting
+            Db.SystemSettings.Add(new SystemSetting
             {
                 Key = "NotificationChannel",
                 Value = channel,
@@ -87,7 +57,7 @@ public class AuthorityNotificationSweepTests : IAsyncLifetime
             });
         }
 
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         var memberA = new Member
         {
@@ -97,7 +67,7 @@ public class AuthorityNotificationSweepTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Other",
             Phone = "+27-0", Email = null,
             BranchId = branch.BranchId, RoleId = role.RoleId,
-            MemberStatusId = status.MemberStatusId,
+            MemberStatusId = statusId,
         };
         var memberB = new Member
         {
@@ -107,11 +77,11 @@ public class AuthorityNotificationSweepTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Other",
             Phone = "+27-1", Email = null,
             BranchId = branch.BranchId, RoleId = role.RoleId,
-            MemberStatusId = status.MemberStatusId,
+            MemberStatusId = statusId,
         };
-        _db.Members.Add(memberA);
-        _db.Members.Add(memberB);
-        await _db.SaveChangesAsync();
+        Db.Members.Add(memberA);
+        Db.Members.Add(memberB);
+        await Db.SaveChangesAsync();
 
         var adminA = new Admin
         {
@@ -125,9 +95,9 @@ public class AuthorityNotificationSweepTests : IAsyncLifetime
             PermissionTierId = tier.PermissionTierId,
             IsActive = true,
         };
-        _db.Admins.Add(adminA);
-        _db.Admins.Add(adminB);
-        await _db.SaveChangesAsync();
+        Db.Admins.Add(adminA);
+        Db.Admins.Add(adminB);
+        await Db.SaveChangesAsync();
 
         return new Fixture(adminA.AdminId, adminB.AdminId, tier.PermissionTierId);
     }
@@ -149,13 +119,13 @@ public class AuthorityNotificationSweepTests : IAsyncLifetime
             ConsequencesOccurred = "occurred",
             NotifiedAt = null,
         };
-        _db.ConfigurationAuditLogs.Add(row);
-        await _db.SaveChangesAsync();
+        Db.ConfigurationAuditLogs.Add(row);
+        await Db.SaveChangesAsync();
         return row.AuditId;
     }
 
     private AuthorityNotificationSweepService MakeService() =>
-        new(_db, _clock, new CapturingLogger<AuthorityNotificationSweepService>());
+        new(Db, _clock, new CapturingLogger<AuthorityNotificationSweepService>());
 
     [Fact]
     public async Task WithNoPendingRows_Succeeds()
@@ -182,7 +152,7 @@ public class AuthorityNotificationSweepTests : IAsyncLifetime
         result.AuditRowsProcessed.Should().Be(1);
         result.NotificationsDispatched.Should().Be(0);
 
-        var row = await _db.ConfigurationAuditLogs
+        var row = await Db.ConfigurationAuditLogs
             .AsNoTracking()
             .FirstAsync(a => a.AuditId == auditId);
         row.NotifiedAt.Should().NotBeNull();
@@ -194,14 +164,14 @@ public class AuthorityNotificationSweepTests : IAsyncLifetime
         var f = await SeedAsync();
         await SeedAuditAsync();
 
-        _db.NotificationSubscriptions.Add(new NotificationSubscription
+        Db.NotificationSubscriptions.Add(new NotificationSubscription
         {
             EventType = "Deactivate",
             RecipientTierId = f.TierId,
             IsActive = true,
             IsDeleted = false,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         var service = MakeService();
         var result = await service.RunAsync();
@@ -209,7 +179,7 @@ public class AuthorityNotificationSweepTests : IAsyncLifetime
         result.Status.Should().Be("Success");
         result.NotificationsDispatched.Should().Be(2);
 
-        var row = await _db.ConfigurationAuditLogs.SingleAsync();
+        var row = await Db.ConfigurationAuditLogs.SingleAsync();
         row.NotifiedAt.Should().NotBeNull();
     }
 
@@ -219,14 +189,14 @@ public class AuthorityNotificationSweepTests : IAsyncLifetime
         var f = await SeedAsync();
         await SeedAuditAsync();
 
-        _db.NotificationSubscriptions.Add(new NotificationSubscription
+        Db.NotificationSubscriptions.Add(new NotificationSubscription
         {
             EventType = "Deactivate",
             RecipientAdminId = f.AdminIdA,
             IsActive = true,
             IsDeleted = false,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         var service = MakeService();
         var result = await service.RunAsync();
@@ -240,14 +210,14 @@ public class AuthorityNotificationSweepTests : IAsyncLifetime
         var f = await SeedAsync();
         await SeedAuditAsync();
 
-        _db.NotificationSubscriptions.Add(new NotificationSubscription
+        Db.NotificationSubscriptions.Add(new NotificationSubscription
         {
             EventType = "Deactivate",
             RecipientTierId = f.TierId,
             IsActive = false,
             IsDeleted = false,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         var service = MakeService();
         var result = await service.RunAsync();
@@ -263,14 +233,14 @@ public class AuthorityNotificationSweepTests : IAsyncLifetime
         var auditId = await SeedAuditAsync(action: "Deactivate");
 
         // The subscription names SoftDelete; the row is a Deactivate.
-        _db.NotificationSubscriptions.Add(new NotificationSubscription
+        Db.NotificationSubscriptions.Add(new NotificationSubscription
         {
             EventType = "SoftDelete",
             RecipientTierId = f.TierId,
             IsActive = true,
             IsDeleted = false,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         var service = MakeService();
         var result = await service.RunAsync();
@@ -280,7 +250,7 @@ public class AuthorityNotificationSweepTests : IAsyncLifetime
         result.NotificationsDispatched.Should().Be(0);
         result.AuditRowsProcessed.Should().Be(1);
 
-        var row = await _db.ConfigurationAuditLogs
+        var row = await Db.ConfigurationAuditLogs
             .AsNoTracking()
             .FirstAsync(a => a.AuditId == auditId);
         row.NotifiedAt.Should().NotBeNull();
@@ -298,7 +268,7 @@ public class AuthorityNotificationSweepTests : IAsyncLifetime
         result.Status.Should().Be("Failure");
         result.ErrorCode.Should().Be("configuration_missing");
 
-        var row = await _db.ConfigurationAuditLogs.SingleAsync();
+        var row = await Db.ConfigurationAuditLogs.SingleAsync();
         row.NotifiedAt.Should().BeNull();
     }
 
@@ -321,14 +291,14 @@ public class AuthorityNotificationSweepTests : IAsyncLifetime
         var f = await SeedAsync();
         await SeedAuditAsync();
 
-        _db.NotificationSubscriptions.Add(new NotificationSubscription
+        Db.NotificationSubscriptions.Add(new NotificationSubscription
         {
             EventType = "Deactivate",
             RecipientTierId = f.TierId,
             IsActive = false,
             IsDeleted = true,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         var service = MakeService();
         var result = await service.RunAsync();
@@ -342,18 +312,18 @@ public class AuthorityNotificationSweepTests : IAsyncLifetime
         var f = await SeedAsync();
         await SeedAuditAsync();
 
-        var admin = await _db.Admins.FirstAsync(a => a.AdminId == f.AdminIdA);
+        var admin = await Db.Admins.FirstAsync(a => a.AdminId == f.AdminIdA);
         admin.IsActive = false;
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        _db.NotificationSubscriptions.Add(new NotificationSubscription
+        Db.NotificationSubscriptions.Add(new NotificationSubscription
         {
             EventType = "Deactivate",
             RecipientAdminId = f.AdminIdA,
             IsActive = true,
             IsDeleted = false,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         var service = MakeService();
         var result = await service.RunAsync();
@@ -368,11 +338,11 @@ public class AuthorityNotificationSweepTests : IAsyncLifetime
         await SeedAsync();
         var auditId = await SeedAuditAsync();
 
-        var row = await _db.ConfigurationAuditLogs
+        var row = await Db.ConfigurationAuditLogs
             .FirstAsync(a => a.AuditId == auditId);
         var alreadyNotified = Now.AddMinutes(-30);
         row.NotifiedAt = alreadyNotified;
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         var service = MakeService();
         var result = await service.RunAsync();
@@ -381,7 +351,7 @@ public class AuthorityNotificationSweepTests : IAsyncLifetime
         result.AuditRowsProcessed.Should().Be(0);
         result.NotificationsDispatched.Should().Be(0);
 
-        var after = await _db.ConfigurationAuditLogs
+        var after = await Db.ConfigurationAuditLogs
             .AsNoTracking()
             .FirstAsync(a => a.AuditId == auditId);
         after.NotifiedAt.Should().Be(alreadyNotified);
@@ -397,21 +367,21 @@ public class AuthorityNotificationSweepTests : IAsyncLifetime
         // subscription resolves AdminIdA. The union is both admins;
         // NotificationsDispatched counts per resolved recipient, so
         // the total is 2.
-        _db.NotificationSubscriptions.Add(new NotificationSubscription
+        Db.NotificationSubscriptions.Add(new NotificationSubscription
         {
             EventType = "Deactivate",
             RecipientTierId = f.TierId,
             IsActive = true,
             IsDeleted = false,
         });
-        _db.NotificationSubscriptions.Add(new NotificationSubscription
+        Db.NotificationSubscriptions.Add(new NotificationSubscription
         {
             EventType = "Deactivate",
             RecipientAdminId = f.AdminIdA,
             IsActive = true,
             IsDeleted = false,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         var service = MakeService();
         var result = await service.RunAsync();
@@ -419,7 +389,7 @@ public class AuthorityNotificationSweepTests : IAsyncLifetime
         result.Status.Should().Be("Success");
         result.NotificationsDispatched.Should().Be(2);
 
-        var row = await _db.ConfigurationAuditLogs.SingleAsync();
+        var row = await Db.ConfigurationAuditLogs.SingleAsync();
         row.NotifiedAt.Should().NotBeNull();
     }
 }

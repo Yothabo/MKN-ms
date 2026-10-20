@@ -77,8 +77,22 @@ public abstract class IntegrationTestBase : IAsyncLifetime
     /// </remarks>
     protected virtual Task OnInitializedAsync() => Task.CompletedTask;
 
+    /// <summary>
+    /// Hook for class-specific teardown. Override this method in a
+    /// derived class instead of overriding <see cref="DisposeAsync"/>.
+    /// </summary>
+    /// <remarks>
+    /// Runs before the base's context and fixture cleanup. Same
+    /// reasoning as <see cref="OnInitializedAsync"/>: the lifecycle
+    /// method is not virtual, so a derived class cannot forget to call
+    /// the base and skip fixture disposal.
+    /// </remarks>
+    protected virtual Task OnDisposingAsync() => Task.CompletedTask;
+
     public async Task DisposeAsync()
     {
+        await OnDisposingAsync();
+
         if (_db is not null)
         {
             await _db.DisposeAsync();

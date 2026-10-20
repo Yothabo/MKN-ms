@@ -50,30 +50,12 @@ namespace MknMs.IntegrationTests;
 /// non-terminal would not take the lock, and the test would not
 /// exercise the shared mechanism.
 /// </remarks>
-public class ConcurrencyTests : IAsyncLifetime
+public class ConcurrencyTests : IntegrationTestBase
 {
-    private const string TestConnectionString =
-        "Host=127.0.0.1;Port=5432;Database=mkn_test;Username=mkn_dev";
-
     private const int Iterations = 10;
 
     private static readonly DateTimeOffset Now =
         new(2026, 10, 6, 12, 0, 0, TimeSpan.Zero);
-
-    public Task InitializeAsync()
-    {
-        return Task.CompletedTask;
-    }
-
-    public Task DisposeAsync()
-    {
-        return Task.CompletedTask;
-    }
-
-    private static MknDbContext MakeContext() =>
-        new(new DbContextOptionsBuilder<MknDbContext>()
-            .UseNpgsql(TestConnectionString)
-            .Options);
 
     private static FakeTimeProvider MakeClock() => new(Now);
 
@@ -312,12 +294,12 @@ public class ConcurrencyTests : IAsyncLifetime
     {
         for (var iteration = 0; iteration < Iterations; iteration++)
         {
-            await using var seedDb = MakeContext();
+            await using var seedDb = CreateContext();
             await ResetDatabaseAsync(seedDb);
             var f = await SeedFixtureAsync(seedDb);
 
-            await using var dbA = MakeContext();
-            await using var dbB = MakeContext();
+            await using var dbA = CreateContext();
+            await using var dbB = CreateContext();
 
             var notificationA = new FakeDispatchNotificationService();
             var notificationB = new FakeDispatchNotificationService();
@@ -340,7 +322,7 @@ public class ConcurrencyTests : IAsyncLifetime
 
             await Task.WhenAll(taskA, taskB);
 
-            await using var readDb = MakeContext();
+            await using var readDb = CreateContext();
             var liveCount = await CountNonTerminalAsync(
                 readDb, f.OccurrenceId, f.DutyId);
 
@@ -355,12 +337,12 @@ public class ConcurrencyTests : IAsyncLifetime
     {
         for (var iteration = 0; iteration < Iterations; iteration++)
         {
-            await using var seedDb = MakeContext();
+            await using var seedDb = CreateContext();
             await ResetDatabaseAsync(seedDb);
             var f = await SeedFixtureAsync(seedDb);
 
-            await using var dbA = MakeContext();
-            await using var dbB = MakeContext();
+            await using var dbA = CreateContext();
+            await using var dbB = CreateContext();
 
             var notification = new FakeDispatchNotificationService();
 
@@ -391,7 +373,7 @@ public class ConcurrencyTests : IAsyncLifetime
 
             await Task.WhenAll(taskA, taskB);
 
-            await using var readDb = MakeContext();
+            await using var readDb = CreateContext();
             var liveCount = await CountNonTerminalAsync(
                 readDb, f.OccurrenceId, f.DutyId);
 
@@ -412,7 +394,7 @@ public class ConcurrencyTests : IAsyncLifetime
     {
         for (var iteration = 0; iteration < Iterations; iteration++)
         {
-            await using var seedDb = MakeContext();
+            await using var seedDb = CreateContext();
             await ResetDatabaseAsync(seedDb);
             var f = await SeedFixtureAsync(seedDb);
 
@@ -434,8 +416,8 @@ public class ConcurrencyTests : IAsyncLifetime
 
             var existingAssignmentId = existing.AssignmentId;
 
-            await using var dbA = MakeContext();
-            await using var dbB = MakeContext();
+            await using var dbA = CreateContext();
+            await using var dbB = CreateContext();
 
             var notification = new FakeDispatchNotificationService();
 
@@ -464,7 +446,7 @@ public class ConcurrencyTests : IAsyncLifetime
 
             await Task.WhenAll(declineTask, generateTask);
 
-            await using var readDb = MakeContext();
+            await using var readDb = CreateContext();
             var liveCount = await CountNonTerminalAsync(
                 readDb, f.OccurrenceId, f.DutyId);
 
@@ -489,7 +471,7 @@ public class ConcurrencyTests : IAsyncLifetime
         //     unchanged.
         for (var iteration = 0; iteration < Iterations; iteration++)
         {
-            await using var seedDb = MakeContext();
+            await using var seedDb = CreateContext();
             await ResetDatabaseAsync(seedDb);
             var f = await SeedFixtureAsync(seedDb);
 
@@ -511,8 +493,8 @@ public class ConcurrencyTests : IAsyncLifetime
 
             var existingAssignmentId = existing.AssignmentId;
 
-            await using var dbA = MakeContext();
-            await using var dbB = MakeContext();
+            await using var dbA = CreateContext();
+            await using var dbB = CreateContext();
 
             var notification = new FakeDispatchNotificationService();
 
@@ -541,7 +523,7 @@ public class ConcurrencyTests : IAsyncLifetime
             await Task.WhenAll(declineTask, generateTask);
             var declineResult = await declineTask;
 
-            await using var readDb = MakeContext();
+            await using var readDb = CreateContext();
             var liveCount = await CountNonTerminalAsync(
                 readDb, f.OccurrenceId, f.DutyId);
 
