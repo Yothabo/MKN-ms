@@ -15,40 +15,15 @@ namespace MknMs.IntegrationTests;
 /// <summary>
 /// Integration tests for process 10.0 Evaluate Fill Status.
 /// </summary>
-public class EvaluateFillStatusTests : IAsyncLifetime
+public class EvaluateFillStatusTests : IntegrationTestBase
 {
-    private const string TestConnectionString =
-        "Host=127.0.0.1;Port=5432;Database=mkn_test;Username=mkn_dev";
-
-    private MknDbContext _db = null!;
-
-    public async Task InitializeAsync()
+    protected override async Task OnInitializedAsync()
     {
-        var options = new DbContextOptionsBuilder<MknDbContext>()
-            .UseNpgsql(TestConnectionString)
-            .Options;
-
-        _db = new MknDbContext(options);
-
-        await _db.Database.ExecuteSqlRawAsync(
-            "TRUNCATE TABLE materializer_run, attendance_record, roster_assignment, " +
-            "service_occurrence_duty, service_occurrence, service_schedule, " +
-            "service_definition_duty, branch_time_slot, service_definition, " +
-            "service_type, time_of_day, branch, identifier_history, eligibility, " +
-            "duty_rule, admin, member, member_attribute_value, member_status, " +
-            "attendance_rule_scope, attendance_rule, readmission, role, duty, " +
-            "system_setting, outcome_state, assignment_status, permission_tier, " +
-            "attribute_type, capability, event_branch, configuration_audit_log, " +
-            "entity_deletion_policy, notification_subscription " +
-            "RESTART IDENTITY CASCADE;");
-
-        await TestSeed.EnsureRequiredSettingsAsync(_db);
-    }
-
-    public Task DisposeAsync()
-    {
-        _db.Dispose();
-        return Task.CompletedTask;
+        // 10.0 requires ApplicationTimeZone and AttendanceRegisterEnabled
+        // indirectly (via downstream processes it invokes during tests)
+        // and directly relies on the required settings for its own checks.
+        // No migration seeds them; seed per fact. The helper is idempotent.
+        await TestSeed.EnsureRequiredSettingsAsync(Db);
     }
 
     // -----------------------------------------------------------------
@@ -76,45 +51,45 @@ public class EvaluateFillStatusTests : IAsyncLifetime
         var partially = new OutcomeState { Name = "Partially Filled" };
         var filled = new OutcomeState { Name = "Filled" };
         var cancelled = new OutcomeState { Name = "Cancelled" };
-        _db.OutcomeStates.AddRange(unfilled, partially, filled, cancelled);
+        Db.OutcomeStates.AddRange(unfilled, partially, filled, cancelled);
 
         var serviceType = new ServiceType { Name = "Regular" };
-        _db.ServiceTypes.Add(serviceType);
+        Db.ServiceTypes.Add(serviceType);
 
         var timeOfDay = new TimeOfDay { Name = "Morning" };
-        _db.TimeOfDays.Add(timeOfDay);
+        Db.TimeOfDays.Add(timeOfDay);
 
         var role = new Role { Name = "Coordinator", IsActive = true };
-        _db.Roles.Add(role);
+        Db.Roles.Add(role);
 
         var duty = new Duty { Name = "Reading duty", IsActive = true };
-        _db.Duties.Add(duty);
+        Db.Duties.Add(duty);
 
         var branch = new Branch { Name = "Main", Location = "Main Street", IsActive = true };
-        _db.Branches.Add(branch);
+        Db.Branches.Add(branch);
 
         var proposed = new AssignmentStatus { Name = "Proposed", IsTerminal = false };
         var declined = new AssignmentStatus { Name = "Declined", IsTerminal = true };
-        _db.AssignmentStatuses.Add(proposed);
-        _db.AssignmentStatuses.Add(declined);
+        Db.AssignmentStatuses.Add(proposed);
+        Db.AssignmentStatuses.Add(declined);
 
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         if (includeRequiredSettings)
         {
-            _db.SystemSettings.Add(new SystemSetting
+            Db.SystemSettings.Add(new SystemSetting
             {
                 Key = "OutcomeStateUnfilledID",
                 Value = unfilled.OutcomeStateId.ToString(),
                 Required = true,
             });
-            _db.SystemSettings.Add(new SystemSetting
+            Db.SystemSettings.Add(new SystemSetting
             {
                 Key = "OutcomeStatePartiallyFilledID",
                 Value = partially.OutcomeStateId.ToString(),
                 Required = true,
             });
-            _db.SystemSettings.Add(new SystemSetting
+            Db.SystemSettings.Add(new SystemSetting
             {
                 Key = "OutcomeStateFilledID",
                 Value = filled.OutcomeStateId.ToString(),
@@ -124,7 +99,7 @@ public class EvaluateFillStatusTests : IAsyncLifetime
 
         if (includeCancelledSetting)
         {
-            _db.SystemSettings.Add(new SystemSetting
+            Db.SystemSettings.Add(new SystemSetting
             {
                 Key = "OutcomeStateCancelledID",
                 Value = cancelled.OutcomeStateId.ToString(),
@@ -132,7 +107,7 @@ public class EvaluateFillStatusTests : IAsyncLifetime
             });
         }
 
-        var statusId = await TestSeed.EnsureDefaultMemberStatusAsync(_db);
+        var statusId = await TestSeed.EnsureDefaultMemberStatusAsync(Db);
 
         var m1 = new Member
         {
@@ -154,9 +129,9 @@ public class EvaluateFillStatusTests : IAsyncLifetime
             BranchId = branch.BranchId, RoleId = role.RoleId,
             MemberStatusId = statusId,
         };
-        _db.Members.Add(m1);
-        _db.Members.Add(m2);
-        await _db.SaveChangesAsync();
+        Db.Members.Add(m1);
+        Db.Members.Add(m2);
+        await Db.SaveChangesAsync();
 
         var slot = new BranchTimeSlot
         {
@@ -164,8 +139,8 @@ public class EvaluateFillStatusTests : IAsyncLifetime
             DayOfWeek = "Sunday",
             TimeOfDayId = timeOfDay.TimeOfDayId,
         };
-        _db.BranchTimeSlots.Add(slot);
-        await _db.SaveChangesAsync();
+        Db.BranchTimeSlots.Add(slot);
+        await Db.SaveChangesAsync();
 
         var definition = new ServiceDefinition
         {
@@ -173,21 +148,21 @@ public class EvaluateFillStatusTests : IAsyncLifetime
             ServiceTypeId = serviceType.ServiceTypeId,
             OwningBranchId = null,
         };
-        _db.ServiceDefinitions.Add(definition);
-        await _db.SaveChangesAsync();
+        Db.ServiceDefinitions.Add(definition);
+        await Db.SaveChangesAsync();
 
         // One duty, two required slots. This lets us exercise Unfilled
         // (0 active), Partially Filled (1 active), Filled (2 active).
         // The zero-duty case skips the row.
         if (includeRequiredDuty)
         {
-            _db.ServiceDefinitionDuties.Add(new ServiceDefinitionDuty
+            Db.ServiceDefinitionDuties.Add(new ServiceDefinitionDuty
             {
                 ServiceDefId = definition.ServiceDefId,
                 DutyId = duty.DutyId,
                 RequiredSlotCount = 2,
             });
-            await _db.SaveChangesAsync();
+            await Db.SaveChangesAsync();
         }
 
         var schedule = new ServiceSchedule
@@ -196,8 +171,8 @@ public class EvaluateFillStatusTests : IAsyncLifetime
             TimeSlotId = slot.TimeSlotId,
             StartTime = new TimeOnly(9, 0),
         };
-        _db.ServiceSchedules.Add(schedule);
-        await _db.SaveChangesAsync();
+        Db.ServiceSchedules.Add(schedule);
+        await Db.SaveChangesAsync();
 
         var occurrence = new ServiceOccurrence
         {
@@ -211,8 +186,8 @@ public class EvaluateFillStatusTests : IAsyncLifetime
             CreatedBy = null,
             ChangedBy = null,
         };
-        _db.ServiceOccurrences.Add(occurrence);
-        await _db.SaveChangesAsync();
+        Db.ServiceOccurrences.Add(occurrence);
+        await Db.SaveChangesAsync();
 
         return new Fixture(
             occurrence.OccurrenceId,
@@ -232,7 +207,7 @@ public class EvaluateFillStatusTests : IAsyncLifetime
         int memberId,
         int? statusId)
     {
-        _db.RosterAssignments.Add(new RosterAssignment
+        Db.RosterAssignments.Add(new RosterAssignment
         {
             MemberId = memberId,
             DutyId = f.DutyId,
@@ -243,7 +218,7 @@ public class EvaluateFillStatusTests : IAsyncLifetime
             AssignedBy = null,
             CreatedAt = DateTimeOffset.UtcNow,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
     }
 
     // -----------------------------------------------------------------
@@ -254,7 +229,7 @@ public class EvaluateFillStatusTests : IAsyncLifetime
     public async Task Evaluate_WithZeroActiveAssignments_WritesUnfilled()
     {
         var f = await SeedFixtureAsync();
-        var service = new EvaluateFillStatusService(_db);
+        var service = new EvaluateFillStatusService(Db);
 
         var result = await service.RunAsync(new EvaluateFillStatusCommand
         {
@@ -265,7 +240,7 @@ public class EvaluateFillStatusTests : IAsyncLifetime
         result.OccurrencesEvaluated.Should().Be(1);
         result.UnfilledCount.Should().Be(1);
 
-        var occ = await _db.ServiceOccurrences.FirstAsync(o => o.OccurrenceId == f.OccurrenceId);
+        var occ = await Db.ServiceOccurrences.FirstAsync(o => o.OccurrenceId == f.OccurrenceId);
         occ.FillStatusId.Should().Be(f.UnfilledStateId);
     }
 
@@ -275,7 +250,7 @@ public class EvaluateFillStatusTests : IAsyncLifetime
         var f = await SeedFixtureAsync();
         await AddAssignmentAsync(f, f.MemberOneId, f.NonTerminalStatusId);
 
-        var service = new EvaluateFillStatusService(_db);
+        var service = new EvaluateFillStatusService(Db);
 
         var result = await service.RunAsync(new EvaluateFillStatusCommand
         {
@@ -285,7 +260,7 @@ public class EvaluateFillStatusTests : IAsyncLifetime
         result.Status.Should().Be("Success");
         result.PartiallyFilledCount.Should().Be(1);
 
-        var occ = await _db.ServiceOccurrences.FirstAsync(o => o.OccurrenceId == f.OccurrenceId);
+        var occ = await Db.ServiceOccurrences.FirstAsync(o => o.OccurrenceId == f.OccurrenceId);
         occ.FillStatusId.Should().Be(f.PartiallyFilledStateId);
     }
 
@@ -296,7 +271,7 @@ public class EvaluateFillStatusTests : IAsyncLifetime
         await AddAssignmentAsync(f, f.MemberOneId, f.NonTerminalStatusId);
         await AddAssignmentAsync(f, f.MemberTwoId, f.NonTerminalStatusId);
 
-        var service = new EvaluateFillStatusService(_db);
+        var service = new EvaluateFillStatusService(Db);
 
         var result = await service.RunAsync(new EvaluateFillStatusCommand
         {
@@ -306,7 +281,7 @@ public class EvaluateFillStatusTests : IAsyncLifetime
         result.Status.Should().Be("Success");
         result.FilledCount.Should().Be(1);
 
-        var occ = await _db.ServiceOccurrences.FirstAsync(o => o.OccurrenceId == f.OccurrenceId);
+        var occ = await Db.ServiceOccurrences.FirstAsync(o => o.OccurrenceId == f.OccurrenceId);
         occ.FillStatusId.Should().Be(f.FilledStateId);
     }
 
@@ -317,7 +292,7 @@ public class EvaluateFillStatusTests : IAsyncLifetime
         await AddAssignmentAsync(f, f.MemberOneId, f.TerminalStatusId);
         await AddAssignmentAsync(f, f.MemberTwoId, f.TerminalStatusId);
 
-        var service = new EvaluateFillStatusService(_db);
+        var service = new EvaluateFillStatusService(Db);
 
         var result = await service.RunAsync(new EvaluateFillStatusCommand
         {
@@ -326,7 +301,7 @@ public class EvaluateFillStatusTests : IAsyncLifetime
 
         result.UnfilledCount.Should().Be(1);
 
-        var occ = await _db.ServiceOccurrences.FirstAsync(o => o.OccurrenceId == f.OccurrenceId);
+        var occ = await Db.ServiceOccurrences.FirstAsync(o => o.OccurrenceId == f.OccurrenceId);
         occ.FillStatusId.Should().Be(f.UnfilledStateId);
     }
 
@@ -337,7 +312,7 @@ public class EvaluateFillStatusTests : IAsyncLifetime
         // The zero-duty rule (§10.1.2, §12.1.2) classifies the
         // occurrence as Filled, because active (0) meets required (0).
         var f = await SeedFixtureAsync(includeRequiredDuty: false);
-        var service = new EvaluateFillStatusService(_db);
+        var service = new EvaluateFillStatusService(Db);
 
         var result = await service.RunAsync(new EvaluateFillStatusCommand
         {
@@ -347,7 +322,7 @@ public class EvaluateFillStatusTests : IAsyncLifetime
         result.Status.Should().Be("Success");
         result.FilledCount.Should().Be(1);
 
-        var occ = await _db.ServiceOccurrences.FirstAsync(o => o.OccurrenceId == f.OccurrenceId);
+        var occ = await Db.ServiceOccurrences.FirstAsync(o => o.OccurrenceId == f.OccurrenceId);
         occ.FillStatusId.Should().Be(f.FilledStateId);
     }
 
@@ -356,11 +331,11 @@ public class EvaluateFillStatusTests : IAsyncLifetime
     {
         var f = await SeedFixtureAsync(includeCancelledSetting: true);
 
-        var occ = await _db.ServiceOccurrences.FirstAsync(o => o.OccurrenceId == f.OccurrenceId);
+        var occ = await Db.ServiceOccurrences.FirstAsync(o => o.OccurrenceId == f.OccurrenceId);
         occ.FillStatusId = f.CancelledStateId;
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new EvaluateFillStatusService(_db);
+        var service = new EvaluateFillStatusService(Db);
 
         var result = await service.RunAsync(new EvaluateFillStatusCommand
         {
@@ -371,7 +346,7 @@ public class EvaluateFillStatusTests : IAsyncLifetime
         result.OccurrencesEvaluated.Should().Be(0);
         result.SkippedCancelledCount.Should().Be(1);
 
-        var after = await _db.ServiceOccurrences.FirstAsync(o => o.OccurrenceId == f.OccurrenceId);
+        var after = await Db.ServiceOccurrences.FirstAsync(o => o.OccurrenceId == f.OccurrenceId);
         after.FillStatusId.Should().Be(f.CancelledStateId);
     }
 
@@ -383,11 +358,11 @@ public class EvaluateFillStatusTests : IAsyncLifetime
         // classification overwrites its current FillStatusId.
         var f = await SeedFixtureAsync(includeCancelledSetting: false);
 
-        var occ = await _db.ServiceOccurrences.FirstAsync(o => o.OccurrenceId == f.OccurrenceId);
+        var occ = await Db.ServiceOccurrences.FirstAsync(o => o.OccurrenceId == f.OccurrenceId);
         occ.FillStatusId = f.CancelledStateId;
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new EvaluateFillStatusService(_db);
+        var service = new EvaluateFillStatusService(Db);
 
         var result = await service.RunAsync(new EvaluateFillStatusCommand
         {
@@ -399,7 +374,7 @@ public class EvaluateFillStatusTests : IAsyncLifetime
         result.SkippedCancelledCount.Should().Be(0);
         result.UnfilledCount.Should().Be(1);
 
-        var after = await _db.ServiceOccurrences.FirstAsync(o => o.OccurrenceId == f.OccurrenceId);
+        var after = await Db.ServiceOccurrences.FirstAsync(o => o.OccurrenceId == f.OccurrenceId);
         after.FillStatusId.Should().Be(f.UnfilledStateId);
     }
 
@@ -407,7 +382,7 @@ public class EvaluateFillStatusTests : IAsyncLifetime
     public async Task Evaluate_WithoutRequiredSetting_Fails()
     {
         var f = await SeedFixtureAsync(includeRequiredSettings: false);
-        var service = new EvaluateFillStatusService(_db);
+        var service = new EvaluateFillStatusService(Db);
 
         var result = await service.RunAsync(new EvaluateFillStatusCommand
         {
@@ -418,7 +393,7 @@ public class EvaluateFillStatusTests : IAsyncLifetime
         result.OccurrencesEvaluated.Should().Be(0);
         result.ErrorDetail.Should().Contain("OutcomeState");
 
-        var occ = await _db.ServiceOccurrences.FirstAsync(o => o.OccurrenceId == f.OccurrenceId);
+        var occ = await Db.ServiceOccurrences.FirstAsync(o => o.OccurrenceId == f.OccurrenceId);
         occ.FillStatusId.Should().BeNull();
     }
 
@@ -429,12 +404,12 @@ public class EvaluateFillStatusTests : IAsyncLifetime
         // The whole run is refused, not just the affected occurrences.
         var f = await SeedFixtureAsync();
 
-        var setting = await _db.SystemSettings
+        var setting = await Db.SystemSettings
             .FirstAsync(s => s.Key == "OutcomeStateUnfilledID");
-        _db.SystemSettings.Remove(setting);
-        await _db.SaveChangesAsync();
+        Db.SystemSettings.Remove(setting);
+        await Db.SaveChangesAsync();
 
-        var service = new EvaluateFillStatusService(_db);
+        var service = new EvaluateFillStatusService(Db);
 
         var result = await service.RunAsync(new EvaluateFillStatusCommand
         {
@@ -445,7 +420,7 @@ public class EvaluateFillStatusTests : IAsyncLifetime
         result.OccurrencesEvaluated.Should().Be(0);
         result.ErrorDetail.Should().Contain("OutcomeStateUnfilledID");
 
-        var occ = await _db.ServiceOccurrences.FirstAsync(o => o.OccurrenceId == f.OccurrenceId);
+        var occ = await Db.ServiceOccurrences.FirstAsync(o => o.OccurrenceId == f.OccurrenceId);
         occ.FillStatusId.Should().BeNull();
     }
 
@@ -454,12 +429,12 @@ public class EvaluateFillStatusTests : IAsyncLifetime
     {
         var f = await SeedFixtureAsync();
 
-        var setting = await _db.SystemSettings
+        var setting = await Db.SystemSettings
             .FirstAsync(s => s.Key == "OutcomeStatePartiallyFilledID");
-        _db.SystemSettings.Remove(setting);
-        await _db.SaveChangesAsync();
+        Db.SystemSettings.Remove(setting);
+        await Db.SaveChangesAsync();
 
-        var service = new EvaluateFillStatusService(_db);
+        var service = new EvaluateFillStatusService(Db);
 
         var result = await service.RunAsync(new EvaluateFillStatusCommand
         {
@@ -470,7 +445,7 @@ public class EvaluateFillStatusTests : IAsyncLifetime
         result.OccurrencesEvaluated.Should().Be(0);
         result.ErrorDetail.Should().Contain("OutcomeStatePartiallyFilledID");
 
-        var occ = await _db.ServiceOccurrences.FirstAsync(o => o.OccurrenceId == f.OccurrenceId);
+        var occ = await Db.ServiceOccurrences.FirstAsync(o => o.OccurrenceId == f.OccurrenceId);
         occ.FillStatusId.Should().BeNull();
     }
 
@@ -479,12 +454,12 @@ public class EvaluateFillStatusTests : IAsyncLifetime
     {
         var f = await SeedFixtureAsync();
 
-        var setting = await _db.SystemSettings
+        var setting = await Db.SystemSettings
             .FirstAsync(s => s.Key == "OutcomeStateFilledID");
-        _db.SystemSettings.Remove(setting);
-        await _db.SaveChangesAsync();
+        Db.SystemSettings.Remove(setting);
+        await Db.SaveChangesAsync();
 
-        var service = new EvaluateFillStatusService(_db);
+        var service = new EvaluateFillStatusService(Db);
 
         var result = await service.RunAsync(new EvaluateFillStatusCommand
         {
@@ -495,7 +470,7 @@ public class EvaluateFillStatusTests : IAsyncLifetime
         result.OccurrencesEvaluated.Should().Be(0);
         result.ErrorDetail.Should().Contain("OutcomeStateFilledID");
 
-        var occ = await _db.ServiceOccurrences.FirstAsync(o => o.OccurrenceId == f.OccurrenceId);
+        var occ = await Db.ServiceOccurrences.FirstAsync(o => o.OccurrenceId == f.OccurrenceId);
         occ.FillStatusId.Should().BeNull();
     }
 
@@ -505,13 +480,13 @@ public class EvaluateFillStatusTests : IAsyncLifetime
         var f = await SeedFixtureAsync();
         await AddAssignmentAsync(f, f.MemberOneId, f.NonTerminalStatusId);
 
-        var service = new EvaluateFillStatusService(_db);
+        var service = new EvaluateFillStatusService(Db);
 
         await service.RunAsync(new EvaluateFillStatusCommand { OccurrenceId = f.OccurrenceId });
-        var first = await _db.ServiceOccurrences.FirstAsync(o => o.OccurrenceId == f.OccurrenceId);
+        var first = await Db.ServiceOccurrences.FirstAsync(o => o.OccurrenceId == f.OccurrenceId);
 
         await service.RunAsync(new EvaluateFillStatusCommand { OccurrenceId = f.OccurrenceId });
-        var second = await _db.ServiceOccurrences.FirstAsync(o => o.OccurrenceId == f.OccurrenceId);
+        var second = await Db.ServiceOccurrences.FirstAsync(o => o.OccurrenceId == f.OccurrenceId);
 
         second.FillStatusId.Should().Be(first.FillStatusId);
     }
@@ -524,7 +499,7 @@ public class EvaluateFillStatusTests : IAsyncLifetime
         // is left untouched.
         var f = await SeedFixtureAsync();
 
-        var scheduleId = await _db.ServiceOccurrences
+        var scheduleId = await Db.ServiceOccurrences
             .Where(o => o.OccurrenceId == f.OccurrenceId)
             .Select(o => o.ScheduleId!.Value)
             .FirstAsync();
@@ -541,10 +516,10 @@ public class EvaluateFillStatusTests : IAsyncLifetime
             CreatedBy = null,
             ChangedBy = null,
         };
-        _db.ServiceOccurrences.Add(otherOccurrence);
-        await _db.SaveChangesAsync();
+        Db.ServiceOccurrences.Add(otherOccurrence);
+        await Db.SaveChangesAsync();
 
-        var service = new EvaluateFillStatusService(_db);
+        var service = new EvaluateFillStatusService(Db);
         var result = await service.RunAsync(new EvaluateFillStatusCommand
         {
             OccurrenceId = f.OccurrenceId,
@@ -553,7 +528,7 @@ public class EvaluateFillStatusTests : IAsyncLifetime
         result.Status.Should().Be("Success");
         result.OccurrencesEvaluated.Should().Be(1);
 
-        var untouched = await _db.ServiceOccurrences
+        var untouched = await Db.ServiceOccurrences
             .FirstAsync(o => o.OccurrenceId == otherOccurrence.OccurrenceId);
         untouched.FillStatusId.Should().BeNull();
     }
@@ -562,7 +537,7 @@ public class EvaluateFillStatusTests : IAsyncLifetime
     public async Task Run_WithInvalidCommand_Fails()
     {
         await SeedFixtureAsync();
-        var service = new EvaluateFillStatusService(_db);
+        var service = new EvaluateFillStatusService(Db);
 
         var result = await service.RunAsync(new EvaluateFillStatusCommand());
 
@@ -574,7 +549,7 @@ public class EvaluateFillStatusTests : IAsyncLifetime
     public async Task Run_WithBothOccurrenceAndRange_Fails()
     {
         var f = await SeedFixtureAsync();
-        var service = new EvaluateFillStatusService(_db);
+        var service = new EvaluateFillStatusService(Db);
 
         var result = await service.RunAsync(new EvaluateFillStatusCommand
         {

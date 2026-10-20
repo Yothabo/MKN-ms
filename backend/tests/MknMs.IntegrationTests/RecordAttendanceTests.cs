@@ -26,42 +26,18 @@ namespace MknMs.IntegrationTests;
 /// Reference: docs/processes/operations/6.0-record-attendance.md,
 /// Specification §13.
 /// </remarks>
-public class RecordAttendanceTests : IAsyncLifetime
+public class RecordAttendanceTests : IntegrationTestBase
 {
-    private const string TestConnectionString =
-        "Host=127.0.0.1;Port=5432;Database=mkn_test;Username=mkn_dev";
+    private readonly TimeProvider _clock = new FakeTimeProvider(
+        new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero));
 
-    private MknDbContext _db = null!;
-    private TimeProvider _clock = null!;
-
-    public async Task InitializeAsync()
+    protected override async Task OnInitializedAsync()
     {
-        var options = new DbContextOptionsBuilder<MknDbContext>()
-            .UseNpgsql(TestConnectionString)
-            .Options;
-
-        _db = new MknDbContext(options);
-        _clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero));
-
-        await _db.Database.ExecuteSqlRawAsync(
-            "TRUNCATE TABLE materializer_run, attendance_record, roster_assignment, " +
-            "service_occurrence_duty, service_occurrence, service_schedule, " +
-            "service_definition_duty, branch_time_slot, service_definition, " +
-            "service_type, time_of_day, branch, identifier_history, eligibility, " +
-            "duty_rule, admin, member, member_attribute_value, member_status, " +
-            "attendance_rule_scope, attendance_rule, readmission, role, duty, " +
-            "system_setting, outcome_state, assignment_status, permission_tier, " +
-            "attribute_type, capability, event_branch, configuration_audit_log, " +
-            "entity_deletion_policy, notification_subscription " +
-            "RESTART IDENTITY CASCADE;");
-
-        await TestSeed.EnsureRequiredSettingsAsync(_db);
-    }
-
-    public Task DisposeAsync()
-    {
-        _db.Dispose();
-        return Task.CompletedTask;
+        // No migration seeds the required SystemSetting rows, and 6.0
+        // depends on AttendanceRegisterEnabled and ApplicationTimeZone
+        // being present. Seed them here per fact. The helper is
+        // idempotent.
+        await TestSeed.EnsureRequiredSettingsAsync(Db);
     }
 
     // -----------------------------------------------------------------
@@ -82,13 +58,13 @@ public class RecordAttendanceTests : IAsyncLifetime
         var role = new Role { Name = "Coordinator", IsActive = true };
         var branch = new Branch { Name = "Main", Location = "Main Street", IsActive = true };
 
-        _db.ServiceTypes.Add(serviceType);
-        _db.TimeOfDays.Add(timeOfDay);
-        _db.Roles.Add(role);
-        _db.Branches.Add(branch);
-        await _db.SaveChangesAsync();
+        Db.ServiceTypes.Add(serviceType);
+        Db.TimeOfDays.Add(timeOfDay);
+        Db.Roles.Add(role);
+        Db.Branches.Add(branch);
+        await Db.SaveChangesAsync();
 
-        var statusId = await TestSeed.EnsureDefaultMemberStatusAsync(_db);
+        var statusId = await TestSeed.EnsureDefaultMemberStatusAsync(Db);
 
         var member = new Member
         {
@@ -101,8 +77,8 @@ public class RecordAttendanceTests : IAsyncLifetime
             BranchId = branch.BranchId, RoleId = role.RoleId,
             MemberStatusId = statusId,
         };
-        _db.Members.Add(member);
-        await _db.SaveChangesAsync();
+        Db.Members.Add(member);
+        await Db.SaveChangesAsync();
 
         var slot = new BranchTimeSlot
         {
@@ -110,8 +86,8 @@ public class RecordAttendanceTests : IAsyncLifetime
             DayOfWeek = "Sunday",
             TimeOfDayId = timeOfDay.TimeOfDayId,
         };
-        _db.BranchTimeSlots.Add(slot);
-        await _db.SaveChangesAsync();
+        Db.BranchTimeSlots.Add(slot);
+        await Db.SaveChangesAsync();
 
         var definition = new ServiceDefinition
         {
@@ -119,8 +95,8 @@ public class RecordAttendanceTests : IAsyncLifetime
             ServiceTypeId = serviceType.ServiceTypeId,
             OwningBranchId = null,
         };
-        _db.ServiceDefinitions.Add(definition);
-        await _db.SaveChangesAsync();
+        Db.ServiceDefinitions.Add(definition);
+        await Db.SaveChangesAsync();
 
         var schedule = new ServiceSchedule
         {
@@ -128,8 +104,8 @@ public class RecordAttendanceTests : IAsyncLifetime
             TimeSlotId = slot.TimeSlotId,
             StartTime = new TimeOnly(9, 0),
         };
-        _db.ServiceSchedules.Add(schedule);
-        await _db.SaveChangesAsync();
+        Db.ServiceSchedules.Add(schedule);
+        await Db.SaveChangesAsync();
 
         var occurrence = new ServiceOccurrence
         {
@@ -143,8 +119,8 @@ public class RecordAttendanceTests : IAsyncLifetime
             CreatedBy = null,
             ChangedBy = null,
         };
-        _db.ServiceOccurrences.Add(occurrence);
-        await _db.SaveChangesAsync();
+        Db.ServiceOccurrences.Add(occurrence);
+        await Db.SaveChangesAsync();
 
         return new Fixture(member.MemberId, occurrence.OccurrenceId);
     }
@@ -157,7 +133,7 @@ public class RecordAttendanceTests : IAsyncLifetime
     public async Task Record_NewPair_WritesRowAndReturnsRecorded()
     {
         var f = await SeedFixtureAsync();
-        var service = new RecordAttendanceService(_db, _clock);
+        var service = new RecordAttendanceService(Db, _clock);
 
         var result = await service.RunAsync(new RecordAttendanceCommand
         {
@@ -169,10 +145,10 @@ public class RecordAttendanceTests : IAsyncLifetime
         result.Recorded.Should().BeTrue();
         result.RecordId.Should().BeGreaterThan(0);
 
-        var count = await _db.AttendanceRecords.CountAsync();
+        var count = await Db.AttendanceRecords.CountAsync();
         count.Should().Be(1);
 
-        var row = await _db.AttendanceRecords.FirstAsync();
+        var row = await Db.AttendanceRecords.FirstAsync();
         row.MemberId.Should().Be(f.MemberId);
         row.OccurrenceId.Should().Be(f.OccurrenceId);
         row.Timestamp.Should().Be(_clock.GetUtcNow());
@@ -182,7 +158,7 @@ public class RecordAttendanceTests : IAsyncLifetime
     public async Task Record_RepeatPair_IsIdempotent()
     {
         var f = await SeedFixtureAsync();
-        var service = new RecordAttendanceService(_db, _clock);
+        var service = new RecordAttendanceService(Db, _clock);
 
         var first = await service.RunAsync(new RecordAttendanceCommand
         {
@@ -200,7 +176,7 @@ public class RecordAttendanceTests : IAsyncLifetime
         second.Recorded.Should().BeFalse();
         second.RecordId.Should().Be(first.RecordId);
 
-        var count = await _db.AttendanceRecords.CountAsync();
+        var count = await Db.AttendanceRecords.CountAsync();
         count.Should().Be(1);
     }
 
@@ -208,7 +184,7 @@ public class RecordAttendanceTests : IAsyncLifetime
     public async Task Record_WithoutAnyAssignment_Succeeds()
     {
         var f = await SeedFixtureAsync();
-        var service = new RecordAttendanceService(_db, _clock);
+        var service = new RecordAttendanceService(Db, _clock);
 
         // No RosterAssignment exists for this pair. §13.1.3: attendance
         // is not conditioned on assignment.
@@ -221,7 +197,7 @@ public class RecordAttendanceTests : IAsyncLifetime
         result.Status.Should().Be("Success");
         result.Recorded.Should().BeTrue();
 
-        var assignmentCount = await _db.RosterAssignments.CountAsync();
+        var assignmentCount = await Db.RosterAssignments.CountAsync();
         assignmentCount.Should().Be(0);
     }
 
@@ -232,7 +208,7 @@ public class RecordAttendanceTests : IAsyncLifetime
         // exists in 6.0 or in the schema (§13.3).
         var farFuture = new DateTimeOffset(2030, 12, 25, 9, 0, 0, TimeSpan.Zero);
         var f = await SeedFixtureAsync(farFuture);
-        var service = new RecordAttendanceService(_db, _clock);
+        var service = new RecordAttendanceService(Db, _clock);
 
         var result = await service.RunAsync(new RecordAttendanceCommand
         {
@@ -248,7 +224,7 @@ public class RecordAttendanceTests : IAsyncLifetime
     public async Task Record_WithMissingMember_Fails()
     {
         var f = await SeedFixtureAsync();
-        var service = new RecordAttendanceService(_db, _clock);
+        var service = new RecordAttendanceService(Db, _clock);
 
         var result = await service.RunAsync(new RecordAttendanceCommand
         {
@@ -260,7 +236,7 @@ public class RecordAttendanceTests : IAsyncLifetime
         result.Recorded.Should().BeFalse();
         result.ErrorDetail.Should().Contain("Member 9999");
 
-        var count = await _db.AttendanceRecords.CountAsync();
+        var count = await Db.AttendanceRecords.CountAsync();
         count.Should().Be(0);
     }
 
@@ -268,7 +244,7 @@ public class RecordAttendanceTests : IAsyncLifetime
     public async Task Record_WithMissingOccurrence_Fails()
     {
         var f = await SeedFixtureAsync();
-        var service = new RecordAttendanceService(_db, _clock);
+        var service = new RecordAttendanceService(Db, _clock);
 
         var result = await service.RunAsync(new RecordAttendanceCommand
         {
@@ -280,7 +256,7 @@ public class RecordAttendanceTests : IAsyncLifetime
         result.Recorded.Should().BeFalse();
         result.ErrorDetail.Should().Contain("ServiceOccurrence 9999");
 
-        var count = await _db.AttendanceRecords.CountAsync();
+        var count = await Db.AttendanceRecords.CountAsync();
         count.Should().Be(0);
     }
 
@@ -289,12 +265,12 @@ public class RecordAttendanceTests : IAsyncLifetime
     {
         var f = await SeedFixtureAsync();
 
-        var member = await _db.Members.FirstAsync();
+        var member = await Db.Members.FirstAsync();
         member.ReceiptNumber = null;
         member.CardNumber = null;
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new RecordAttendanceService(_db, _clock);
+        var service = new RecordAttendanceService(Db, _clock);
         var result = await service.RunAsync(new RecordAttendanceCommand
         {
             MemberId = f.MemberId,
@@ -305,7 +281,7 @@ public class RecordAttendanceTests : IAsyncLifetime
         result.Recorded.Should().BeFalse();
         result.ErrorDetail.Should().Contain("ReceiptNumber");
 
-        var count = await _db.AttendanceRecords.CountAsync();
+        var count = await Db.AttendanceRecords.CountAsync();
         count.Should().Be(0);
     }
 
@@ -314,12 +290,12 @@ public class RecordAttendanceTests : IAsyncLifetime
     {
         var f = await SeedFixtureAsync();
 
-        var setting = await _db.SystemSettings
+        var setting = await Db.SystemSettings
             .FirstAsync(s => s.Key == "AttendanceRegisterEnabled");
         setting.Value = "false";
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new RecordAttendanceService(_db, _clock);
+        var service = new RecordAttendanceService(Db, _clock);
         var result = await service.RunAsync(new RecordAttendanceCommand
         {
             MemberId = f.MemberId,
@@ -330,7 +306,7 @@ public class RecordAttendanceTests : IAsyncLifetime
         result.Recorded.Should().BeFalse();
         result.ErrorDetail.Should().Contain("register is off");
 
-        var count = await _db.AttendanceRecords.CountAsync();
+        var count = await Db.AttendanceRecords.CountAsync();
         count.Should().Be(0);
     }
 
@@ -349,14 +325,14 @@ public class RecordAttendanceTests : IAsyncLifetime
             Location = "Elsewhere",
             IsActive = true,
         };
-        _db.Branches.Add(secondBranch);
-        await _db.SaveChangesAsync();
+        Db.Branches.Add(secondBranch);
+        await Db.SaveChangesAsync();
 
-        var member = await _db.Members.FirstAsync();
+        var member = await Db.Members.FirstAsync();
         member.BranchId = secondBranch.BranchId;
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new RecordAttendanceService(_db, _clock);
+        var service = new RecordAttendanceService(Db, _clock);
         var result = await service.RunAsync(new RecordAttendanceCommand
         {
             MemberId = f.MemberId,
@@ -366,7 +342,7 @@ public class RecordAttendanceTests : IAsyncLifetime
         result.Status.Should().Be("Success");
         result.Recorded.Should().BeTrue();
 
-        var row = await _db.AttendanceRecords.SingleAsync();
+        var row = await Db.AttendanceRecords.SingleAsync();
         row.MemberId.Should().Be(f.MemberId);
         row.OccurrenceId.Should().Be(f.OccurrenceId);
     }
@@ -376,16 +352,16 @@ public class RecordAttendanceTests : IAsyncLifetime
     {
         var f = await SeedFixtureAsync();
 
-        var setting = await _db.SystemSettings
+        var setting = await Db.SystemSettings
             .FirstAsync(s => s.Key == "AttendanceRegisterEnabled");
         setting.Value = "false";
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var branch = await _db.Branches.FirstAsync();
+        var branch = await Db.Branches.FirstAsync();
         branch.UsesAttendanceRegister = true;
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new RecordAttendanceService(_db, _clock);
+        var service = new RecordAttendanceService(Db, _clock);
         var result = await service.RunAsync(new RecordAttendanceCommand
         {
             MemberId = f.MemberId,

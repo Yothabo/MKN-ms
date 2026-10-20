@@ -43,6 +43,14 @@ public abstract class IntegrationTestBase : IAsyncLifetime
     /// </summary>
     protected MknDbContext CreateContext() => _fixture!.CreateContext();
 
+    /// <summary>
+    /// The connection string of the per-class fixture database. Used by
+    /// tests that need a raw <see cref="Npgsql.NpgsqlConnection"/> (for
+    /// example, to open a second session against the same DB in order
+    /// to exercise advisory locks).
+    /// </summary>
+    protected string ConnectionString => _fixture!.ConnectionString;
+
     public async Task InitializeAsync()
     {
         _fixture = new TestDatabaseFixture();

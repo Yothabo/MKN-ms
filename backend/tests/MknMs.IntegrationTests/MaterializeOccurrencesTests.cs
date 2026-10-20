@@ -30,35 +30,15 @@ namespace MknMs.IntegrationTests;
 /// Reference: docs/processes/operations/11.0-materialize-occurrences.md
 /// and Specification §7, §8.
 /// </remarks>
-public class MaterializeOccurrencesTests : IAsyncLifetime
+public class MaterializeOccurrencesTests : IntegrationTestBase
 {
-    private const string TestConnectionString =
-        "Host=127.0.0.1;Port=5432;Database=mkn_test;Username=mkn_dev";
-
-    private MknDbContext _db = null!;
-
-    public async Task InitializeAsync()
+    protected override async Task OnInitializedAsync()
     {
-        var options = new DbContextOptionsBuilder<MknDbContext>()
-            .UseNpgsql(TestConnectionString)
-            .Options;
-
-        _db = new MknDbContext(options);
-
-        // Clean state for each test.
-        await _db.Database.ExecuteSqlRawAsync(
-            "TRUNCATE TABLE materializer_run, service_occurrence, service_occurrence_duty, " +
-            "service_schedule, branch_time_slot, service_definition, service_type, " +
-            "time_of_day, branch, system_setting, member, admin, role, " +
-            "permission_tier, member_status RESTART IDENTITY CASCADE;");
-
-        await TestSeed.EnsureRequiredSettingsAsync(_db);
-    }
-
-    public Task DisposeAsync()
-    {
-        _db.Dispose();
-        return Task.CompletedTask;
+        // No migration seeds SystemSetting. 11.0 depends on
+        // ApplicationTimeZone and the fixture seeds OccurrenceHorizonDays
+        // per fact. Seed the required rows per fact. The helper is
+        // idempotent.
+        await TestSeed.EnsureRequiredSettingsAsync(Db);
     }
 
     [Fact]
@@ -67,7 +47,7 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
         await SeedMinimalConfigurationAsync();
 
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero));
-        var service = new MaterializeOccurrencesService(_db, clock);
+        var service = new MaterializeOccurrencesService(Db, clock);
 
         var result = await service.RunAsync(new MaterializeOccurrencesCommand
         {
@@ -78,7 +58,7 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
         result.SchedulesEvaluated.Should().Be(1);
         result.OccurrencesCreated.Should().Be(4);
 
-        var occurrences = await _db.ServiceOccurrences.OrderBy(o => o.Date).ToListAsync();
+        var occurrences = await Db.ServiceOccurrences.OrderBy(o => o.Date).ToListAsync();
 
         occurrences.Should().HaveCount(4);
         occurrences.Select(o => o.Date).Should().Equal(
@@ -105,27 +85,27 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
         await SeedMinimalConfigurationAsync();
 
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero));
-        var service = new MaterializeOccurrencesService(_db, clock);
+        var service = new MaterializeOccurrencesService(Db, clock);
 
         var first = await service.RunAsync(new MaterializeOccurrencesCommand
         {
             TriggerType = "Scheduled",
         });
 
-        var countAfterFirst = await _db.ServiceOccurrences.CountAsync();
+        var countAfterFirst = await Db.ServiceOccurrences.CountAsync();
 
         var second = await service.RunAsync(new MaterializeOccurrencesCommand
         {
             TriggerType = "Scheduled",
         });
 
-        var countAfterSecond = await _db.ServiceOccurrences.CountAsync();
+        var countAfterSecond = await Db.ServiceOccurrences.CountAsync();
 
         first.OccurrencesCreated.Should().Be(4);
         second.OccurrencesCreated.Should().Be(0);
         countAfterSecond.Should().Be(countAfterFirst);
 
-        var runs = await _db.MaterializerRuns.OrderBy(r => r.RunId).ToListAsync();
+        var runs = await Db.MaterializerRuns.OrderBy(r => r.RunId).ToListAsync();
         runs.Should().HaveCount(2);
         runs.Should().AllSatisfy(r => r.Status.Should().Be("Success"));
     }
@@ -137,7 +117,7 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
         await SeedMinimalConfigurationAsync(includeHorizonSetting: false);
 
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero));
-        var service = new MaterializeOccurrencesService(_db, clock);
+        var service = new MaterializeOccurrencesService(Db, clock);
 
         var result = await service.RunAsync(new MaterializeOccurrencesCommand
         {
@@ -148,10 +128,10 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
         result.OccurrencesCreated.Should().Be(0);
         result.ErrorDetail.Should().Contain("OccurrenceHorizonDays");
 
-        var occurrences = await _db.ServiceOccurrences.CountAsync();
+        var occurrences = await Db.ServiceOccurrences.CountAsync();
         occurrences.Should().Be(0);
 
-        var run = await _db.MaterializerRuns.SingleAsync();
+        var run = await Db.MaterializerRuns.SingleAsync();
         run.Status.Should().Be("Failure");
         run.ErrorDetail.Should().Contain("OccurrenceHorizonDays");
     }
@@ -162,7 +142,7 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
         await SeedMinimalConfigurationAsync();
 
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero));
-        var service = new MaterializeOccurrencesService(_db, clock);
+        var service = new MaterializeOccurrencesService(Db, clock);
 
         var act = async () => await service.RunAsync(new MaterializeOccurrencesCommand
         {
@@ -182,7 +162,7 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
     {
         if (includeHorizonSetting)
         {
-            _db.SystemSettings.Add(new SystemSetting
+            Db.SystemSettings.Add(new SystemSetting
             {
                 Key = "OccurrenceHorizonDays",
                 Value = horizonDays.ToString(),
@@ -194,10 +174,10 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
         var serviceType = new ServiceType { Name = "Regular" };
         var branch = new Branch { Name = "Main", Location = "Main Street", IsActive = true };
 
-        _db.TimeOfDays.Add(timeOfDay);
-        _db.ServiceTypes.Add(serviceType);
-        _db.Branches.Add(branch);
-        await _db.SaveChangesAsync();
+        Db.TimeOfDays.Add(timeOfDay);
+        Db.ServiceTypes.Add(serviceType);
+        Db.Branches.Add(branch);
+        await Db.SaveChangesAsync();
 
         var slot = new BranchTimeSlot
         {
@@ -207,8 +187,8 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
             IsActive = slotActive,
         };
 
-        _db.BranchTimeSlots.Add(slot);
-        await _db.SaveChangesAsync();
+        Db.BranchTimeSlots.Add(slot);
+        await Db.SaveChangesAsync();
 
         var definition = new ServiceDefinition
         {
@@ -218,8 +198,8 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
             IsActive = definitionActive,
         };
 
-        _db.ServiceDefinitions.Add(definition);
-        await _db.SaveChangesAsync();
+        Db.ServiceDefinitions.Add(definition);
+        await Db.SaveChangesAsync();
 
         var schedule = new ServiceSchedule
         {
@@ -228,20 +208,20 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
             StartTime = new TimeOnly(9, 0),
         };
 
-        _db.ServiceSchedules.Add(schedule);
-        await _db.SaveChangesAsync();
+        Db.ServiceSchedules.Add(schedule);
+        await Db.SaveChangesAsync();
     }
 
     private async Task<int> SeedAdminAsync()
     {
         var role = new Role { Name = "Coordinator", IsActive = true, IsDeleted = false };
-        var branch = await _db.Branches.FirstAsync();
-        var statusId = await TestSeed.EnsureDefaultMemberStatusAsync(_db);
+        var branch = await Db.Branches.FirstAsync();
+        var statusId = await TestSeed.EnsureDefaultMemberStatusAsync(Db);
         var tier = new PermissionTier { Name = "Full Admin", IsDefault = true, IsDeleted = false };
 
-        _db.Roles.Add(role);
-        _db.PermissionTiers.Add(tier);
-        await _db.SaveChangesAsync();
+        Db.Roles.Add(role);
+        Db.PermissionTiers.Add(tier);
+        await Db.SaveChangesAsync();
 
         var member = new Member
         {
@@ -253,8 +233,8 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
             BranchId = branch.BranchId, RoleId = role.RoleId,
             MemberStatusId = statusId,
         };
-        _db.Members.Add(member);
-        await _db.SaveChangesAsync();
+        Db.Members.Add(member);
+        await Db.SaveChangesAsync();
 
         var admin = new Admin
         {
@@ -262,8 +242,8 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
             PermissionTierId = tier.PermissionTierId,
             IsActive = true,
         };
-        _db.Admins.Add(admin);
-        await _db.SaveChangesAsync();
+        Db.Admins.Add(admin);
+        await Db.SaveChangesAsync();
 
         return admin.AdminId;
     }
@@ -274,9 +254,9 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
         await SeedMinimalConfigurationAsync();
 
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero));
-        var service = new MaterializeOccurrencesService(_db, clock);
+        var service = new MaterializeOccurrencesService(Db, clock);
 
-        await using var externalConnection = new NpgsqlConnection(TestConnectionString);
+        await using var externalConnection = new NpgsqlConnection(ConnectionString);
         await externalConnection.OpenAsync();
 
         await using (var lockCmd = externalConnection.CreateCommand())
@@ -297,7 +277,7 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
             result.ErrorDetail.Should().Contain("Another materializer run is in progress");
             result.OccurrencesCreated.Should().Be(0);
 
-            var occurrenceCount = await _db.ServiceOccurrences.CountAsync();
+            var occurrenceCount = await Db.ServiceOccurrences.CountAsync();
             occurrenceCount.Should().Be(0);
         }
         finally
@@ -314,9 +294,9 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
         await SeedMinimalConfigurationAsync();
 
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero));
-        var service = new MaterializeOccurrencesService(_db, clock);
+        var service = new MaterializeOccurrencesService(Db, clock);
 
-        await using var externalConnection = new NpgsqlConnection(TestConnectionString);
+        await using var externalConnection = new NpgsqlConnection(ConnectionString);
         await externalConnection.OpenAsync();
 
         await using (var lockCmd = externalConnection.CreateCommand())
@@ -350,7 +330,7 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
         await SeedMinimalConfigurationAsync(definitionActive: false);
 
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero));
-        var service = new MaterializeOccurrencesService(_db, clock);
+        var service = new MaterializeOccurrencesService(Db, clock);
 
         var result = await service.RunAsync(new MaterializeOccurrencesCommand
         {
@@ -361,7 +341,7 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
         result.SchedulesEvaluated.Should().Be(0);
         result.OccurrencesCreated.Should().Be(0);
 
-        var count = await _db.ServiceOccurrences.CountAsync();
+        var count = await Db.ServiceOccurrences.CountAsync();
         count.Should().Be(0);
     }
 
@@ -371,7 +351,7 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
         await SeedMinimalConfigurationAsync(slotActive: false);
 
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero));
-        var service = new MaterializeOccurrencesService(_db, clock);
+        var service = new MaterializeOccurrencesService(Db, clock);
 
         var result = await service.RunAsync(new MaterializeOccurrencesCommand
         {
@@ -382,7 +362,7 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
         result.SchedulesEvaluated.Should().Be(0);
         result.OccurrencesCreated.Should().Be(0);
 
-        var count = await _db.ServiceOccurrences.CountAsync();
+        var count = await Db.ServiceOccurrences.CountAsync();
         count.Should().Be(0);
     }
 
@@ -393,11 +373,11 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
         // the zero-duty case. The occurrence is still created.
         await SeedMinimalConfigurationAsync();
 
-        var dutyCount = await _db.ServiceDefinitionDuties.CountAsync();
+        var dutyCount = await Db.ServiceDefinitionDuties.CountAsync();
         dutyCount.Should().Be(0);
 
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero));
-        var service = new MaterializeOccurrencesService(_db, clock);
+        var service = new MaterializeOccurrencesService(Db, clock);
 
         var result = await service.RunAsync(new MaterializeOccurrencesCommand
         {
@@ -417,7 +397,7 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
         await SeedMinimalConfigurationAsync(horizonDays: 0);
 
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 11, 12, 0, 0, TimeSpan.Zero));
-        var service = new MaterializeOccurrencesService(_db, clock);
+        var service = new MaterializeOccurrencesService(Db, clock);
 
         var result = await service.RunAsync(new MaterializeOccurrencesCommand
         {
@@ -427,7 +407,7 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
         result.Status.Should().Be("Success");
         result.OccurrencesCreated.Should().Be(1);
 
-        var occurrences = await _db.ServiceOccurrences.ToListAsync();
+        var occurrences = await Db.ServiceOccurrences.ToListAsync();
         occurrences.Should().HaveCount(1);
         occurrences.Single().Date.Should().Be(new DateOnly(2026, 10, 11));
     }
@@ -438,7 +418,7 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
         await SeedMinimalConfigurationAsync();
 
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero));
-        var service = new MaterializeOccurrencesService(_db, clock);
+        var service = new MaterializeOccurrencesService(Db, clock);
 
         var act = async () => await service.RunAsync(new MaterializeOccurrencesCommand
         {
@@ -457,7 +437,7 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
         var adminId = await SeedAdminAsync();
 
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero));
-        var service = new MaterializeOccurrencesService(_db, clock);
+        var service = new MaterializeOccurrencesService(Db, clock);
 
         var first = await service.RunAsync(new MaterializeOccurrencesCommand
         {
@@ -475,7 +455,7 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
         manual.Status.Should().Be("Success");
         manual.OccurrencesCreated.Should().Be(0);
 
-        var count = await _db.ServiceOccurrences.CountAsync();
+        var count = await Db.ServiceOccurrences.CountAsync();
         count.Should().Be(4);
     }
 
@@ -486,7 +466,7 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
         var adminId = await SeedAdminAsync();
 
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero));
-        var service = new MaterializeOccurrencesService(_db, clock);
+        var service = new MaterializeOccurrencesService(Db, clock);
 
         var first = await service.RunAsync(new MaterializeOccurrencesCommand
         {
@@ -504,7 +484,7 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
         manual.Status.Should().Be("Success");
         manual.OccurrencesCreated.Should().Be(3);
 
-        var count = await _db.ServiceOccurrences.CountAsync();
+        var count = await Db.ServiceOccurrences.CountAsync();
         count.Should().Be(4);
     }
 
@@ -513,7 +493,7 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
     {
         await SeedMinimalConfigurationAsync();
 
-        var scheduleId = await _db.ServiceSchedules.Select(s => s.ScheduleId).FirstAsync();
+        var scheduleId = await Db.ServiceSchedules.Select(s => s.ScheduleId).FirstAsync();
 
         // Seed one candidate occurrence directly, with non-default
         // values that 11.0 would never write. If 11.0 touches the row,
@@ -531,11 +511,11 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
             CreatedBy = adminId,
             ChangedBy = null,
         };
-        _db.ServiceOccurrences.Add(seeded);
-        await _db.SaveChangesAsync();
+        Db.ServiceOccurrences.Add(seeded);
+        await Db.SaveChangesAsync();
 
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero));
-        var service = new MaterializeOccurrencesService(_db, clock);
+        var service = new MaterializeOccurrencesService(Db, clock);
 
         var result = await service.RunAsync(new MaterializeOccurrencesCommand
         {
@@ -545,8 +525,8 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
         result.Status.Should().Be("Success");
         result.OccurrencesCreated.Should().Be(3);
 
-        _db.ChangeTracker.Clear();
-        var after = await _db.ServiceOccurrences
+        Db.ChangeTracker.Clear();
+        var after = await Db.ServiceOccurrences
             .AsNoTracking()
             .FirstAsync(o => o.OccurrenceId == seeded.OccurrenceId);
 
@@ -562,7 +542,7 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
         await SeedMinimalConfigurationAsync();
         var adminId = await SeedAdminAsync();
 
-        var branchId = await _db.Branches.Select(b => b.BranchId).FirstAsync();
+        var branchId = await Db.Branches.Select(b => b.BranchId).FirstAsync();
         var evt = new Event
         {
             Name = "Coverage event",
@@ -572,8 +552,8 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
             HostBranchId = branchId,
             IsDeleted = false,
         };
-        _db.Events.Add(evt);
-        await _db.SaveChangesAsync();
+        Db.Events.Add(evt);
+        await Db.SaveChangesAsync();
 
         var eventOccurrence = new ServiceOccurrence
         {
@@ -587,11 +567,11 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
             CreatedBy = adminId,
             ChangedBy = null,
         };
-        _db.ServiceOccurrences.Add(eventOccurrence);
-        await _db.SaveChangesAsync();
+        Db.ServiceOccurrences.Add(eventOccurrence);
+        await Db.SaveChangesAsync();
 
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero));
-        var service = new MaterializeOccurrencesService(_db, clock);
+        var service = new MaterializeOccurrencesService(Db, clock);
 
         var result = await service.RunAsync(new MaterializeOccurrencesCommand
         {
@@ -601,8 +581,8 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
         result.Status.Should().Be("Success");
         result.OccurrencesCreated.Should().Be(4);
 
-        _db.ChangeTracker.Clear();
-        var after = await _db.ServiceOccurrences
+        Db.ChangeTracker.Clear();
+        var after = await Db.ServiceOccurrences
             .AsNoTracking()
             .FirstAsync(o => o.OccurrenceId == eventOccurrence.OccurrenceId);
 
@@ -613,7 +593,7 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
         after.Date.Should().Be(new DateOnly(2026, 10, 11));
 
         // No new row carries the EventId.
-        var otherEventRows = await _db.ServiceOccurrences
+        var otherEventRows = await Db.ServiceOccurrences
             .Where(o => o.EventId == evt.EventId)
             .CountAsync();
         otherEventRows.Should().Be(1);
@@ -624,10 +604,10 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
     {
         await SeedMinimalConfigurationAsync();
 
-        var scheduleId = await _db.ServiceSchedules.Select(s => s.ScheduleId).FirstAsync();
+        var scheduleId = await Db.ServiceSchedules.Select(s => s.ScheduleId).FirstAsync();
         var duty = new Duty { Name = "Reading duty", IsActive = true, IsDeleted = false };
-        _db.Duties.Add(duty);
-        await _db.SaveChangesAsync();
+        Db.Duties.Add(duty);
+        await Db.SaveChangesAsync();
 
         var occurrence = new ServiceOccurrence
         {
@@ -641,20 +621,20 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
             CreatedBy = null,
             ChangedBy = null,
         };
-        _db.ServiceOccurrences.Add(occurrence);
-        await _db.SaveChangesAsync();
+        Db.ServiceOccurrences.Add(occurrence);
+        await Db.SaveChangesAsync();
 
-        _db.ServiceOccurrenceDuties.Add(new ServiceOccurrenceDuty
+        Db.ServiceOccurrenceDuties.Add(new ServiceOccurrenceDuty
         {
             OccurrenceId = occurrence.OccurrenceId,
             DutyId = duty.DutyId,
             Action = "Added",
             RequiredSlotCount = 2,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero));
-        var service = new MaterializeOccurrencesService(_db, clock);
+        var service = new MaterializeOccurrencesService(Db, clock);
 
         var result = await service.RunAsync(new MaterializeOccurrencesCommand
         {
@@ -663,15 +643,15 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
 
         result.Status.Should().Be("Success");
 
-        _db.ChangeTracker.Clear();
-        var overrideAfter = await _db.ServiceOccurrenceDuties
+        Db.ChangeTracker.Clear();
+        var overrideAfter = await Db.ServiceOccurrenceDuties
             .AsNoTracking()
             .SingleAsync(d => d.OccurrenceId == occurrence.OccurrenceId);
 
         overrideAfter.Action.Should().Be("Added");
         overrideAfter.RequiredSlotCount.Should().Be(2);
 
-        var overrideCount = await _db.ServiceOccurrenceDuties.CountAsync();
+        var overrideCount = await Db.ServiceOccurrenceDuties.CountAsync();
         overrideCount.Should().Be(1);
     }
 
@@ -685,7 +665,7 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
         // remaining candidate dates without touching the seeded rows.
         await SeedMinimalConfigurationAsync();
 
-        var scheduleId = await _db.ServiceSchedules.Select(s => s.ScheduleId).FirstAsync();
+        var scheduleId = await Db.ServiceSchedules.Select(s => s.ScheduleId).FirstAsync();
 
         var seededFirst = new ServiceOccurrence
         {
@@ -711,12 +691,12 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
             CreatedBy = null,
             ChangedBy = null,
         };
-        _db.ServiceOccurrences.Add(seededFirst);
-        _db.ServiceOccurrences.Add(seededSecond);
-        await _db.SaveChangesAsync();
+        Db.ServiceOccurrences.Add(seededFirst);
+        Db.ServiceOccurrences.Add(seededSecond);
+        await Db.SaveChangesAsync();
 
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero));
-        var service = new MaterializeOccurrencesService(_db, clock);
+        var service = new MaterializeOccurrencesService(Db, clock);
 
         var result = await service.RunAsync(new MaterializeOccurrencesCommand
         {
@@ -726,7 +706,7 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
         result.Status.Should().Be("Success");
         result.OccurrencesCreated.Should().Be(2);
 
-        var occurrences = await _db.ServiceOccurrences
+        var occurrences = await Db.ServiceOccurrences
             .OrderBy(o => o.Date)
             .ToListAsync();
 
@@ -743,7 +723,7 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
         var secondAfter = occurrences.Single(o => o.OccurrenceId == seededSecond.OccurrenceId);
         secondAfter.Date.Should().Be(new DateOnly(2026, 10, 18));
 
-        var run = await _db.MaterializerRuns.SingleAsync();
+        var run = await Db.MaterializerRuns.SingleAsync();
         run.Status.Should().Be("Success");
     }
 
@@ -764,7 +744,7 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
         await SeedMinimalConfigurationAsync(horizonDays: 0, dayOfWeek: "Monday");
 
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 11, 22, 30, 0, TimeSpan.Zero));
-        var service = new MaterializeOccurrencesService(_db, clock);
+        var service = new MaterializeOccurrencesService(Db, clock);
 
         var result = await service.RunAsync(new MaterializeOccurrencesCommand
         {
@@ -774,11 +754,11 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
         result.Status.Should().Be("Success");
         result.OccurrencesCreated.Should().Be(1);
 
-        var occurrences = await _db.ServiceOccurrences.ToListAsync();
+        var occurrences = await Db.ServiceOccurrences.ToListAsync();
         occurrences.Should().HaveCount(1);
         occurrences.Single().Date.Should().Be(new DateOnly(2026, 10, 12));
 
-        var run = await _db.MaterializerRuns.SingleAsync();
+        var run = await Db.MaterializerRuns.SingleAsync();
         run.Status.Should().Be("Success");
         run.OccurrencesCreated.Should().Be(1);
     }
@@ -788,13 +768,13 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
     {
         await SeedMinimalConfigurationAsync();
 
-        var setting = await _db.SystemSettings
+        var setting = await Db.SystemSettings
             .FirstAsync(s => s.Key == "ApplicationTimeZone");
         setting.Value = "Not/ARealTimeZone";
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero));
-        var service = new MaterializeOccurrencesService(_db, clock);
+        var service = new MaterializeOccurrencesService(Db, clock);
 
         var result = await service.RunAsync(new MaterializeOccurrencesCommand
         {
@@ -805,10 +785,10 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
         result.OccurrencesCreated.Should().Be(0);
         result.ErrorDetail.Should().NotBeNull();
 
-        var occurrences = await _db.ServiceOccurrences.CountAsync();
+        var occurrences = await Db.ServiceOccurrences.CountAsync();
         occurrences.Should().Be(0);
 
-        var run = await _db.MaterializerRuns.SingleAsync();
+        var run = await Db.MaterializerRuns.SingleAsync();
         run.Status.Should().Be("Failure");
         run.ErrorDetail.Should().NotBeNull();
     }
@@ -818,13 +798,13 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
     {
         await SeedMinimalConfigurationAsync();
 
-        var setting = await _db.SystemSettings
+        var setting = await Db.SystemSettings
             .FirstAsync(s => s.Key == "ApplicationTimeZone");
-        _db.SystemSettings.Remove(setting);
-        await _db.SaveChangesAsync();
+        Db.SystemSettings.Remove(setting);
+        await Db.SaveChangesAsync();
 
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero));
-        var service = new MaterializeOccurrencesService(_db, clock);
+        var service = new MaterializeOccurrencesService(Db, clock);
 
         var result = await service.RunAsync(new MaterializeOccurrencesCommand
         {
@@ -835,10 +815,10 @@ public class MaterializeOccurrencesTests : IAsyncLifetime
         result.OccurrencesCreated.Should().Be(0);
         result.ErrorDetail.Should().NotBeNull();
 
-        var occurrences = await _db.ServiceOccurrences.CountAsync();
+        var occurrences = await Db.ServiceOccurrences.CountAsync();
         occurrences.Should().Be(0);
 
-        var run = await _db.MaterializerRuns.SingleAsync();
+        var run = await Db.MaterializerRuns.SingleAsync();
         run.Status.Should().Be("Failure");
         run.ErrorDetail.Should().NotBeNull();
     }

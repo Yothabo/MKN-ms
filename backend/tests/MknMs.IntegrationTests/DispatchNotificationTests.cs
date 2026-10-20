@@ -34,40 +34,16 @@ namespace MknMs.IntegrationTests;
 /// failure path. Adding a test seam now would create a production
 /// abstraction with no current functional need.
 /// </remarks>
-public class DispatchNotificationTests : IAsyncLifetime
+public class DispatchNotificationTests : IntegrationTestBase
 {
-    private const string TestConnectionString =
-        "Host=127.0.0.1;Port=5432;Database=mkn_test;Username=mkn_dev";
-
-    private MknDbContext _db = null!;
-
-    public async Task InitializeAsync()
+    protected override async Task OnInitializedAsync()
     {
-        var options = new DbContextOptionsBuilder<MknDbContext>()
-            .UseNpgsql(TestConnectionString)
-            .Options;
-
-        _db = new MknDbContext(options);
-
-        await _db.Database.ExecuteSqlRawAsync(
-            "TRUNCATE TABLE materializer_run, attendance_record, roster_assignment, " +
-            "service_occurrence_duty, service_occurrence, service_schedule, " +
-            "service_definition_duty, branch_time_slot, service_definition, " +
-            "service_type, time_of_day, branch, identifier_history, eligibility, " +
-            "duty_rule, admin, member, member_attribute_value, member_status, " +
-            "attendance_rule_scope, attendance_rule, readmission, role, duty, " +
-            "system_setting, outcome_state, assignment_status, permission_tier, " +
-            "attribute_type, capability, event_branch, configuration_audit_log, " +
-            "entity_deletion_policy, notification_subscription " +
-            "RESTART IDENTITY CASCADE;");
-
-        await TestSeed.EnsureRequiredSettingsAsync(_db);
-    }
-
-    public Task DisposeAsync()
-    {
-        _db.Dispose();
-        return Task.CompletedTask;
+        // No migration seeds SystemSetting. 9.0 depends on
+        // NotificationChannel being present (or explicitly absent, which
+        // the tests set up themselves) and the surrounding fixture needs
+        // ApplicationTimeZone and AttendanceRegisterEnabled. Seed the
+        // required rows per fact. The helper is idempotent.
+        await TestSeed.EnsureRequiredSettingsAsync(Db);
     }
 
     private sealed record Fixture(
@@ -86,25 +62,25 @@ public class DispatchNotificationTests : IAsyncLifetime
         var duty = new Duty { Name = "Reading duty", IsActive = true };
         var branch = new Branch { Name = "Main", Location = "Main Street", IsActive = true };
 
-        _db.ServiceTypes.Add(serviceType);
-        _db.TimeOfDays.Add(timeOfDay);
-        _db.Roles.Add(role);
-        _db.Duties.Add(duty);
-        _db.Branches.Add(branch);
-        await _db.SaveChangesAsync();
+        Db.ServiceTypes.Add(serviceType);
+        Db.TimeOfDays.Add(timeOfDay);
+        Db.Roles.Add(role);
+        Db.Duties.Add(duty);
+        Db.Branches.Add(branch);
+        await Db.SaveChangesAsync();
 
         if (notificationChannel is not null)
         {
-            _db.SystemSettings.Add(new SystemSetting
+            Db.SystemSettings.Add(new SystemSetting
             {
                 Key = "NotificationChannel",
                 Value = notificationChannel,
                 Required = notificationChannelRequired,
             });
-            await _db.SaveChangesAsync();
+            await Db.SaveChangesAsync();
         }
 
-        var statusId = await TestSeed.EnsureDefaultMemberStatusAsync(_db);
+        var statusId = await TestSeed.EnsureDefaultMemberStatusAsync(Db);
 
         var member = new Member
         {
@@ -116,8 +92,8 @@ public class DispatchNotificationTests : IAsyncLifetime
             BranchId = branch.BranchId, RoleId = role.RoleId,
             MemberStatusId = statusId,
         };
-        _db.Members.Add(member);
-        await _db.SaveChangesAsync();
+        Db.Members.Add(member);
+        await Db.SaveChangesAsync();
 
         var slot = new BranchTimeSlot
         {
@@ -125,8 +101,8 @@ public class DispatchNotificationTests : IAsyncLifetime
             DayOfWeek = "Sunday",
             TimeOfDayId = timeOfDay.TimeOfDayId,
         };
-        _db.BranchTimeSlots.Add(slot);
-        await _db.SaveChangesAsync();
+        Db.BranchTimeSlots.Add(slot);
+        await Db.SaveChangesAsync();
 
         var definition = new ServiceDefinition
         {
@@ -134,8 +110,8 @@ public class DispatchNotificationTests : IAsyncLifetime
             ServiceTypeId = serviceType.ServiceTypeId,
             OwningBranchId = null,
         };
-        _db.ServiceDefinitions.Add(definition);
-        await _db.SaveChangesAsync();
+        Db.ServiceDefinitions.Add(definition);
+        await Db.SaveChangesAsync();
 
         var schedule = new ServiceSchedule
         {
@@ -143,8 +119,8 @@ public class DispatchNotificationTests : IAsyncLifetime
             TimeSlotId = slot.TimeSlotId,
             StartTime = new TimeOnly(9, 30),
         };
-        _db.ServiceSchedules.Add(schedule);
-        await _db.SaveChangesAsync();
+        Db.ServiceSchedules.Add(schedule);
+        await Db.SaveChangesAsync();
 
         var occurrence = new ServiceOccurrence
         {
@@ -158,8 +134,8 @@ public class DispatchNotificationTests : IAsyncLifetime
             CreatedBy = null,
             ChangedBy = null,
         };
-        _db.ServiceOccurrences.Add(occurrence);
-        await _db.SaveChangesAsync();
+        Db.ServiceOccurrences.Add(occurrence);
+        await Db.SaveChangesAsync();
 
         var assignment = new RosterAssignment
         {
@@ -172,8 +148,8 @@ public class DispatchNotificationTests : IAsyncLifetime
             AssignedBy = null,
             CreatedAt = DateTimeOffset.UtcNow,
         };
-        _db.RosterAssignments.Add(assignment);
-        await _db.SaveChangesAsync();
+        Db.RosterAssignments.Add(assignment);
+        await Db.SaveChangesAsync();
 
         return new Fixture(
             assignment,
@@ -187,7 +163,7 @@ public class DispatchNotificationTests : IAsyncLifetime
     {
         var f = await SeedFixtureAsync();
         var logger = new CapturingLogger<DispatchNotificationService>();
-        var service = new DispatchNotificationService(_db, logger);
+        var service = new DispatchNotificationService(Db, logger);
 
         await service.DispatchAssignmentNoticeAsync(f.Assignment);
 
@@ -208,18 +184,18 @@ public class DispatchNotificationTests : IAsyncLifetime
         // Delete the member's children, then the member. The FK
         // constraints are ON DELETE RESTRICT by design; the delete
         // order matters.
-        var assignments = await _db.RosterAssignments
+        var assignments = await Db.RosterAssignments
             .Where(a => a.MemberId == f.MemberId)
             .ToListAsync();
-        _db.RosterAssignments.RemoveRange(assignments);
-        await _db.SaveChangesAsync();
+        Db.RosterAssignments.RemoveRange(assignments);
+        await Db.SaveChangesAsync();
 
-        var member = await _db.Members.FirstAsync(m => m.MemberId == f.MemberId);
-        _db.Members.Remove(member);
-        await _db.SaveChangesAsync();
+        var member = await Db.Members.FirstAsync(m => m.MemberId == f.MemberId);
+        Db.Members.Remove(member);
+        await Db.SaveChangesAsync();
 
         var logger = new CapturingLogger<DispatchNotificationService>();
-        var service = new DispatchNotificationService(_db, logger);
+        var service = new DispatchNotificationService(Db, logger);
 
         await service.DispatchAssignmentNoticeAsync(f.Assignment);
 
@@ -234,19 +210,19 @@ public class DispatchNotificationTests : IAsyncLifetime
 
         // Same treatment: the occurrence is referenced by the
         // RosterAssignment. Delete the child first.
-        var assignments = await _db.RosterAssignments
+        var assignments = await Db.RosterAssignments
             .Where(a => a.OccurrenceId == f.OccurrenceId)
             .ToListAsync();
-        _db.RosterAssignments.RemoveRange(assignments);
-        await _db.SaveChangesAsync();
+        Db.RosterAssignments.RemoveRange(assignments);
+        await Db.SaveChangesAsync();
 
-        var occurrence = await _db.ServiceOccurrences
+        var occurrence = await Db.ServiceOccurrences
             .FirstAsync(o => o.OccurrenceId == f.OccurrenceId);
-        _db.ServiceOccurrences.Remove(occurrence);
-        await _db.SaveChangesAsync();
+        Db.ServiceOccurrences.Remove(occurrence);
+        await Db.SaveChangesAsync();
 
         var logger = new CapturingLogger<DispatchNotificationService>();
-        var service = new DispatchNotificationService(_db, logger);
+        var service = new DispatchNotificationService(Db, logger);
 
         await service.DispatchAssignmentNoticeAsync(f.Assignment);
 
@@ -260,7 +236,7 @@ public class DispatchNotificationTests : IAsyncLifetime
         // §14.1.2: absent and Required = false → no notification.
         var f = await SeedFixtureAsync(notificationChannel: null);
         var logger = new CapturingLogger<DispatchNotificationService>();
-        var service = new DispatchNotificationService(_db, logger);
+        var service = new DispatchNotificationService(Db, logger);
 
         await service.DispatchAssignmentNoticeAsync(f.Assignment);
 
@@ -280,16 +256,16 @@ public class DispatchNotificationTests : IAsyncLifetime
 
         // SeedFixtureAsync skips the setting when the value is null.
         // Insert it explicitly with Required = true.
-        _db.SystemSettings.Add(new SystemSetting
+        Db.SystemSettings.Add(new SystemSetting
         {
             Key = "NotificationChannel",
             Value = null,
             Required = true,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         var logger = new CapturingLogger<DispatchNotificationService>();
-        var service = new DispatchNotificationService(_db, logger);
+        var service = new DispatchNotificationService(Db, logger);
 
         var act = async () => await service.DispatchAssignmentNoticeAsync(f.Assignment);
 
@@ -304,7 +280,7 @@ public class DispatchNotificationTests : IAsyncLifetime
         // log. There is no fallback to logging.
         var f = await SeedFixtureAsync(notificationChannel: "Email");
         var logger = new CapturingLogger<DispatchNotificationService>();
-        var service = new DispatchNotificationService(_db, logger);
+        var service = new DispatchNotificationService(Db, logger);
 
         await service.DispatchAssignmentNoticeAsync(f.Assignment);
 
@@ -317,34 +293,34 @@ public class DispatchNotificationTests : IAsyncLifetime
     {
         var f = await SeedFixtureAsync();
 
-        var assignmentBefore = await _db.RosterAssignments
+        var assignmentBefore = await Db.RosterAssignments
             .AsNoTracking()
             .FirstAsync(a => a.AssignmentId == f.Assignment.AssignmentId);
 
-        var settingCountBefore = await _db.SystemSettings.CountAsync();
+        var settingCountBefore = await Db.SystemSettings.CountAsync();
 
         var logger = new CapturingLogger<DispatchNotificationService>();
-        var service = new DispatchNotificationService(_db, logger);
+        var service = new DispatchNotificationService(Db, logger);
 
         await service.DispatchAssignmentNoticeAsync(f.Assignment);
 
-        _db.ChangeTracker.Clear();
+        Db.ChangeTracker.Clear();
 
-        var assignmentAfter = await _db.RosterAssignments
+        var assignmentAfter = await Db.RosterAssignments
             .AsNoTracking()
             .FirstAsync(a => a.AssignmentId == f.Assignment.AssignmentId);
 
         assignmentAfter.AssignmentStatusId.Should().Be(assignmentBefore.AssignmentStatusId);
         assignmentAfter.CreatedAt.Should().Be(assignmentBefore.CreatedAt);
 
-        var assignmentCount = await _db.RosterAssignments.CountAsync();
+        var assignmentCount = await Db.RosterAssignments.CountAsync();
         assignmentCount.Should().Be(1);
 
         // The dispatch writes nothing, so the SystemSetting count is
         // unchanged by the call. TestSeed inserted the required
         // settings during the fixture; the absolute count is not
         // fixed, so assert the count did not grow.
-        var settingCount = await _db.SystemSettings.CountAsync();
+        var settingCount = await Db.SystemSettings.CountAsync();
         settingCount.Should().Be(settingCountBefore);
     }
 }
