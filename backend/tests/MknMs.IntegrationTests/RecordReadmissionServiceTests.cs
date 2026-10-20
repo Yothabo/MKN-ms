@@ -14,54 +14,24 @@ namespace MknMs.IntegrationTests;
 /// <summary>
 /// Tests for RecordReadmissionService (subprocess 3.7).
 /// </summary>
-public class RecordReadmissionServiceTests : IAsyncLifetime
+public class RecordReadmissionServiceTests : IntegrationTestBase
 {
-    private const string TestConnectionString =
-        "Host=127.0.0.1;Port=5432;Database=mkn_test;Username=mkn_dev";
-
-    private MknDbContext _db = null!;
-
-    public async Task InitializeAsync()
-    {
-        var options = new DbContextOptionsBuilder<MknDbContext>()
-            .UseNpgsql(TestConnectionString)
-            .Options;
-
-        _db = new MknDbContext(options);
-
-        await _db.Database.ExecuteSqlRawAsync(
-            "TRUNCATE TABLE readmission, attendance_rule_scope, attendance_rule, " +
-            "member_attribute_value, attribute_type, member_status, " +
-            "member, branch, role, admin, permission_tier " +
-            "RESTART IDENTITY CASCADE;");
-    }
-
-    public Task DisposeAsync()
-    {
-        _db.Dispose();
-        return Task.CompletedTask;
-    }
-
     private sealed record Fixture(int MemberId, int AdminId, int StatusId);
 
     private async Task<Fixture> SeedAsync(bool adminActive = true)
     {
         var role = new Role { Name = "R", IsDefault = true, IsDeleted = false };
         var branch = new Branch { Name = "B", Location = "L", IsDeleted = false };
-        var status = new MemberStatus
-        {
-            Name = "Active", IsRosterable = true, IsDefault = true, IsDeleted = false,
-        };
+        var statusId = await TestSeed.EnsureDefaultMemberStatusAsync(Db);
         var tier = new PermissionTier
         {
             Name = "Full Admin", IsDefault = true, IsDeleted = false,
         };
 
-        _db.Roles.Add(role);
-        _db.Branches.Add(branch);
-        _db.MemberStatuses.Add(status);
-        _db.PermissionTiers.Add(tier);
-        await _db.SaveChangesAsync();
+        Db.Roles.Add(role);
+        Db.Branches.Add(branch);
+        Db.PermissionTiers.Add(tier);
+        await Db.SaveChangesAsync();
 
         var member = new Member
         {
@@ -71,10 +41,10 @@ public class RecordReadmissionServiceTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Other",
             Phone = "+27-0", Email = null,
             BranchId = branch.BranchId, RoleId = role.RoleId,
-            MemberStatusId = status.MemberStatusId,
+            MemberStatusId = statusId,
         };
-        _db.Members.Add(member);
-        await _db.SaveChangesAsync();
+        Db.Members.Add(member);
+        await Db.SaveChangesAsync();
 
         var admin = new Admin
         {
@@ -82,17 +52,17 @@ public class RecordReadmissionServiceTests : IAsyncLifetime
             PermissionTierId = tier.PermissionTierId,
             IsActive = adminActive,
         };
-        _db.Admins.Add(admin);
-        await _db.SaveChangesAsync();
+        Db.Admins.Add(admin);
+        await Db.SaveChangesAsync();
 
-        return new Fixture(member.MemberId, admin.AdminId, status.MemberStatusId);
+        return new Fixture(member.MemberId, admin.AdminId, statusId);
     }
 
     [Fact]
     public async Task Record_WithValidMember_CreatesRow()
     {
         var f = await SeedAsync();
-        var service = new RecordReadmissionService(_db);
+        var service = new RecordReadmissionService(Db);
 
         var result = await service.RecordAsync(new RecordReadmissionCommand
         {
@@ -108,7 +78,7 @@ public class RecordReadmissionServiceTests : IAsyncLifetime
         result.Value.PerformedByAdminId.Should().Be(f.AdminId);
         result.Value.Reason.Should().Be("returned from leave");
 
-        var persisted = await _db.Readmissions.AsNoTracking()
+        var persisted = await Db.Readmissions.AsNoTracking()
             .FirstAsync(r => r.ReadmissionId == result.Value.ReadmissionId);
         persisted.MemberId.Should().Be(f.MemberId);
     }
@@ -117,7 +87,7 @@ public class RecordReadmissionServiceTests : IAsyncLifetime
     public async Task Record_WithMissingMember_Fails()
     {
         var f = await SeedAsync();
-        var service = new RecordReadmissionService(_db);
+        var service = new RecordReadmissionService(Db);
 
         var result = await service.RecordAsync(new RecordReadmissionCommand
         {
@@ -129,7 +99,7 @@ public class RecordReadmissionServiceTests : IAsyncLifetime
         result.IsSuccess.Should().BeFalse();
         result.Error!.Code.Should().Be(ConfigurationErrorCodes.NotFound);
 
-        var count = await _db.Readmissions.CountAsync();
+        var count = await Db.Readmissions.CountAsync();
         count.Should().Be(0);
     }
 
@@ -137,7 +107,7 @@ public class RecordReadmissionServiceTests : IAsyncLifetime
     public async Task Record_WithInactiveAdmin_Fails()
     {
         var f = await SeedAsync(adminActive: false);
-        var service = new RecordReadmissionService(_db);
+        var service = new RecordReadmissionService(Db);
 
         var result = await service.RecordAsync(new RecordReadmissionCommand
         {
@@ -149,7 +119,7 @@ public class RecordReadmissionServiceTests : IAsyncLifetime
         result.IsSuccess.Should().BeFalse();
         result.Error!.Code.Should().Be(ConfigurationErrorCodes.ReferencedEntityInactive);
 
-        var count = await _db.Readmissions.CountAsync();
+        var count = await Db.Readmissions.CountAsync();
         count.Should().Be(0);
     }
 
@@ -157,7 +127,7 @@ public class RecordReadmissionServiceTests : IAsyncLifetime
     public async Task Record_DoesNotModifyMemberStatus()
     {
         var f = await SeedAsync();
-        var service = new RecordReadmissionService(_db);
+        var service = new RecordReadmissionService(Db);
 
         var result = await service.RecordAsync(new RecordReadmissionCommand
         {
@@ -168,8 +138,8 @@ public class RecordReadmissionServiceTests : IAsyncLifetime
 
         result.IsSuccess.Should().BeTrue();
 
-        _db.ChangeTracker.Clear();
-        var member = await _db.Members.AsNoTracking()
+        Db.ChangeTracker.Clear();
+        var member = await Db.Members.AsNoTracking()
             .FirstAsync(m => m.MemberId == f.MemberId);
         member.MemberStatusId.Should().Be(f.StatusId);
     }
@@ -178,9 +148,9 @@ public class RecordReadmissionServiceTests : IAsyncLifetime
     public async Task Record_DoesNotWriteAuditLog()
     {
         var f = await SeedAsync();
-        var service = new RecordReadmissionService(_db);
+        var service = new RecordReadmissionService(Db);
 
-        var before = await _db.ConfigurationAuditLogs.CountAsync();
+        var before = await Db.ConfigurationAuditLogs.CountAsync();
 
         await service.RecordAsync(new RecordReadmissionCommand
         {
@@ -189,7 +159,7 @@ public class RecordReadmissionServiceTests : IAsyncLifetime
             ActingAdminId = f.AdminId,
         });
 
-        var after = await _db.ConfigurationAuditLogs.CountAsync();
+        var after = await Db.ConfigurationAuditLogs.CountAsync();
         after.Should().Be(before);
     }
 
@@ -197,7 +167,7 @@ public class RecordReadmissionServiceTests : IAsyncLifetime
     public async Task Record_IncreasesReadmissionCount()
     {
         var f = await SeedAsync();
-        var service = new RecordReadmissionService(_db);
+        var service = new RecordReadmissionService(Db);
 
         await service.RecordAsync(new RecordReadmissionCommand
         {
@@ -206,7 +176,7 @@ public class RecordReadmissionServiceTests : IAsyncLifetime
             ActingAdminId = f.AdminId,
         });
 
-        var count = await _db.Readmissions
+        var count = await Db.Readmissions
             .CountAsync(r => r.MemberId == f.MemberId);
         count.Should().Be(1);
     }

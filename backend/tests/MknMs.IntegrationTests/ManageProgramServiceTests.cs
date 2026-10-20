@@ -17,39 +17,12 @@ namespace MknMs.IntegrationTests;
 /// Tests for ManageProgramService.SoftDeleteAsync and the Program
 /// cascade.
 /// </summary>
-public class ManageProgramServiceTests : IAsyncLifetime
+public class ManageProgramServiceTests : IntegrationTestBase
 {
-    private const string TestConnectionString =
-        "Host=127.0.0.1;Port=5432;Database=mkn_test;Username=mkn_dev";
-
     private static readonly DateTimeOffset Now =
         new(2026, 10, 14, 8, 0, 0, TimeSpan.Zero);
 
-    private MknDbContext _db = null!;
-    private TimeProvider _clock = null!;
-
-    public async Task InitializeAsync()
-    {
-        var options = new DbContextOptionsBuilder<MknDbContext>()
-            .UseNpgsql(TestConnectionString)
-            .Options;
-
-        _db = new MknDbContext(options);
-        _clock = new FakeTimeProvider(Now);
-
-        await _db.Database.ExecuteSqlRawAsync(
-            "TRUNCATE TABLE configuration_audit_log, entity_deletion_policy, " +
-            "notification_subscription, event_duty, program_item, program, " +
-            "member, member_status, branch, role, duty, event, admin, " +
-            "permission_tier " +
-            "RESTART IDENTITY CASCADE;");
-    }
-
-    public Task DisposeAsync()
-    {
-        _db.Dispose();
-        return Task.CompletedTask;
-    }
+    private readonly TimeProvider _clock = new FakeTimeProvider(Now);
 
     private sealed record Fixture(int ProgramId, int AdminId, int ItemId);
 
@@ -57,24 +30,20 @@ public class ManageProgramServiceTests : IAsyncLifetime
     {
         var role = new Role { Name = "R", IsDefault = true, IsDeleted = false };
         var branch = new Branch { Name = "B", Location = "L", IsDeleted = false };
-        var status = new MemberStatus
-        {
-            Name = "Active", IsRosterable = true, IsDefault = true, IsDeleted = false,
-        };
+        var statusId = await TestSeed.EnsureDefaultMemberStatusAsync(Db);
         var tier = new PermissionTier
         {
             Name = "Full Admin", IsDefault = true, IsDeleted = false,
         };
         var duty = new Duty { Name = "MC duty", IsDeleted = false };
 
-        _db.Roles.Add(role);
-        _db.Branches.Add(branch);
-        _db.MemberStatuses.Add(status);
-        _db.PermissionTiers.Add(tier);
-        _db.Duties.Add(duty);
-        await _db.SaveChangesAsync();
+        Db.Roles.Add(role);
+        Db.Branches.Add(branch);
+        Db.PermissionTiers.Add(tier);
+        Db.Duties.Add(duty);
+        await Db.SaveChangesAsync();
 
-        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        Db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
         {
             EntityType = "Program",
             RequiresApprovalForDelete = false,
@@ -84,7 +53,7 @@ public class ManageProgramServiceTests : IAsyncLifetime
             IsActive = true,
             IsDeleted = false,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
 
         var member = new Member
@@ -95,18 +64,18 @@ public class ManageProgramServiceTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Other",
             Phone = "+27-0", Email = null,
             BranchId = branch.BranchId, RoleId = role.RoleId,
-            MemberStatusId = status.MemberStatusId,
+            MemberStatusId = statusId,
         };
-        _db.Members.Add(member);
-        await _db.SaveChangesAsync();
+        Db.Members.Add(member);
+        await Db.SaveChangesAsync();
 
         var admin = new Admin
         {
             MemberId = member.MemberId,
             PermissionTierId = tier.PermissionTierId,
         };
-        _db.Admins.Add(admin);
-        await _db.SaveChangesAsync();
+        Db.Admins.Add(admin);
+        await Db.SaveChangesAsync();
 
         var evt = new Event
         {
@@ -117,8 +86,8 @@ public class ManageProgramServiceTests : IAsyncLifetime
             HostBranchId = branch.BranchId,
             IsDeleted = false,
         };
-        _db.Events.Add(evt);
-        await _db.SaveChangesAsync();
+        Db.Events.Add(evt);
+        await Db.SaveChangesAsync();
 
         var program = new MknMs.Domain.D9_EventProgram.Program
         {
@@ -126,8 +95,8 @@ public class ManageProgramServiceTests : IAsyncLifetime
             Title = "Main",
             IsDeleted = false,
         };
-        _db.Programs.Add(program);
-        await _db.SaveChangesAsync();
+        Db.Programs.Add(program);
+        await Db.SaveChangesAsync();
 
         var item = new ProgramItem
         {
@@ -138,16 +107,16 @@ public class ManageProgramServiceTests : IAsyncLifetime
             ScheduledEnd = Now.AddDays(15).AddHours(1),
             IsDeleted = false,
         };
-        _db.ProgramItems.Add(item);
-        await _db.SaveChangesAsync();
+        Db.ProgramItems.Add(item);
+        await Db.SaveChangesAsync();
 
         return new Fixture(program.ProgramId, admin.AdminId, item.ItemId);
     }
 
     private ManageProgramService MakeService() =>
-        new(_db,
-            new ConfigurationLifecycleService(_db, _clock),
-            new ConfigurationCascadeService(_db));
+        new(Db,
+            new ConfigurationLifecycleService(Db, _clock),
+            new ConfigurationCascadeService(Db));
 
     [Fact]
     public async Task SoftDelete_RemovesItems_RetainsProgram()
@@ -160,14 +129,14 @@ public class ManageProgramServiceTests : IAsyncLifetime
 
         result.IsSuccess.Should().BeTrue();
 
-        (await _db.ProgramItems.CountAsync()).Should().Be(0);
+        (await Db.ProgramItems.CountAsync()).Should().Be(0);
 
-        var program = await _db.Programs
+        var program = await Db.Programs
             .AsNoTracking()
             .FirstAsync(p => p.ProgramId == f.ProgramId);
         program.IsDeleted.Should().BeTrue();
 
-        var audit = await _db.ConfigurationAuditLogs.SingleAsync();
+        var audit = await Db.ConfigurationAuditLogs.SingleAsync();
         audit.Action.Should().Be(ConfigurationLifecycleActions.SoftDelete);
         audit.ConsequencesPreviewed.Should().Contain("removed");
     }

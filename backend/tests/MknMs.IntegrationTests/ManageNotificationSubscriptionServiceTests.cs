@@ -15,38 +15,12 @@ namespace MknMs.IntegrationTests;
 /// <summary>
 /// Tests for ManageNotificationSubscriptionService.
 /// </summary>
-public class ManageNotificationSubscriptionServiceTests : IAsyncLifetime
+public class ManageNotificationSubscriptionServiceTests : IntegrationTestBase
 {
-    private const string TestConnectionString =
-        "Host=127.0.0.1;Port=5432;Database=mkn_test;Username=mkn_dev";
-
     private static readonly DateTimeOffset Now =
         new(2026, 10, 18, 12, 0, 0, TimeSpan.Zero);
 
-    private MknDbContext _db = null!;
-    private TimeProvider _clock = null!;
-
-    public async Task InitializeAsync()
-    {
-        var options = new DbContextOptionsBuilder<MknDbContext>()
-            .UseNpgsql(TestConnectionString)
-            .Options;
-
-        _db = new MknDbContext(options);
-        _clock = new FakeTimeProvider(Now);
-
-        await _db.Database.ExecuteSqlRawAsync(
-            "TRUNCATE TABLE configuration_audit_log, entity_deletion_policy, " +
-            "notification_subscription, admin, member, member_status, branch, " +
-            "role, permission_tier " +
-            "RESTART IDENTITY CASCADE;");
-    }
-
-    public Task DisposeAsync()
-    {
-        _db.Dispose();
-        return Task.CompletedTask;
-    }
+    private readonly TimeProvider _clock = new FakeTimeProvider(Now);
 
     private sealed record Fixture(int AdminId, int TierId);
 
@@ -54,20 +28,16 @@ public class ManageNotificationSubscriptionServiceTests : IAsyncLifetime
     {
         var role = new Role { Name = "R", IsDefault = true, IsDeleted = false };
         var branch = new Branch { Name = "B", Location = "L", IsDeleted = false };
-        var status = new MemberStatus
-        {
-            Name = "Active", IsRosterable = true, IsDefault = true, IsDeleted = false,
-        };
+        var statusId = await TestSeed.EnsureDefaultMemberStatusAsync(Db);
         var tier = new PermissionTier
         {
             Name = "Full Admin", IsDefault = true, IsDeleted = false,
         };
 
-        _db.Roles.Add(role);
-        _db.Branches.Add(branch);
-        _db.MemberStatuses.Add(status);
-        _db.PermissionTiers.Add(tier);
-        await _db.SaveChangesAsync();
+        Db.Roles.Add(role);
+        Db.Branches.Add(branch);
+        Db.PermissionTiers.Add(tier);
+        await Db.SaveChangesAsync();
 
         var member = new Member
         {
@@ -77,10 +47,10 @@ public class ManageNotificationSubscriptionServiceTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Other",
             Phone = "+27-0", Email = null,
             BranchId = branch.BranchId, RoleId = role.RoleId,
-            MemberStatusId = status.MemberStatusId,
+            MemberStatusId = statusId,
         };
-        _db.Members.Add(member);
-        await _db.SaveChangesAsync();
+        Db.Members.Add(member);
+        await Db.SaveChangesAsync();
 
         var admin = new Admin
         {
@@ -88,10 +58,10 @@ public class ManageNotificationSubscriptionServiceTests : IAsyncLifetime
             PermissionTierId = tier.PermissionTierId,
             IsActive = true,
         };
-        _db.Admins.Add(admin);
-        await _db.SaveChangesAsync();
+        Db.Admins.Add(admin);
+        await Db.SaveChangesAsync();
 
-        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        Db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
         {
             EntityType = "NotificationSubscription",
             RequiresApprovalForDelete = false,
@@ -101,15 +71,15 @@ public class ManageNotificationSubscriptionServiceTests : IAsyncLifetime
             IsActive = true,
             IsDeleted = false,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         return new Fixture(admin.AdminId, tier.PermissionTierId);
     }
 
     private ManageNotificationSubscriptionService MakeService() =>
-        new(_db,
-            new ConfigurationLifecycleService(_db, _clock),
-            new ConfigurationCascadeService(_db));
+        new(Db,
+            new ConfigurationLifecycleService(Db, _clock),
+            new ConfigurationCascadeService(Db));
 
     [Fact]
     public async Task Create_WithTier_Succeeds()
@@ -184,9 +154,9 @@ public class ManageNotificationSubscriptionServiceTests : IAsyncLifetime
     public async Task Create_WithInactiveAdmin_Fails()
     {
         var f = await SeedAsync();
-        var admin = await _db.Admins.FirstAsync(a => a.AdminId == f.AdminId);
+        var admin = await Db.Admins.FirstAsync(a => a.AdminId == f.AdminId);
         admin.IsActive = false;
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         var service = MakeService();
         var result = await service.CreateAsync(
@@ -229,12 +199,12 @@ public class ManageNotificationSubscriptionServiceTests : IAsyncLifetime
 
         result.IsSuccess.Should().BeTrue();
 
-        var persisted = await _db.NotificationSubscriptions.AsNoTracking()
+        var persisted = await Db.NotificationSubscriptions.AsNoTracking()
             .FirstAsync(s => s.SubscriptionId == created.Value.SubscriptionId);
         persisted.IsActive.Should().BeFalse();
         persisted.IsDeleted.Should().BeFalse();
 
-        var audit = await _db.ConfigurationAuditLogs.SingleAsync();
+        var audit = await Db.ConfigurationAuditLogs.SingleAsync();
         audit.Action.Should().Be(ConfigurationLifecycleActions.Deactivate);
     }
 
@@ -250,12 +220,12 @@ public class ManageNotificationSubscriptionServiceTests : IAsyncLifetime
 
         result.IsSuccess.Should().BeTrue();
 
-        var persisted = await _db.NotificationSubscriptions.AsNoTracking()
+        var persisted = await Db.NotificationSubscriptions.AsNoTracking()
             .FirstAsync(s => s.SubscriptionId == created.Value.SubscriptionId);
         persisted.IsDeleted.Should().BeTrue();
         persisted.IsActive.Should().BeFalse();
 
-        var audit = await _db.ConfigurationAuditLogs.SingleAsync();
+        var audit = await Db.ConfigurationAuditLogs.SingleAsync();
         audit.Action.Should().Be(ConfigurationLifecycleActions.SoftDelete);
         audit.ConsequencesPreviewed.Should().Contain("No dependent changes apply");
     }
