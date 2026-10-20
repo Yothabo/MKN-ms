@@ -14,35 +14,28 @@ namespace MknMs.IntegrationTests;
 /// <summary>
 /// Tests for ConfigurationCascadeService.
 /// </summary>
-public class ConfigurationCascadeServiceTests : IAsyncLifetime
+public class ConfigurationCascadeServiceTests : IntegrationTestBase
 {
-    private const string TestConnectionString =
-        "Host=127.0.0.1;Port=5432;Database=mkn_test;Username=mkn_dev";
-
-    private MknDbContext _db = null!;
-
-    public async Task InitializeAsync()
+    protected override async Task OnInitializedAsync()
     {
-        var options = new DbContextOptionsBuilder<MknDbContext>()
-            .UseNpgsql(TestConnectionString)
-            .Options;
-
-        _db = new MknDbContext(options);
-
-        await _db.Database.ExecuteSqlRawAsync(
-            "TRUNCATE TABLE configuration_audit_log, entity_deletion_policy, " +
-            "notification_subscription, roster_assignment, event_duty, " +
-            "program_item, program, event_branch, event, " +
-            "service_definition_duty, service_schedule, " +
-            "duty_rule, member, member_status, branch, role, duty, " +
-            "admin, permission_tier " +
-            "RESTART IDENTITY CASCADE;");
-    }
-
-    public Task DisposeAsync()
-    {
-        _db.Dispose();
-        return Task.CompletedTask;
+        // The seed in each fact inserts a default Role and a default
+        // MemberStatus. The per-class database persists across facts,
+        // and Role_NonDefault_WithoutDefaultRole_FailsConfigurationMissing
+        // requires that no default Role exist at all. Clear the seed
+        // range before each fact. The migration's BackfillMemberStatus
+        // row is also cleared here, so the seed's MemberStatus is the
+        // only one when the fact runs.
+        Db.DutyRules.RemoveRange(Db.DutyRules);
+        Db.ServiceDefinitionDuties.RemoveRange(Db.ServiceDefinitionDuties);
+        Db.ServiceDefinitions.RemoveRange(Db.ServiceDefinitions);
+        Db.ServiceTypes.RemoveRange(Db.ServiceTypes);
+        Db.Admins.RemoveRange(Db.Admins);
+        Db.Members.RemoveRange(Db.Members);
+        Db.Duties.RemoveRange(Db.Duties);
+        Db.Branches.RemoveRange(Db.Branches);
+        Db.MemberStatuses.RemoveRange(Db.MemberStatuses);
+        Db.Roles.RemoveRange(Db.Roles);
+        await Db.SaveChangesAsync();
     }
 
     private async Task<(int branchId, int statusId, int roleId)> SeedBasicsAsync()
@@ -55,11 +48,11 @@ public class ConfigurationCascadeServiceTests : IAsyncLifetime
             Name = "Active", IsRosterable = true, IsDefault = true, IsDeleted = false,
         };
 
-        _db.Roles.Add(role);
-        _db.Roles.Add(defaultRole);
-        _db.Branches.Add(branch);
-        _db.MemberStatuses.Add(status);
-        await _db.SaveChangesAsync();
+        Db.Roles.Add(role);
+        Db.Roles.Add(defaultRole);
+        Db.Branches.Add(branch);
+        Db.MemberStatuses.Add(status);
+        await Db.SaveChangesAsync();
 
         return (branch.BranchId, status.MemberStatusId, role.RoleId);
     }
@@ -69,8 +62,8 @@ public class ConfigurationCascadeServiceTests : IAsyncLifetime
     {
         var (_, _, _) = await SeedBasicsAsync();
 
-        var defaultRole = await _db.Roles.FirstAsync(r => r.IsDefault);
-        var service = new ConfigurationCascadeService(_db);
+        var defaultRole = await Db.Roles.FirstAsync(r => r.IsDefault);
+        var service = new ConfigurationCascadeService(Db);
 
         var result = await service.ApplyAsync(nameof(Role), defaultRole.RoleId);
 
@@ -83,7 +76,7 @@ public class ConfigurationCascadeServiceTests : IAsyncLifetime
     public async Task Role_NonDefault_FallsBackMembersAndSoftDeletesRules()
     {
         var (branchId, statusId, roleId) = await SeedBasicsAsync();
-        var defaultRole = await _db.Roles.FirstAsync(r => r.IsDefault);
+        var defaultRole = await Db.Roles.FirstAsync(r => r.IsDefault);
 
         var member = new Member
         {
@@ -95,7 +88,7 @@ public class ConfigurationCascadeServiceTests : IAsyncLifetime
             BranchId = branchId, RoleId = roleId,
             MemberStatusId = statusId,
         };
-        _db.Members.Add(member);
+        Db.Members.Add(member);
 
         var rule = new DutyRule
         {
@@ -106,14 +99,14 @@ public class ConfigurationCascadeServiceTests : IAsyncLifetime
             IsDeleted = false,
         };
         var duty = new Duty { Name = "Reading", IsDeleted = false };
-        _db.Duties.Add(duty);
-        await _db.SaveChangesAsync();
+        Db.Duties.Add(duty);
+        await Db.SaveChangesAsync();
 
         rule.DutyId = duty.DutyId;
-        _db.DutyRules.Add(rule);
-        await _db.SaveChangesAsync();
+        Db.DutyRules.Add(rule);
+        await Db.SaveChangesAsync();
 
-        var service = new ConfigurationCascadeService(_db);
+        var service = new ConfigurationCascadeService(Db);
         var result = await service.ApplyAsync(nameof(Role), roleId);
 
         result.IsSuccess.Should().BeTrue();
@@ -131,10 +124,10 @@ public class ConfigurationCascadeServiceTests : IAsyncLifetime
     public async Task Role_NonDefault_WithoutDefaultRole_FailsConfigurationMissing()
     {
         var role = new Role { Name = "Only", IsDeleted = false };
-        _db.Roles.Add(role);
-        await _db.SaveChangesAsync();
+        Db.Roles.Add(role);
+        await Db.SaveChangesAsync();
 
-        var service = new ConfigurationCascadeService(_db);
+        var service = new ConfigurationCascadeService(Db);
         var result = await service.ApplyAsync(nameof(Role), role.RoleId);
 
         result.IsSuccess.Should().BeFalse();
@@ -147,29 +140,29 @@ public class ConfigurationCascadeServiceTests : IAsyncLifetime
         var (_, _, _) = await SeedBasicsAsync();
 
         var duty = new Duty { Name = "Reading", IsDeleted = false };
-        _db.Duties.Add(duty);
+        Db.Duties.Add(duty);
 
         var serviceType = new ServiceType { Name = "Regular" };
-        _db.ServiceTypes.Add(serviceType);
-        await _db.SaveChangesAsync();
+        Db.ServiceTypes.Add(serviceType);
+        await Db.SaveChangesAsync();
 
         var definition = new ServiceDefinition
         {
             Name = "S", ServiceTypeId = serviceType.ServiceTypeId, IsDeleted = false,
         };
-        _db.ServiceDefinitions.Add(definition);
-        await _db.SaveChangesAsync();
+        Db.ServiceDefinitions.Add(definition);
+        await Db.SaveChangesAsync();
 
-        _db.ServiceDefinitionDuties.Add(new ServiceDefinitionDuty
+        Db.ServiceDefinitionDuties.Add(new ServiceDefinitionDuty
         {
             ServiceDefId = definition.ServiceDefId,
             DutyId = duty.DutyId,
             RequiredSlotCount = 1,
             IsDeleted = false,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var cascade = new ConfigurationCascadeService(_db);
+        var cascade = new ConfigurationCascadeService(Db);
         var result = await cascade.ApplyAsync(nameof(Duty), duty.DutyId);
 
         result.IsSuccess.Should().BeTrue();
@@ -183,10 +176,10 @@ public class ConfigurationCascadeServiceTests : IAsyncLifetime
         await SeedBasicsAsync();
 
         var duty = new Duty { Name = "Unused", IsDeleted = false };
-        _db.Duties.Add(duty);
-        await _db.SaveChangesAsync();
+        Db.Duties.Add(duty);
+        await Db.SaveChangesAsync();
 
-        var service = new ConfigurationCascadeService(_db);
+        var service = new ConfigurationCascadeService(Db);
         var result = await service.ApplyAsync(nameof(Duty), duty.DutyId);
 
         result.IsSuccess.Should().BeTrue();
@@ -198,7 +191,7 @@ public class ConfigurationCascadeServiceTests : IAsyncLifetime
     {
         await SeedBasicsAsync();
 
-        var service = new ConfigurationCascadeService(_db);
+        var service = new ConfigurationCascadeService(Db);
         var result = await service.ApplyAsync("SomethingElse", 1);
 
         result.IsSuccess.Should().BeFalse();
@@ -210,7 +203,7 @@ public class ConfigurationCascadeServiceTests : IAsyncLifetime
     public async Task DoesNotCommit()
     {
         var (branchId, statusId, roleId) = await SeedBasicsAsync();
-        var defaultRole = await _db.Roles.FirstAsync(r => r.IsDefault);
+        var defaultRole = await Db.Roles.FirstAsync(r => r.IsDefault);
 
         var member = new Member
         {
@@ -222,17 +215,14 @@ public class ConfigurationCascadeServiceTests : IAsyncLifetime
             BranchId = branchId, RoleId = roleId,
             MemberStatusId = statusId,
         };
-        _db.Members.Add(member);
-        await _db.SaveChangesAsync();
+        Db.Members.Add(member);
+        await Db.SaveChangesAsync();
 
-        var service = new ConfigurationCascadeService(_db);
+        var service = new ConfigurationCascadeService(Db);
         await service.ApplyAsync(nameof(Role), roleId);
 
         // Same context: no save yet, so a fresh context sees no change.
-        var options = new DbContextOptionsBuilder<MknDbContext>()
-            .UseNpgsql(TestConnectionString)
-            .Options;
-        await using var fresh = new MknDbContext(options);
+        await using var fresh = CreateContext();
         var persisted = await fresh.Members
             .FirstAsync(m => m.MemberId == member.MemberId);
 
