@@ -34,52 +34,22 @@ namespace MknMs.IntegrationTests;
 /// Reference: docs/processes/operations/5.0-generate-assignment.md,
 /// Specification §5 and §10.
 /// </remarks>
-public class GenerateAssignmentTests : IAsyncLifetime
+public class GenerateAssignmentTests : IntegrationTestBase
 {
-    private const string TestConnectionString =
-        "Host=127.0.0.1;Port=5432;Database=mkn_test;Username=mkn_dev";
+    private readonly IDispatchNotificationService _notification = new FakeDispatchNotificationService();
+    private readonly TimeProvider _clock = new FakeTimeProvider(
+        new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero));
 
-    private MknDbContext _db = null!;
-    private IDispatchNotificationService _notification = null!;
-    private TimeProvider _clock = null!;
-
-    public async Task InitializeAsync()
+    protected override async Task OnInitializedAsync()
     {
-        var options = new DbContextOptionsBuilder<MknDbContext>()
-            .UseNpgsql(TestConnectionString)
-            .Options;
-
-        _db = new MknDbContext(options);
-        _notification = new FakeDispatchNotificationService();
-        // superseded: NullLogger no longer needed
-        _clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero));
-
-        await _db.Database.ExecuteSqlRawAsync(
-            "TRUNCATE TABLE materializer_run, attendance_record, roster_assignment, " +
-            "service_occurrence_duty, service_occurrence, service_schedule, " +
-            "service_definition_duty, branch_time_slot, service_definition, " +
-            "service_type, time_of_day, branch, identifier_history, eligibility, " +
-            "duty_rule, admin, member, member_attribute_value, member_status, " +
-            "attendance_rule_scope, attendance_rule, readmission, role, duty, " +
-            "system_setting, outcome_state, assignment_status, permission_tier, " +
-            "attribute_type, capability, event_branch, configuration_audit_log, " +
-            "entity_deletion_policy, notification_subscription " +
-            "RESTART IDENTITY CASCADE;");
-
-        await TestSeed.EnsureRequiredSettingsAsync(_db);
-    }
-
-    public Task DisposeAsync()
-    {
-        _db.Dispose();
-        return Task.CompletedTask;
+        await TestSeed.EnsureRequiredSettingsAsync(Db);
     }
 
     [Fact]
     public async Task Run_WithMixedEligibilityAndTier_ProducesExpectedOutcome()
     {
         var fixture = await SeedFixtureAsync();
-        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<GenerateAssignmentService>.Instance);
+        var service = new GenerateAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
 
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
@@ -99,7 +69,7 @@ public class GenerateAssignmentTests : IAsyncLifetime
         result.DutiesUnfilled.Should().Be(1);
         result.DutiesPartiallyFilled.Should().Be(0);
 
-        var assignments = await _db.RosterAssignments.ToListAsync();
+        var assignments = await Db.RosterAssignments.ToListAsync();
         assignments.Should().HaveCount(1);
 
         var reading = assignments.Single();
@@ -116,21 +86,21 @@ public class GenerateAssignmentTests : IAsyncLifetime
     public async Task Run_Twice_IsIdempotent()
     {
         var fixture = await SeedFixtureAsync();
-        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<GenerateAssignmentService>.Instance);
+        var service = new GenerateAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
 
         var first = await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = fixture.OccurrenceId,
         });
 
-        var countAfterFirst = await _db.RosterAssignments.CountAsync();
+        var countAfterFirst = await Db.RosterAssignments.CountAsync();
 
         var second = await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = fixture.OccurrenceId,
         });
 
-        var countAfterSecond = await _db.RosterAssignments.CountAsync();
+        var countAfterSecond = await Db.RosterAssignments.CountAsync();
 
         first.AssignmentsCreated.Should().Be(1);
         second.AssignmentsCreated.Should().Be(0);
@@ -141,7 +111,7 @@ public class GenerateAssignmentTests : IAsyncLifetime
     public async Task Run_WithNoEligibility_ProducesNoAssignments()
     {
         var fixture = await SeedFixtureAsync(includeEligibility: false);
-        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<GenerateAssignmentService>.Instance);
+        var service = new GenerateAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
 
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
@@ -151,7 +121,7 @@ public class GenerateAssignmentTests : IAsyncLifetime
         result.Status.Should().Be("Success");
         result.AssignmentsCreated.Should().Be(0);
 
-        var assignments = await _db.RosterAssignments.CountAsync();
+        var assignments = await Db.RosterAssignments.CountAsync();
         assignments.Should().Be(0);
     }
 
@@ -159,7 +129,7 @@ public class GenerateAssignmentTests : IAsyncLifetime
     public async Task Run_WithInvalidCommand_ReturnsFailure()
     {
         await SeedFixtureAsync();
-        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<GenerateAssignmentService>.Instance);
+        var service = new GenerateAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
 
         // Neither occurrence nor range supplied.
         var result = await service.RunAsync(new GenerateAssignmentCommand());
@@ -181,38 +151,38 @@ public class GenerateAssignmentTests : IAsyncLifetime
     {
         // Lookups
         var outcomeState = new OutcomeState { Name = "Unfilled" };
-        _db.OutcomeStates.Add(outcomeState);
+        Db.OutcomeStates.Add(outcomeState);
 
         var serviceType = new ServiceType { Name = "Regular" };
-        _db.ServiceTypes.Add(serviceType);
+        Db.ServiceTypes.Add(serviceType);
 
         var timeOfDay = new TimeOfDay { Name = "Morning" };
-        _db.TimeOfDays.Add(timeOfDay);
+        Db.TimeOfDays.Add(timeOfDay);
 
         // Roles
         var coordinator = new Role { Name = "Coordinator", IsActive = true };
         var steward = new Role { Name = "Steward", IsActive = true };
-        _db.Roles.Add(coordinator);
-        _db.Roles.Add(steward);
+        Db.Roles.Add(coordinator);
+        Db.Roles.Add(steward);
 
         // Duties
         var welcomeDuty = new Duty { Name = "Welcome duty", IsActive = true };
         var readingDuty = new Duty { Name = "Reading duty", IsActive = true };
-        _db.Duties.Add(welcomeDuty);
-        _db.Duties.Add(readingDuty);
+        Db.Duties.Add(welcomeDuty);
+        Db.Duties.Add(readingDuty);
 
         // Branch
         var branch = new Branch { Name = "Main", Location = "Main Street", IsActive = true };
-        _db.Branches.Add(branch);
+        Db.Branches.Add(branch);
 
         // Permission tier + admin
         var tier = new PermissionTier { Name = "Full Admin" };
-        _db.PermissionTiers.Add(tier);
+        Db.PermissionTiers.Add(tier);
 
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         // Members
-        var statusId = await TestSeed.EnsureDefaultMemberStatusAsync(_db);
+        var statusId = await TestSeed.EnsureDefaultMemberStatusAsync(Db);
 
         var alex = new Member
         {
@@ -244,11 +214,11 @@ public class GenerateAssignmentTests : IAsyncLifetime
             BranchId = branch.BranchId, RoleId = steward.RoleId,
             MemberStatusId = statusId,
         };
-        _db.Members.Add(alex);
-        _db.Members.Add(beatrice);
-        _db.Members.Add(dana);
+        Db.Members.Add(alex);
+        Db.Members.Add(beatrice);
+        Db.Members.Add(dana);
 
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         // Admin row for Alex.
         var admin = new Admin
@@ -256,8 +226,8 @@ public class GenerateAssignmentTests : IAsyncLifetime
             MemberId = alex.MemberId,
             PermissionTierId = tier.PermissionTierId,
         };
-        _db.Admins.Add(admin);
-        await _db.SaveChangesAsync();
+        Db.Admins.Add(admin);
+        await Db.SaveChangesAsync();
 
         // Time slot, service definition, schedule.
         var slot = new BranchTimeSlot
@@ -266,8 +236,8 @@ public class GenerateAssignmentTests : IAsyncLifetime
             DayOfWeek = "Sunday",
             TimeOfDayId = timeOfDay.TimeOfDayId,
         };
-        _db.BranchTimeSlots.Add(slot);
-        await _db.SaveChangesAsync();
+        Db.BranchTimeSlots.Add(slot);
+        await Db.SaveChangesAsync();
 
         var definition = new ServiceDefinition
         {
@@ -275,17 +245,17 @@ public class GenerateAssignmentTests : IAsyncLifetime
             ServiceTypeId = serviceType.ServiceTypeId,
             OwningBranchId = null,
         };
-        _db.ServiceDefinitions.Add(definition);
-        await _db.SaveChangesAsync();
+        Db.ServiceDefinitions.Add(definition);
+        await Db.SaveChangesAsync();
 
         // Attach duties to the definition.
-        _db.ServiceDefinitionDuties.Add(new ServiceDefinitionDuty
+        Db.ServiceDefinitionDuties.Add(new ServiceDefinitionDuty
         {
             ServiceDefId = definition.ServiceDefId,
             DutyId = welcomeDuty.DutyId,
             RequiredSlotCount = 1,
         });
-        _db.ServiceDefinitionDuties.Add(new ServiceDefinitionDuty
+        Db.ServiceDefinitionDuties.Add(new ServiceDefinitionDuty
         {
             ServiceDefId = definition.ServiceDefId,
             DutyId = readingDuty.DutyId,
@@ -299,30 +269,30 @@ public class GenerateAssignmentTests : IAsyncLifetime
             TimeSlotId = slot.TimeSlotId,
             StartTime = new TimeOnly(9, 0),
         };
-        _db.ServiceSchedules.Add(schedule);
-        await _db.SaveChangesAsync();
+        Db.ServiceSchedules.Add(schedule);
+        await Db.SaveChangesAsync();
 
         // Duty rules.
-        _db.DutyRules.Add(new DutyRule
+        Db.DutyRules.Add(new DutyRule
         {
             DutyId = welcomeDuty.DutyId,
             TierOrder = 1,
             CriteriaType = "Role",
             CriteriaValue = "Coordinator",
         });
-        _db.DutyRules.Add(new DutyRule
+        Db.DutyRules.Add(new DutyRule
         {
             DutyId = readingDuty.DutyId,
             TierOrder = 1,
             CriteriaType = "Role",
             CriteriaValue = "Steward",
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         // Eligibility.
         if (includeEligibility)
         {
-            _db.Eligibilities.Add(new Eligibility
+            Db.Eligibilities.Add(new Eligibility
             {
                 MemberId = dana.MemberId,
                 DutyId = welcomeDuty.DutyId,
@@ -331,7 +301,7 @@ public class GenerateAssignmentTests : IAsyncLifetime
                 RevokedDate = null,
                 RevokedReason = null,
             });
-            _db.Eligibilities.Add(new Eligibility
+            Db.Eligibilities.Add(new Eligibility
             {
                 MemberId = beatrice.MemberId,
                 DutyId = readingDuty.DutyId,
@@ -340,7 +310,7 @@ public class GenerateAssignmentTests : IAsyncLifetime
                 RevokedDate = null,
                 RevokedReason = null,
             });
-            await _db.SaveChangesAsync();
+            await Db.SaveChangesAsync();
         }
 
         // The occurrence to fill.
@@ -356,8 +326,8 @@ public class GenerateAssignmentTests : IAsyncLifetime
             CreatedBy = null,
             ChangedBy = null,
         };
-        _db.ServiceOccurrences.Add(occurrence);
-        await _db.SaveChangesAsync();
+        Db.ServiceOccurrences.Add(occurrence);
+        await Db.SaveChangesAsync();
 
         return new Fixture(
             occurrence.OccurrenceId,
@@ -377,13 +347,13 @@ public class GenerateAssignmentTests : IAsyncLifetime
 
         // Replace Reading duty's Tier 1 rule with Gender=Female. Both
         // Beatrice and Dana are Female, but only Beatrice is eligible.
-        var rule = await _db.DutyRules
+        var rule = await Db.DutyRules
             .FirstAsync(r => r.DutyId == fixture.ReadingDutyId);
         rule.CriteriaType = "Gender";
         rule.CriteriaValue = "Female";
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<GenerateAssignmentService>.Instance);
+        var service = new GenerateAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = fixture.OccurrenceId,
@@ -398,13 +368,13 @@ public class GenerateAssignmentTests : IAsyncLifetime
     {
         var fixture = await SeedFixtureAsync();
 
-        var rule = await _db.DutyRules
+        var rule = await Db.DutyRules
             .FirstAsync(r => r.DutyId == fixture.ReadingDutyId);
         rule.CriteriaType = "MembershipStage";
         rule.CriteriaValue = "Full";
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<GenerateAssignmentService>.Instance);
+        var service = new GenerateAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = fixture.OccurrenceId,
@@ -420,13 +390,13 @@ public class GenerateAssignmentTests : IAsyncLifetime
 
         // Beatrice born 1995-03-12. At the fixed test clock (2026-10-06)
         // she is 31. A range of 25-35 matches her.
-        var rule = await _db.DutyRules
+        var rule = await Db.DutyRules
             .FirstAsync(r => r.DutyId == fixture.ReadingDutyId);
         rule.CriteriaType = "AgeRange";
         rule.CriteriaValue = "25-35";
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<GenerateAssignmentService>.Instance);
+        var service = new GenerateAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = fixture.OccurrenceId,
@@ -441,13 +411,13 @@ public class GenerateAssignmentTests : IAsyncLifetime
         var fixture = await SeedFixtureAsync();
 
         // Beatrice is 31. A range of 5-10 does not match.
-        var rule = await _db.DutyRules
+        var rule = await Db.DutyRules
             .FirstAsync(r => r.DutyId == fixture.ReadingDutyId);
         rule.CriteriaType = "AgeRange";
         rule.CriteriaValue = "5-10";
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<GenerateAssignmentService>.Instance);
+        var service = new GenerateAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = fixture.OccurrenceId,
@@ -464,13 +434,13 @@ public class GenerateAssignmentTests : IAsyncLifetime
 
         // Beatrice joined 2024-06-01. At 2026-10-06 she has ~857 days.
         // A 30-day threshold matches.
-        var rule = await _db.DutyRules
+        var rule = await Db.DutyRules
             .FirstAsync(r => r.DutyId == fixture.ReadingDutyId);
         rule.CriteriaType = "Tenure";
         rule.CriteriaValue = "30";
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<GenerateAssignmentService>.Instance);
+        var service = new GenerateAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = fixture.OccurrenceId,
@@ -487,29 +457,29 @@ public class GenerateAssignmentTests : IAsyncLifetime
         // Replace Reading duty's rule set with two tiers:
         //   Tier 1: Role=Coordinator (no eligible match)
         //   Tier 2: Role=Steward (Beatrice matches)
-        var existing = await _db.DutyRules
+        var existing = await Db.DutyRules
             .Where(r => r.DutyId == fixture.ReadingDutyId)
             .ToListAsync();
-        _db.DutyRules.RemoveRange(existing);
-        await _db.SaveChangesAsync();
+        Db.DutyRules.RemoveRange(existing);
+        await Db.SaveChangesAsync();
 
-        _db.DutyRules.Add(new DutyRule
+        Db.DutyRules.Add(new DutyRule
         {
             DutyId = fixture.ReadingDutyId,
             TierOrder = 1,
             CriteriaType = "Role",
             CriteriaValue = "Coordinator",
         });
-        _db.DutyRules.Add(new DutyRule
+        Db.DutyRules.Add(new DutyRule
         {
             DutyId = fixture.ReadingDutyId,
             TierOrder = 2,
             CriteriaType = "Role",
             CriteriaValue = "Steward",
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<GenerateAssignmentService>.Instance);
+        var service = new GenerateAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = fixture.OccurrenceId,
@@ -526,29 +496,29 @@ public class GenerateAssignmentTests : IAsyncLifetime
 
         // Tier 1 for Reading duty: Role=Steward AND Gender=Female.
         // Beatrice matches both; Dana matches both but is not eligible.
-        var existing = await _db.DutyRules
+        var existing = await Db.DutyRules
             .Where(r => r.DutyId == fixture.ReadingDutyId)
             .ToListAsync();
-        _db.DutyRules.RemoveRange(existing);
-        await _db.SaveChangesAsync();
+        Db.DutyRules.RemoveRange(existing);
+        await Db.SaveChangesAsync();
 
-        _db.DutyRules.Add(new DutyRule
+        Db.DutyRules.Add(new DutyRule
         {
             DutyId = fixture.ReadingDutyId,
             TierOrder = 1,
             CriteriaType = "Role",
             CriteriaValue = "Steward",
         });
-        _db.DutyRules.Add(new DutyRule
+        Db.DutyRules.Add(new DutyRule
         {
             DutyId = fixture.ReadingDutyId,
             TierOrder = 1,
             CriteriaType = "Gender",
             CriteriaValue = "Female",
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<GenerateAssignmentService>.Instance);
+        var service = new GenerateAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = fixture.OccurrenceId,
@@ -565,29 +535,29 @@ public class GenerateAssignmentTests : IAsyncLifetime
 
         // Tier 1 for Reading duty: Role=Steward AND Gender=Male.
         // Beatrice is Female. No match.
-        var existing = await _db.DutyRules
+        var existing = await Db.DutyRules
             .Where(r => r.DutyId == fixture.ReadingDutyId)
             .ToListAsync();
-        _db.DutyRules.RemoveRange(existing);
-        await _db.SaveChangesAsync();
+        Db.DutyRules.RemoveRange(existing);
+        await Db.SaveChangesAsync();
 
-        _db.DutyRules.Add(new DutyRule
+        Db.DutyRules.Add(new DutyRule
         {
             DutyId = fixture.ReadingDutyId,
             TierOrder = 1,
             CriteriaType = "Role",
             CriteriaValue = "Steward",
         });
-        _db.DutyRules.Add(new DutyRule
+        Db.DutyRules.Add(new DutyRule
         {
             DutyId = fixture.ReadingDutyId,
             TierOrder = 1,
             CriteriaType = "Gender",
             CriteriaValue = "Male",
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<GenerateAssignmentService>.Instance);
+        var service = new GenerateAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = fixture.OccurrenceId,
@@ -602,13 +572,13 @@ public class GenerateAssignmentTests : IAsyncLifetime
     {
         var fixture = await SeedFixtureAsync();
 
-        var rule = await _db.DutyRules
+        var rule = await Db.DutyRules
             .FirstAsync(r => r.DutyId == fixture.ReadingDutyId);
         rule.CriteriaType = "AcceptanceRate";
         rule.CriteriaValue = "0.5";
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<GenerateAssignmentService>.Instance);
+        var service = new GenerateAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = fixture.OccurrenceId,
@@ -627,28 +597,28 @@ public class GenerateAssignmentTests : IAsyncLifetime
         var fixture = await SeedFixtureAsync();
 
         // Turn the register off at the branch the occurrence is at.
-        var branch = await _db.Branches.FirstAsync();
+        var branch = await Db.Branches.FirstAsync();
         branch.UsesAttendanceRegister = false;
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         // Replace Reading duty's rule with a Branch-Attendance
         // Recency criterion that would otherwise gate on attendance.
-        var existing = await _db.DutyRules
+        var existing = await Db.DutyRules
             .Where(r => r.DutyId == fixture.ReadingDutyId)
             .ToListAsync();
-        _db.DutyRules.RemoveRange(existing);
-        await _db.SaveChangesAsync();
+        Db.DutyRules.RemoveRange(existing);
+        await Db.SaveChangesAsync();
 
-        _db.DutyRules.Add(new DutyRule
+        Db.DutyRules.Add(new DutyRule
         {
             DutyId = fixture.ReadingDutyId,
             TierOrder = 1,
             CriteriaType = "BranchAttendanceRecency",
             CriteriaValue = "30",
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<GenerateAssignmentService>.Instance);
+        var service = new GenerateAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = fixture.OccurrenceId,
@@ -666,26 +636,26 @@ public class GenerateAssignmentTests : IAsyncLifetime
         // criterion produces no candidate.
         var fixture = await SeedFixtureAsync();
 
-        var branch = await _db.Branches.FirstAsync();
+        var branch = await Db.Branches.FirstAsync();
         branch.UsesAttendanceRegister = true;
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var existing = await _db.DutyRules
+        var existing = await Db.DutyRules
             .Where(r => r.DutyId == fixture.ReadingDutyId)
             .ToListAsync();
-        _db.DutyRules.RemoveRange(existing);
-        await _db.SaveChangesAsync();
+        Db.DutyRules.RemoveRange(existing);
+        await Db.SaveChangesAsync();
 
-        _db.DutyRules.Add(new DutyRule
+        Db.DutyRules.Add(new DutyRule
         {
             DutyId = fixture.ReadingDutyId,
             TierOrder = 1,
             CriteriaType = "BranchAttendanceRecency",
             CriteriaValue = "30",
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<GenerateAssignmentService>.Instance);
+        var service = new GenerateAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = fixture.OccurrenceId,
@@ -706,16 +676,16 @@ public class GenerateAssignmentTests : IAsyncLifetime
         var fixture = await SeedFixtureAsync();
 
         // Two more Steward-role members, both eligible for Reading.
-        var stewardRoleId = await _db.Roles
+        var stewardRoleId = await Db.Roles
             .Where(r => r.Name == "Steward")
             .Select(r => r.RoleId)
             .FirstAsync();
 
-        var statusId = await _db.Members
+        var statusId = await Db.Members
             .Select(m => m.MemberStatusId)
             .FirstAsync();
 
-        var branchId = await _db.Members
+        var branchId = await Db.Members
             .Select(m => m.BranchId)
             .FirstAsync();
 
@@ -739,17 +709,17 @@ public class GenerateAssignmentTests : IAsyncLifetime
             BranchId = branchId, RoleId = stewardRoleId,
             MemberStatusId = statusId,
         };
-        _db.Members.Add(extraOne);
-        _db.Members.Add(extraTwo);
-        await _db.SaveChangesAsync();
+        Db.Members.Add(extraOne);
+        Db.Members.Add(extraTwo);
+        await Db.SaveChangesAsync();
 
-        var adminId = await _db.Admins.Select(a => a.AdminId).FirstAsync();
+        var adminId = await Db.Admins.Select(a => a.AdminId).FirstAsync();
 
         // The fixture already grants Beatrice eligibility for Reading.
         // Beatrice was seeded first among the Stewards, so her MemberID
         // is the lowest of the three eligible candidates. ExtraOne and
         // ExtraTwo were added later, so their MemberIDs are higher.
-        _db.Eligibilities.Add(new MknMs.Domain.D6_Eligibility.Eligibility
+        Db.Eligibilities.Add(new MknMs.Domain.D6_Eligibility.Eligibility
         {
             MemberId = extraOne.MemberId,
             DutyId = fixture.ReadingDutyId,
@@ -758,7 +728,7 @@ public class GenerateAssignmentTests : IAsyncLifetime
             RevokedDate = null,
             RevokedReason = null,
         });
-        _db.Eligibilities.Add(new MknMs.Domain.D6_Eligibility.Eligibility
+        Db.Eligibilities.Add(new MknMs.Domain.D6_Eligibility.Eligibility
         {
             MemberId = extraTwo.MemberId,
             DutyId = fixture.ReadingDutyId,
@@ -767,9 +737,9 @@ public class GenerateAssignmentTests : IAsyncLifetime
             RevokedDate = null,
             RevokedReason = null,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<GenerateAssignmentService>.Instance);
+        var service = new GenerateAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = fixture.OccurrenceId,
@@ -780,7 +750,7 @@ public class GenerateAssignmentTests : IAsyncLifetime
         // Reading has one slot and three eligible Stewards. B5: the
         // lowest MemberID wins. Beatrice was seeded first, so she is the
         // lowest.
-        var readingAssignment = await _db.RosterAssignments
+        var readingAssignment = await Db.RosterAssignments
             .Where(a => a.DutyId == fixture.ReadingDutyId
                 && a.OccurrenceId == fixture.OccurrenceId)
             .ToListAsync();
@@ -798,18 +768,18 @@ public class GenerateAssignmentTests : IAsyncLifetime
     {
         var fixture = await SeedFixtureAsync();
 
-        var stewardRoleId = await _db.Roles
+        var stewardRoleId = await Db.Roles
             .Where(r => r.Name == "Steward")
             .Select(r => r.RoleId)
             .FirstAsync();
-        var statusId = await _db.Members.Select(m => m.MemberStatusId).FirstAsync();
-        var branchId = await _db.Members.Select(m => m.BranchId).FirstAsync();
+        var statusId = await Db.Members.Select(m => m.MemberStatusId).FirstAsync();
+        var branchId = await Db.Members.Select(m => m.BranchId).FirstAsync();
 
         // Raise Reading's slot count to 3.
-        var readingSdd = await _db.ServiceDefinitionDuties
+        var readingSdd = await Db.ServiceDefinitionDuties
             .FirstAsync(sd => sd.DutyId == fixture.ReadingDutyId);
         readingSdd.RequiredSlotCount = 3;
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         var extras = new List<MknMs.Domain.D4_Member.Member>();
         for (var i = 0; i < 4; i++)
@@ -825,14 +795,14 @@ public class GenerateAssignmentTests : IAsyncLifetime
                 MemberStatusId = statusId,
             };
             extras.Add(m);
-            _db.Members.Add(m);
+            Db.Members.Add(m);
         }
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var adminId = await _db.Admins.Select(a => a.AdminId).FirstAsync();
+        var adminId = await Db.Admins.Select(a => a.AdminId).FirstAsync();
         foreach (var m in extras)
         {
-            _db.Eligibilities.Add(new MknMs.Domain.D6_Eligibility.Eligibility
+            Db.Eligibilities.Add(new MknMs.Domain.D6_Eligibility.Eligibility
             {
                 MemberId = m.MemberId,
                 DutyId = fixture.ReadingDutyId,
@@ -842,9 +812,9 @@ public class GenerateAssignmentTests : IAsyncLifetime
                 RevokedReason = null,
             });
         }
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<GenerateAssignmentService>.Instance);
+        var service = new GenerateAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = fixture.OccurrenceId,
@@ -854,7 +824,7 @@ public class GenerateAssignmentTests : IAsyncLifetime
 
         // Five eligible Stewards — Beatrice plus four new — compete for
         // three slots. B5: the three lowest MemberIDs are assigned.
-        var readingAssignments = await _db.RosterAssignments
+        var readingAssignments = await Db.RosterAssignments
             .Where(a => a.DutyId == fixture.ReadingDutyId
                 && a.OccurrenceId == fixture.OccurrenceId)
             .OrderBy(a => a.MemberId)
@@ -881,7 +851,7 @@ public class GenerateAssignmentTests : IAsyncLifetime
         // duty. She is eligible for Reading too, but §10.1.2 excludes a
         // member who already holds a non-terminal assignment on the
         // occurrence.
-        var welcomeDutyId = await _db.Duties
+        var welcomeDutyId = await Db.Duties
             .Where(d => d.Name == "Welcome duty")
             .Select(d => d.DutyId)
             .FirstAsync();
@@ -891,10 +861,10 @@ public class GenerateAssignmentTests : IAsyncLifetime
             Name = "Proposed (coverage test)",
             IsTerminal = false,
         };
-        _db.AssignmentStatuses.Add(proposed);
-        await _db.SaveChangesAsync();
+        Db.AssignmentStatuses.Add(proposed);
+        await Db.SaveChangesAsync();
 
-        _db.RosterAssignments.Add(new MknMs.Domain.D7_RosterAssignment.RosterAssignment
+        Db.RosterAssignments.Add(new MknMs.Domain.D7_RosterAssignment.RosterAssignment
         {
             MemberId = fixture.BeatriceMemberId,
             DutyId = welcomeDutyId,
@@ -905,9 +875,9 @@ public class GenerateAssignmentTests : IAsyncLifetime
             AssignedBy = null,
             CreatedAt = _clock.GetUtcNow(),
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<GenerateAssignmentService>.Instance);
+        var service = new GenerateAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = fixture.OccurrenceId,
@@ -917,7 +887,7 @@ public class GenerateAssignmentTests : IAsyncLifetime
 
         // Beatrice already occupies a slot. She must not be assigned to
         // Reading.
-        var readingAssignments = await _db.RosterAssignments
+        var readingAssignments = await Db.RosterAssignments
             .Where(a => a.DutyId == fixture.ReadingDutyId
                 && a.OccurrenceId == fixture.OccurrenceId)
             .ToListAsync();
@@ -930,16 +900,16 @@ public class GenerateAssignmentTests : IAsyncLifetime
     {
         var fixture = await SeedFixtureAsync();
 
-        _db.ServiceOccurrenceDuties.Add(new MknMs.Domain.D3_BranchTimeSlotService.ServiceOccurrenceDuty
+        Db.ServiceOccurrenceDuties.Add(new MknMs.Domain.D3_BranchTimeSlotService.ServiceOccurrenceDuty
         {
             OccurrenceId = fixture.OccurrenceId,
             DutyId = fixture.ReadingDutyId,
             Action = "Removed",
             RequiredSlotCount = null,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<GenerateAssignmentService>.Instance);
+        var service = new GenerateAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = fixture.OccurrenceId,
@@ -949,7 +919,7 @@ public class GenerateAssignmentTests : IAsyncLifetime
 
         // The Removed override removes the duty from the effective list.
         // No assignment for Reading.
-        var readingAssignments = await _db.RosterAssignments
+        var readingAssignments = await Db.RosterAssignments
             .Where(a => a.DutyId == fixture.ReadingDutyId)
             .ToListAsync();
         readingAssignments.Should().BeEmpty();
@@ -961,22 +931,22 @@ public class GenerateAssignmentTests : IAsyncLifetime
         var fixture = await SeedFixtureAsync();
 
         // Add a second slot for Reading via the override.
-        _db.ServiceOccurrenceDuties.Add(new MknMs.Domain.D3_BranchTimeSlotService.ServiceOccurrenceDuty
+        Db.ServiceOccurrenceDuties.Add(new MknMs.Domain.D3_BranchTimeSlotService.ServiceOccurrenceDuty
         {
             OccurrenceId = fixture.OccurrenceId,
             DutyId = fixture.ReadingDutyId,
             Action = "Added",
             RequiredSlotCount = 2,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         // Add a second eligible Steward so both slots can fill.
-        var stewardRoleId = await _db.Roles
+        var stewardRoleId = await Db.Roles
             .Where(r => r.Name == "Steward")
             .Select(r => r.RoleId)
             .FirstAsync();
-        var statusId = await _db.Members.Select(m => m.MemberStatusId).FirstAsync();
-        var branchId = await _db.Members.Select(m => m.BranchId).FirstAsync();
+        var statusId = await Db.Members.Select(m => m.MemberStatusId).FirstAsync();
+        var branchId = await Db.Members.Select(m => m.BranchId).FirstAsync();
 
         var second = new MknMs.Domain.D4_Member.Member
         {
@@ -988,11 +958,11 @@ public class GenerateAssignmentTests : IAsyncLifetime
             BranchId = branchId, RoleId = stewardRoleId,
             MemberStatusId = statusId,
         };
-        _db.Members.Add(second);
-        await _db.SaveChangesAsync();
+        Db.Members.Add(second);
+        await Db.SaveChangesAsync();
 
-        var adminId = await _db.Admins.Select(a => a.AdminId).FirstAsync();
-        _db.Eligibilities.Add(new MknMs.Domain.D6_Eligibility.Eligibility
+        var adminId = await Db.Admins.Select(a => a.AdminId).FirstAsync();
+        Db.Eligibilities.Add(new MknMs.Domain.D6_Eligibility.Eligibility
         {
             MemberId = second.MemberId,
             DutyId = fixture.ReadingDutyId,
@@ -1001,9 +971,9 @@ public class GenerateAssignmentTests : IAsyncLifetime
             RevokedDate = null,
             RevokedReason = null,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<GenerateAssignmentService>.Instance);
+        var service = new GenerateAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = fixture.OccurrenceId,
@@ -1011,7 +981,7 @@ public class GenerateAssignmentTests : IAsyncLifetime
 
         result.Status.Should().Be("Success");
 
-        var readingAssignments = await _db.RosterAssignments
+        var readingAssignments = await Db.RosterAssignments
             .Where(a => a.DutyId == fixture.ReadingDutyId
                 && a.OccurrenceId == fixture.OccurrenceId)
             .ToListAsync();
@@ -1023,37 +993,37 @@ public class GenerateAssignmentTests : IAsyncLifetime
     {
         var fixture = await SeedFixtureAsync();
 
-        var branch = await _db.Branches.FirstAsync();
+        var branch = await Db.Branches.FirstAsync();
         branch.UsesAttendanceRegister = true;
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         // Replace Reading's rule with Branch-Attendance Recency.
-        var existing = await _db.DutyRules
+        var existing = await Db.DutyRules
             .Where(r => r.DutyId == fixture.ReadingDutyId)
             .ToListAsync();
-        _db.DutyRules.RemoveRange(existing);
-        await _db.SaveChangesAsync();
+        Db.DutyRules.RemoveRange(existing);
+        await Db.SaveChangesAsync();
 
-        _db.DutyRules.Add(new MknMs.Domain.D2_DutyRule.DutyRule
+        Db.DutyRules.Add(new MknMs.Domain.D2_DutyRule.DutyRule
         {
             DutyId = fixture.ReadingDutyId,
             TierOrder = 1,
             CriteriaType = "BranchAttendanceRecency",
             CriteriaValue = "30",
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         // Seed attendance for Beatrice against the occurrence.
-        _db.AttendanceRecords.Add(new MknMs.Domain.D8_AttendanceRecord.AttendanceRecord
+        Db.AttendanceRecords.Add(new MknMs.Domain.D8_AttendanceRecord.AttendanceRecord
         {
             MemberId = fixture.BeatriceMemberId,
             OccurrenceId = fixture.OccurrenceId,
             Timestamp = _clock.GetUtcNow(),
             Source = "Manual",
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<GenerateAssignmentService>.Instance);
+        var service = new GenerateAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = fixture.OccurrenceId,
@@ -1063,7 +1033,7 @@ public class GenerateAssignmentTests : IAsyncLifetime
 
         // Beatrice's attendance satisfies the criterion; Reading is
         // filled with her.
-        var readingAssignments = await _db.RosterAssignments
+        var readingAssignments = await Db.RosterAssignments
             .Where(a => a.DutyId == fixture.ReadingDutyId
                 && a.OccurrenceId == fixture.OccurrenceId)
             .ToListAsync();
@@ -1079,7 +1049,7 @@ public class GenerateAssignmentTests : IAsyncLifetime
         // Seed a partial state: Beatrice already holds the Reading slot.
         // Welcome is empty. The fixture seeded both ServiceDefinitionDuty
         // rows as RequiredSlotCount = 1.
-        _db.RosterAssignments.Add(new MknMs.Domain.D7_RosterAssignment.RosterAssignment
+        Db.RosterAssignments.Add(new MknMs.Domain.D7_RosterAssignment.RosterAssignment
         {
             MemberId = fixture.BeatriceMemberId,
             DutyId = fixture.ReadingDutyId,
@@ -1090,9 +1060,9 @@ public class GenerateAssignmentTests : IAsyncLifetime
             AssignedBy = null,
             CreatedAt = _clock.GetUtcNow(),
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<GenerateAssignmentService>.Instance);
+        var service = new GenerateAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = fixture.OccurrenceId,
@@ -1103,7 +1073,7 @@ public class GenerateAssignmentTests : IAsyncLifetime
         // The partial row is preserved, not duplicated. Beatrice holds
         // Reading. Welcome stays unfilled because Dana's role does not
         // match the Welcome tier.
-        var reading = await _db.RosterAssignments
+        var reading = await Db.RosterAssignments
             .Where(a => a.DutyId == fixture.ReadingDutyId
                 && a.OccurrenceId == fixture.OccurrenceId)
             .ToListAsync();
@@ -1120,27 +1090,27 @@ public class GenerateAssignmentTests : IAsyncLifetime
         var fixture = await SeedFixtureAsync();
 
         // Raise both existing duties to two slots and add a third.
-        var readingSdd = await _db.ServiceDefinitionDuties
+        var readingSdd = await Db.ServiceDefinitionDuties
             .FirstAsync(sd => sd.DutyId == fixture.ReadingDutyId);
         readingSdd.RequiredSlotCount = 2;
 
-        var welcomeDutyId = await _db.Duties
+        var welcomeDutyId = await Db.Duties
             .Where(d => d.Name == "Welcome duty")
             .Select(d => d.DutyId)
             .FirstAsync();
-        var welcomeSdd = await _db.ServiceDefinitionDuties
+        var welcomeSdd = await Db.ServiceDefinitionDuties
             .FirstAsync(sd => sd.DutyId == welcomeDutyId);
         welcomeSdd.RequiredSlotCount = 2;
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         // Two more Stewards so Reading's two slots can fill.
-        var stewardRoleId = await _db.Roles
+        var stewardRoleId = await Db.Roles
             .Where(r => r.Name == "Steward")
             .Select(r => r.RoleId)
             .FirstAsync();
-        var statusId = await _db.Members.Select(m => m.MemberStatusId).FirstAsync();
-        var branchId = await _db.Members.Select(m => m.BranchId).FirstAsync();
-        var adminId = await _db.Admins.Select(a => a.AdminId).FirstAsync();
+        var statusId = await Db.Members.Select(m => m.MemberStatusId).FirstAsync();
+        var branchId = await Db.Members.Select(m => m.BranchId).FirstAsync();
+        var adminId = await Db.Admins.Select(a => a.AdminId).FirstAsync();
 
         var stewards = new List<MknMs.Domain.D4_Member.Member>();
         for (var i = 0; i < 2; i++)
@@ -1156,13 +1126,13 @@ public class GenerateAssignmentTests : IAsyncLifetime
                 MemberStatusId = statusId,
             };
             stewards.Add(m);
-            _db.Members.Add(m);
+            Db.Members.Add(m);
         }
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         foreach (var m in stewards)
         {
-            _db.Eligibilities.Add(new MknMs.Domain.D6_Eligibility.Eligibility
+            Db.Eligibilities.Add(new MknMs.Domain.D6_Eligibility.Eligibility
             {
                 MemberId = m.MemberId,
                 DutyId = fixture.ReadingDutyId,
@@ -1172,9 +1142,9 @@ public class GenerateAssignmentTests : IAsyncLifetime
                 RevokedReason = null,
             });
         }
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<GenerateAssignmentService>.Instance);
+        var service = new GenerateAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = fixture.OccurrenceId,
@@ -1186,13 +1156,13 @@ public class GenerateAssignmentTests : IAsyncLifetime
         // two slots, filled with the two lowest Stewards — Beatrice and
         // the first new Steward. Welcome: two slots, no matching
         // candidate.
-        var readingAssignments = await _db.RosterAssignments
+        var readingAssignments = await Db.RosterAssignments
             .Where(a => a.DutyId == fixture.ReadingDutyId
                 && a.OccurrenceId == fixture.OccurrenceId)
             .ToListAsync();
         readingAssignments.Should().HaveCount(2);
 
-        var welcomeAssignments = await _db.RosterAssignments
+        var welcomeAssignments = await Db.RosterAssignments
             .Where(a => a.DutyId == welcomeDutyId
                 && a.OccurrenceId == fixture.OccurrenceId)
             .ToListAsync();
@@ -1205,7 +1175,7 @@ public class GenerateAssignmentTests : IAsyncLifetime
         var fixture = await SeedFixtureAsync();
 
         var throwing = new ThrowingDispatchNotificationService();
-        var service = new GenerateAssignmentService(_db, throwing, _clock, new OccurrenceLockService(_db), NullLogger<GenerateAssignmentService>.Instance);
+        var service = new GenerateAssignmentService(Db, throwing, _clock, new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
 
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
@@ -1217,7 +1187,7 @@ public class GenerateAssignmentTests : IAsyncLifetime
         result.Status.Should().Be("Success");
         result.AssignmentsCreated.Should().Be(1);
 
-        var assignments = await _db.RosterAssignments.ToListAsync();
+        var assignments = await Db.RosterAssignments.ToListAsync();
         assignments.Should().HaveCount(1);
         assignments.Single().MemberId.Should().Be(fixture.BeatriceMemberId);
     }
@@ -1229,7 +1199,7 @@ public class GenerateAssignmentTests : IAsyncLifetime
 
         // Create an event-sourced occurrence. ScheduleId = null,
         // EventId set. The Event must exist first.
-        var branchId = await _db.Branches.Select(b => b.BranchId).FirstAsync();
+        var branchId = await Db.Branches.Select(b => b.BranchId).FirstAsync();
         var evt = new MknMs.Domain.D9_EventProgram.Event
         {
             Name = "Coverage event",
@@ -1239,10 +1209,10 @@ public class GenerateAssignmentTests : IAsyncLifetime
             HostBranchId = branchId,
             IsDeleted = false,
         };
-        _db.Events.Add(evt);
-        await _db.SaveChangesAsync();
+        Db.Events.Add(evt);
+        await Db.SaveChangesAsync();
 
-        var serviceTypeId = await _db.ServiceTypes.Select(st => st.ServiceTypeId).FirstAsync();
+        var serviceTypeId = await Db.ServiceTypes.Select(st => st.ServiceTypeId).FirstAsync();
 
         var occurrence = new MknMs.Domain.D3_BranchTimeSlotService.ServiceOccurrence
         {
@@ -1253,25 +1223,25 @@ public class GenerateAssignmentTests : IAsyncLifetime
             StartTime = new TimeOnly(9, 0),
             FillStatusId = null,
             GeneratedBy = "Administrator",
-            CreatedBy = await _db.Admins.Select(a => a.AdminId).FirstAsync(),
+            CreatedBy = await Db.Admins.Select(a => a.AdminId).FirstAsync(),
             ChangedBy = null,
         };
-        _db.ServiceOccurrences.Add(occurrence);
-        await _db.SaveChangesAsync();
+        Db.ServiceOccurrences.Add(occurrence);
+        await Db.SaveChangesAsync();
 
         // Add Reading as an Added override on the event-sourced
         // occurrence. Welcome is not added, so it is not considered —
         // event-sourced occurrences inherit nothing from a schedule.
-        _db.ServiceOccurrenceDuties.Add(new MknMs.Domain.D3_BranchTimeSlotService.ServiceOccurrenceDuty
+        Db.ServiceOccurrenceDuties.Add(new MknMs.Domain.D3_BranchTimeSlotService.ServiceOccurrenceDuty
         {
             OccurrenceId = occurrence.OccurrenceId,
             DutyId = fixture.ReadingDutyId,
             Action = "Added",
             RequiredSlotCount = 1,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var genService = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<GenerateAssignmentService>.Instance);
+        var genService = new GenerateAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
         var result = await genService.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = occurrence.OccurrenceId,
@@ -1281,17 +1251,17 @@ public class GenerateAssignmentTests : IAsyncLifetime
 
         // Only the Added duty is filled. Welcome — the fixture's other
         // duty — is not considered because no schedule contributed it.
-        var readingAssignments = await _db.RosterAssignments
+        var readingAssignments = await Db.RosterAssignments
             .Where(a => a.OccurrenceId == occurrence.OccurrenceId
                 && a.DutyId == fixture.ReadingDutyId)
             .ToListAsync();
         readingAssignments.Should().HaveCount(1);
 
-        var welcomeDutyId = await _db.Duties
+        var welcomeDutyId = await Db.Duties
             .Where(d => d.Name == "Welcome duty")
             .Select(d => d.DutyId)
             .FirstAsync();
-        var welcomeAssignments = await _db.RosterAssignments
+        var welcomeAssignments = await Db.RosterAssignments
             .Where(a => a.OccurrenceId == occurrence.OccurrenceId
                 && a.DutyId == welcomeDutyId)
             .ToListAsync();
@@ -1306,15 +1276,15 @@ public class GenerateAssignmentTests : IAsyncLifetime
         // Insert a terminal assignment for Beatrice on Welcome duty.
         // Terminal statuses do not count toward capacity or availability.
         var declined = new AssignmentStatus { Name = "Declined", IsTerminal = true };
-        _db.AssignmentStatuses.Add(declined);
-        await _db.SaveChangesAsync();
+        Db.AssignmentStatuses.Add(declined);
+        await Db.SaveChangesAsync();
 
-        var welcomeDutyId = await _db.Duties
+        var welcomeDutyId = await Db.Duties
             .Where(d => d.Name == "Welcome duty")
             .Select(d => d.DutyId)
             .FirstAsync();
 
-        _db.RosterAssignments.Add(new RosterAssignment
+        Db.RosterAssignments.Add(new RosterAssignment
         {
             MemberId = fixture.BeatriceMemberId,
             DutyId = welcomeDutyId,
@@ -1325,9 +1295,9 @@ public class GenerateAssignmentTests : IAsyncLifetime
             AssignedBy = null,
             CreatedAt = _clock.GetUtcNow(),
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<GenerateAssignmentService>.Instance);
+        var service = new GenerateAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
         var result = await service.RunAsync(new GenerateAssignmentCommand
         {
             OccurrenceId = fixture.OccurrenceId,

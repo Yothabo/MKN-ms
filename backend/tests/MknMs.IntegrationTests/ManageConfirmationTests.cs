@@ -33,44 +33,15 @@ namespace MknMs.IntegrationTests;
 /// Reference: docs/processes/operations/7.0-manage-confirmation.md,
 /// Specification §11.
 /// </remarks>
-public class ManageConfirmationTests : IAsyncLifetime
+public class ManageConfirmationTests : IntegrationTestBase
 {
-    private const string TestConnectionString =
-        "Host=127.0.0.1;Port=5432;Database=mkn_test;Username=mkn_dev";
+    private readonly IDispatchNotificationService _notification = new FakeDispatchNotificationService();
+    private readonly TimeProvider _clock = new FakeTimeProvider(
+        new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero));
 
-    private MknDbContext _db = null!;
-    private IDispatchNotificationService _notification = null!;
-    private TimeProvider _clock = null!;
-
-    public async Task InitializeAsync()
+    protected override async Task OnInitializedAsync()
     {
-        var options = new DbContextOptionsBuilder<MknDbContext>()
-            .UseNpgsql(TestConnectionString)
-            .Options;
-
-        _db = new MknDbContext(options);
-        _notification = new FakeDispatchNotificationService();
-        _clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero));
-
-        await _db.Database.ExecuteSqlRawAsync(
-            "TRUNCATE TABLE materializer_run, attendance_record, roster_assignment, " +
-            "service_occurrence_duty, service_occurrence, service_schedule, " +
-            "service_definition_duty, branch_time_slot, service_definition, " +
-            "service_type, time_of_day, branch, identifier_history, eligibility, " +
-            "duty_rule, admin, member, member_attribute_value, member_status, " +
-            "attendance_rule_scope, attendance_rule, readmission, role, duty, " +
-            "system_setting, outcome_state, assignment_status, permission_tier, " +
-            "attribute_type, capability, event_branch, configuration_audit_log, " +
-            "entity_deletion_policy, notification_subscription " +
-            "RESTART IDENTITY CASCADE;");
-
-        await TestSeed.EnsureRequiredSettingsAsync(_db);
-    }
-
-    public Task DisposeAsync()
-    {
-        _db.Dispose();
-        return Task.CompletedTask;
+        await TestSeed.EnsureRequiredSettingsAsync(Db);
     }
 
     private sealed record Fixture(
@@ -88,40 +59,40 @@ public class ManageConfirmationTests : IAsyncLifetime
         bool includeInitialStatusSetting = true,
         bool includeTimeoutSetting = true)
     {
-        _db.OutcomeStates.Add(new OutcomeState { Name = "Unfilled" });
-        _db.ServiceTypes.Add(new ServiceType { Name = "Regular" });
-        _db.TimeOfDays.Add(new TimeOfDay { Name = "Morning" });
+        Db.OutcomeStates.Add(new OutcomeState { Name = "Unfilled" });
+        Db.ServiceTypes.Add(new ServiceType { Name = "Regular" });
+        Db.TimeOfDays.Add(new TimeOfDay { Name = "Morning" });
 
         var coordinator = new Role { Name = "Coordinator", IsActive = true };
         var steward = new Role { Name = "Steward", IsActive = true };
-        _db.Roles.Add(coordinator);
-        _db.Roles.Add(steward);
+        Db.Roles.Add(coordinator);
+        Db.Roles.Add(steward);
 
         var welcomeDuty = new Duty { Name = "Welcome duty", IsActive = true };
         var readingDuty = new Duty { Name = "Reading duty", IsActive = true };
-        _db.Duties.Add(welcomeDuty);
-        _db.Duties.Add(readingDuty);
+        Db.Duties.Add(welcomeDuty);
+        Db.Duties.Add(readingDuty);
 
         var branch = new Branch { Name = "Main", Location = "Main Street", IsActive = true };
-        _db.Branches.Add(branch);
+        Db.Branches.Add(branch);
 
         var tier = new PermissionTier { Name = "Full Admin" };
-        _db.PermissionTiers.Add(tier);
+        Db.PermissionTiers.Add(tier);
 
         var proposed = new AssignmentStatus { Name = "Proposed", IsTerminal = false };
         var confirmed = new AssignmentStatus { Name = "Confirmed", IsTerminal = false };
         var declined = new AssignmentStatus { Name = "Declined", IsTerminal = true };
         var timedOut = new AssignmentStatus { Name = "Timed Out", IsTerminal = true };
-        _db.AssignmentStatuses.Add(proposed);
-        _db.AssignmentStatuses.Add(confirmed);
-        _db.AssignmentStatuses.Add(declined);
-        _db.AssignmentStatuses.Add(timedOut);
+        Db.AssignmentStatuses.Add(proposed);
+        Db.AssignmentStatuses.Add(confirmed);
+        Db.AssignmentStatuses.Add(declined);
+        Db.AssignmentStatuses.Add(timedOut);
 
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         if (includeInitialStatusSetting)
         {
-            _db.SystemSettings.Add(new SystemSetting
+            Db.SystemSettings.Add(new SystemSetting
             {
                 Key = "InitialAssignmentStatusID",
                 Value = confirmed.AssignmentStatusId.ToString(),
@@ -129,14 +100,14 @@ public class ManageConfirmationTests : IAsyncLifetime
             });
         }
 
-        _db.SystemSettings.Add(new SystemSetting
+        Db.SystemSettings.Add(new SystemSetting
         {
             Key = "DeclinedStatusID",
             Value = declined.AssignmentStatusId.ToString(),
             Required = true,
         });
 
-        _db.SystemSettings.Add(new SystemSetting
+        Db.SystemSettings.Add(new SystemSetting
         {
             Key = "TimedOutStatusID",
             Value = timedOut.AssignmentStatusId.ToString(),
@@ -145,7 +116,7 @@ public class ManageConfirmationTests : IAsyncLifetime
 
         if (includeTimeoutSetting)
         {
-            _db.SystemSettings.Add(new SystemSetting
+            Db.SystemSettings.Add(new SystemSetting
             {
                 Key = "ConfirmationTimeoutHours",
                 Value = "48",
@@ -153,9 +124,9 @@ public class ManageConfirmationTests : IAsyncLifetime
             });
         }
 
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var statusId = await TestSeed.EnsureDefaultMemberStatusAsync(_db);
+        var statusId = await TestSeed.EnsureDefaultMemberStatusAsync(Db);
 
         var alex = new Member
         {
@@ -187,50 +158,50 @@ public class ManageConfirmationTests : IAsyncLifetime
             BranchId = branch.BranchId, RoleId = steward.RoleId,
             MemberStatusId = statusId,
         };
-        _db.Members.Add(alex);
-        _db.Members.Add(beatrice);
-        _db.Members.Add(dana);
-        await _db.SaveChangesAsync();
+        Db.Members.Add(alex);
+        Db.Members.Add(beatrice);
+        Db.Members.Add(dana);
+        await Db.SaveChangesAsync();
 
         var admin = new Admin
         {
             MemberId = alex.MemberId,
             PermissionTierId = tier.PermissionTierId,
         };
-        _db.Admins.Add(admin);
-        await _db.SaveChangesAsync();
+        Db.Admins.Add(admin);
+        await Db.SaveChangesAsync();
 
         var slot = new BranchTimeSlot
         {
             BranchId = branch.BranchId,
             DayOfWeek = "Sunday",
-            TimeOfDayId = _db.TimeOfDays.Local.First().TimeOfDayId,
+            TimeOfDayId = Db.TimeOfDays.Local.First().TimeOfDayId,
         };
-        _db.BranchTimeSlots.Add(slot);
-        await _db.SaveChangesAsync();
+        Db.BranchTimeSlots.Add(slot);
+        await Db.SaveChangesAsync();
 
         var definition = new ServiceDefinition
         {
             Name = "Sunday Service",
-            ServiceTypeId = _db.ServiceTypes.Local.First().ServiceTypeId,
+            ServiceTypeId = Db.ServiceTypes.Local.First().ServiceTypeId,
             OwningBranchId = null,
         };
-        _db.ServiceDefinitions.Add(definition);
-        await _db.SaveChangesAsync();
+        Db.ServiceDefinitions.Add(definition);
+        await Db.SaveChangesAsync();
 
-        _db.ServiceDefinitionDuties.Add(new ServiceDefinitionDuty
+        Db.ServiceDefinitionDuties.Add(new ServiceDefinitionDuty
         {
             ServiceDefId = definition.ServiceDefId,
             DutyId = welcomeDuty.DutyId,
             RequiredSlotCount = 1,
         });
-        _db.ServiceDefinitionDuties.Add(new ServiceDefinitionDuty
+        Db.ServiceDefinitionDuties.Add(new ServiceDefinitionDuty
         {
             ServiceDefId = definition.ServiceDefId,
             DutyId = readingDuty.DutyId,
             RequiredSlotCount = 1,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         var schedule = new ServiceSchedule
         {
@@ -238,19 +209,19 @@ public class ManageConfirmationTests : IAsyncLifetime
             TimeSlotId = slot.TimeSlotId,
             StartTime = new TimeOnly(9, 0),
         };
-        _db.ServiceSchedules.Add(schedule);
-        await _db.SaveChangesAsync();
+        Db.ServiceSchedules.Add(schedule);
+        await Db.SaveChangesAsync();
 
-        _db.DutyRules.Add(new DutyRule
+        Db.DutyRules.Add(new DutyRule
         {
             DutyId = readingDuty.DutyId,
             TierOrder = 1,
             CriteriaType = "Role",
             CriteriaValue = "Steward",
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        _db.Eligibilities.Add(new Eligibility
+        Db.Eligibilities.Add(new Eligibility
         {
             MemberId = beatrice.MemberId,
             DutyId = readingDuty.DutyId,
@@ -259,7 +230,7 @@ public class ManageConfirmationTests : IAsyncLifetime
             RevokedDate = null,
             RevokedReason = null,
         });
-        _db.Eligibilities.Add(new Eligibility
+        Db.Eligibilities.Add(new Eligibility
         {
             MemberId = dana.MemberId,
             DutyId = readingDuty.DutyId,
@@ -268,7 +239,7 @@ public class ManageConfirmationTests : IAsyncLifetime
             RevokedDate = null,
             RevokedReason = null,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         var occurrence = new ServiceOccurrence
         {
@@ -282,8 +253,8 @@ public class ManageConfirmationTests : IAsyncLifetime
             CreatedBy = null,
             ChangedBy = null,
         };
-        _db.ServiceOccurrences.Add(occurrence);
-        await _db.SaveChangesAsync();
+        Db.ServiceOccurrences.Add(occurrence);
+        await Db.SaveChangesAsync();
 
         var assignment = new RosterAssignment
         {
@@ -296,8 +267,8 @@ public class ManageConfirmationTests : IAsyncLifetime
             AssignedBy = null,
             CreatedAt = _clock.GetUtcNow(),
         };
-        _db.RosterAssignments.Add(assignment);
-        await _db.SaveChangesAsync();
+        Db.RosterAssignments.Add(assignment);
+        await Db.SaveChangesAsync();
 
         return new Fixture(
             occurrence.OccurrenceId,
@@ -319,7 +290,7 @@ public class ManageConfirmationTests : IAsyncLifetime
     public async Task Confirm_TransitionsToInitialStatusWithoutReplacement()
     {
         var fixture = await SeedFixtureAsync();
-        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<ManageConfirmationService>.Instance);
+        var service = new ManageConfirmationService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<ManageConfirmationService>.Instance);
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
@@ -332,11 +303,11 @@ public class ManageConfirmationTests : IAsyncLifetime
         result.ReplacementsCreated.Should().Be(0);
         result.SlotsLeftVacant.Should().Be(0);
 
-        var assignment = await _db.RosterAssignments
+        var assignment = await Db.RosterAssignments
             .FirstAsync(a => a.AssignmentId == fixture.AssignmentId);
         assignment.AssignmentStatusId.Should().Be(fixture.ConfirmedStatusId);
 
-        var totalAssignments = await _db.RosterAssignments.CountAsync();
+        var totalAssignments = await Db.RosterAssignments.CountAsync();
         totalAssignments.Should().Be(1);
     }
 
@@ -344,7 +315,7 @@ public class ManageConfirmationTests : IAsyncLifetime
     public async Task Decline_WithTerminalStatus_AndCandidateAvailable_CreatesReplacement()
     {
         var fixture = await SeedFixtureAsync();
-        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<ManageConfirmationService>.Instance);
+        var service = new ManageConfirmationService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<ManageConfirmationService>.Instance);
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
@@ -357,7 +328,7 @@ public class ManageConfirmationTests : IAsyncLifetime
         result.ReplacementsCreated.Should().Be(1);
         result.SlotsLeftVacant.Should().Be(0);
 
-        var assignments = await _db.RosterAssignments
+        var assignments = await Db.RosterAssignments
             .OrderBy(a => a.AssignmentId)
             .ToListAsync();
 
@@ -382,13 +353,13 @@ public class ManageConfirmationTests : IAsyncLifetime
     {
         var fixture = await SeedFixtureAsync();
 
-        var danaEligibility = await _db.Eligibilities
+        var danaEligibility = await Db.Eligibilities
             .Where(e => e.MemberId == fixture.DanaMemberId)
             .ToListAsync();
-        _db.Eligibilities.RemoveRange(danaEligibility);
-        await _db.SaveChangesAsync();
+        Db.Eligibilities.RemoveRange(danaEligibility);
+        await Db.SaveChangesAsync();
 
-        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<ManageConfirmationService>.Instance);
+        var service = new ManageConfirmationService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<ManageConfirmationService>.Instance);
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
@@ -401,7 +372,7 @@ public class ManageConfirmationTests : IAsyncLifetime
         result.ReplacementsCreated.Should().Be(0);
         result.SlotsLeftVacant.Should().Be(1);
 
-        var totalAssignments = await _db.RosterAssignments.CountAsync();
+        var totalAssignments = await Db.RosterAssignments.CountAsync();
         totalAssignments.Should().Be(1);
     }
 
@@ -410,7 +381,7 @@ public class ManageConfirmationTests : IAsyncLifetime
     {
         var fixture = await SeedFixtureAsync();
 
-        _db.RosterAssignments.Add(new RosterAssignment
+        Db.RosterAssignments.Add(new RosterAssignment
         {
             MemberId = fixture.DanaMemberId,
             DutyId = fixture.ReadingDutyId,
@@ -421,9 +392,9 @@ public class ManageConfirmationTests : IAsyncLifetime
             AssignedBy = null,
             CreatedAt = _clock.GetUtcNow(),
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<ManageConfirmationService>.Instance);
+        var service = new ManageConfirmationService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<ManageConfirmationService>.Instance);
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
@@ -435,7 +406,7 @@ public class ManageConfirmationTests : IAsyncLifetime
         result.ReplacementsCreated.Should().Be(0);
         result.SlotsLeftVacant.Should().Be(1);
 
-        var totalAssignments = await _db.RosterAssignments.CountAsync();
+        var totalAssignments = await Db.RosterAssignments.CountAsync();
         totalAssignments.Should().Be(2);
     }
 
@@ -444,12 +415,12 @@ public class ManageConfirmationTests : IAsyncLifetime
     {
         var fixture = await SeedFixtureAsync();
 
-        var assignment = await _db.RosterAssignments
+        var assignment = await Db.RosterAssignments
             .FirstAsync(a => a.AssignmentId == fixture.AssignmentId);
         assignment.CreatedAt = _clock.GetUtcNow().AddHours(-72);
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<ManageConfirmationService>.Instance);
+        var service = new ManageConfirmationService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<ManageConfirmationService>.Instance);
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
@@ -460,7 +431,7 @@ public class ManageConfirmationTests : IAsyncLifetime
         result.AssignmentsTransitioned.Should().Be(1);
         result.ReplacementsCreated.Should().Be(1);
 
-        var original = await _db.RosterAssignments
+        var original = await Db.RosterAssignments
             .FirstAsync(a => a.AssignmentId == fixture.AssignmentId);
         original.AssignmentStatusId.Should().Be(fixture.TimedOutStatusId);
     }
@@ -469,7 +440,7 @@ public class ManageConfirmationTests : IAsyncLifetime
     public async Task Sweep_WithAssignmentInsideWindow_DoesNotTransition()
     {
         var fixture = await SeedFixtureAsync();
-        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<ManageConfirmationService>.Instance);
+        var service = new ManageConfirmationService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<ManageConfirmationService>.Instance);
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
@@ -480,7 +451,7 @@ public class ManageConfirmationTests : IAsyncLifetime
         result.AssignmentsTransitioned.Should().Be(0);
         result.ReplacementsCreated.Should().Be(0);
 
-        var assignment = await _db.RosterAssignments
+        var assignment = await Db.RosterAssignments
             .FirstAsync(a => a.AssignmentId == fixture.AssignmentId);
         assignment.AssignmentStatusId.Should().BeNull();
     }
@@ -489,7 +460,7 @@ public class ManageConfirmationTests : IAsyncLifetime
     public async Task Confirm_WithoutInitialStatusSetting_Fails()
     {
         var fixture = await SeedFixtureAsync(includeInitialStatusSetting: false);
-        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<ManageConfirmationService>.Instance);
+        var service = new ManageConfirmationService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<ManageConfirmationService>.Instance);
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
@@ -506,12 +477,12 @@ public class ManageConfirmationTests : IAsyncLifetime
     {
         var fixture = await SeedFixtureAsync();
 
-        var setting = await _db.SystemSettings
+        var setting = await Db.SystemSettings
             .FirstAsync(s => s.Key == "DeclinedStatusID");
-        _db.SystemSettings.Remove(setting);
-        await _db.SaveChangesAsync();
+        Db.SystemSettings.Remove(setting);
+        await Db.SaveChangesAsync();
 
-        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<ManageConfirmationService>.Instance);
+        var service = new ManageConfirmationService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<ManageConfirmationService>.Instance);
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
@@ -527,7 +498,7 @@ public class ManageConfirmationTests : IAsyncLifetime
     public async Task Run_WithInvalidCommand_Fails()
     {
         await SeedFixtureAsync();
-        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<ManageConfirmationService>.Instance);
+        var service = new ManageConfirmationService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<ManageConfirmationService>.Instance);
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
@@ -543,12 +514,12 @@ public class ManageConfirmationTests : IAsyncLifetime
     {
         var fixture = await SeedFixtureAsync();
 
-        var setting = await _db.SystemSettings
+        var setting = await Db.SystemSettings
             .FirstAsync(s => s.Key == "InitialAssignmentStatusID");
         setting.Value = fixture.ProposedStatusId.ToString();
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<ManageConfirmationService>.Instance);
+        var service = new ManageConfirmationService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<ManageConfirmationService>.Instance);
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
@@ -558,7 +529,7 @@ public class ManageConfirmationTests : IAsyncLifetime
 
         result.Status.Should().Be("Success");
 
-        var assignment = await _db.RosterAssignments
+        var assignment = await Db.RosterAssignments
             .FirstAsync(a => a.AssignmentId == fixture.AssignmentId);
         assignment.AssignmentStatusId.Should().Be(fixture.ProposedStatusId);
     }
@@ -568,12 +539,12 @@ public class ManageConfirmationTests : IAsyncLifetime
     {
         var fixture = await SeedFixtureAsync();
 
-        var assignment = await _db.RosterAssignments
+        var assignment = await Db.RosterAssignments
             .FirstAsync(a => a.AssignmentId == fixture.AssignmentId);
         assignment.AssignmentStatusId = fixture.DeclinedStatusId;
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<ManageConfirmationService>.Instance);
+        var service = new ManageConfirmationService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<ManageConfirmationService>.Instance);
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
@@ -584,15 +555,15 @@ public class ManageConfirmationTests : IAsyncLifetime
         result.Status.Should().Be("Success");
         result.AssignmentsTransitioned.Should().Be(1);
 
-        var after = await _db.RosterAssignments
+        var after = await Db.RosterAssignments
             .FirstAsync(a => a.AssignmentId == fixture.AssignmentId);
         after.AssignmentStatusId.Should().Be(fixture.ConfirmedStatusId);
 
-        var liveCount = await _db.RosterAssignments
+        var liveCount = await Db.RosterAssignments
             .Where(a => a.OccurrenceId == fixture.OccurrenceId
                 && a.DutyId == fixture.ReadingDutyId
                 && (a.AssignmentStatusId == null
-                    || !_db.AssignmentStatuses
+                    || !Db.AssignmentStatuses
                         .Where(s => s.AssignmentStatusId == a.AssignmentStatusId)
                         .Select(s => s.IsTerminal)
                         .First()))
@@ -606,12 +577,12 @@ public class ManageConfirmationTests : IAsyncLifetime
     {
         var fixture = await SeedFixtureAsync();
 
-        var assignment = await _db.RosterAssignments
+        var assignment = await Db.RosterAssignments
             .FirstAsync(a => a.AssignmentId == fixture.AssignmentId);
         assignment.AssignmentStatusId = fixture.TimedOutStatusId;
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<ManageConfirmationService>.Instance);
+        var service = new ManageConfirmationService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<ManageConfirmationService>.Instance);
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
@@ -622,7 +593,7 @@ public class ManageConfirmationTests : IAsyncLifetime
         result.Status.Should().Be("Success");
         result.AssignmentsTransitioned.Should().Be(1);
 
-        var after = await _db.RosterAssignments
+        var after = await Db.RosterAssignments
             .FirstAsync(a => a.AssignmentId == fixture.AssignmentId);
         after.AssignmentStatusId.Should().Be(fixture.DeclinedStatusId);
     }
@@ -632,7 +603,7 @@ public class ManageConfirmationTests : IAsyncLifetime
     {
         var fixture = await SeedFixtureAsync();
 
-        _db.RosterAssignments.Add(new RosterAssignment
+        Db.RosterAssignments.Add(new RosterAssignment
         {
             MemberId = fixture.DanaMemberId,
             DutyId = fixture.ReadingDutyId,
@@ -643,9 +614,9 @@ public class ManageConfirmationTests : IAsyncLifetime
             AssignedBy = null,
             CreatedAt = _clock.GetUtcNow(),
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<ManageConfirmationService>.Instance);
+        var service = new ManageConfirmationService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<ManageConfirmationService>.Instance);
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
@@ -657,7 +628,7 @@ public class ManageConfirmationTests : IAsyncLifetime
         result.ReplacementsCreated.Should().Be(0);
         result.SlotsLeftVacant.Should().Be(1);
 
-        var danaTerminal = await _db.RosterAssignments
+        var danaTerminal = await Db.RosterAssignments
             .CountAsync(a => a.MemberId == fixture.DanaMemberId
                 && a.DutyId == fixture.ReadingDutyId
                 && a.OccurrenceId == fixture.OccurrenceId);
@@ -669,17 +640,17 @@ public class ManageConfirmationTests : IAsyncLifetime
     {
         var fixture = await SeedFixtureAsync();
 
-        var assignment = await _db.RosterAssignments
+        var assignment = await Db.RosterAssignments
             .FirstAsync(a => a.AssignmentId == fixture.AssignmentId);
         assignment.CreatedAt = _clock.GetUtcNow().AddHours(-72);
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var setting = await _db.SystemSettings
+        var setting = await Db.SystemSettings
             .FirstAsync(s => s.Key == "TimedOutStatusID");
-        _db.SystemSettings.Remove(setting);
-        await _db.SaveChangesAsync();
+        Db.SystemSettings.Remove(setting);
+        await Db.SaveChangesAsync();
 
-        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<ManageConfirmationService>.Instance);
+        var service = new ManageConfirmationService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<ManageConfirmationService>.Instance);
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
@@ -689,7 +660,7 @@ public class ManageConfirmationTests : IAsyncLifetime
         result.Status.Should().Be("Failure");
         result.ErrorDetail.Should().Contain("TimedOutStatusID");
 
-        var after = await _db.RosterAssignments
+        var after = await Db.RosterAssignments
             .FirstAsync(a => a.AssignmentId == fixture.AssignmentId);
         after.AssignmentStatusId.Should().BeNull();
     }
@@ -699,12 +670,12 @@ public class ManageConfirmationTests : IAsyncLifetime
     {
         var fixture = await SeedFixtureAsync();
 
-        var setting = await _db.SystemSettings
+        var setting = await Db.SystemSettings
             .FirstAsync(s => s.Key == "DeclinedStatusID");
         setting.Value = fixture.ProposedStatusId.ToString();
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<ManageConfirmationService>.Instance);
+        var service = new ManageConfirmationService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<ManageConfirmationService>.Instance);
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
@@ -717,7 +688,7 @@ public class ManageConfirmationTests : IAsyncLifetime
         result.ReplacementsCreated.Should().Be(0);
         result.SlotsLeftVacant.Should().Be(0);
 
-        var assignments = await _db.RosterAssignments.CountAsync();
+        var assignments = await Db.RosterAssignments.CountAsync();
         assignments.Should().Be(1);
     }
 
@@ -727,7 +698,7 @@ public class ManageConfirmationTests : IAsyncLifetime
         var fixture = await SeedFixtureAsync();
 
         var throwing = new ThrowingDispatchNotificationService();
-        var service = new ManageConfirmationService(_db, throwing, _clock, new OccurrenceLockService(_db), NullLogger<ManageConfirmationService>.Instance);
+        var service = new ManageConfirmationService(Db, throwing, _clock, new OccurrenceLockService(Db), NullLogger<ManageConfirmationService>.Instance);
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
@@ -738,7 +709,7 @@ public class ManageConfirmationTests : IAsyncLifetime
         result.Status.Should().Be("Success");
         result.ReplacementsCreated.Should().Be(1);
 
-        var replacement = await _db.RosterAssignments
+        var replacement = await Db.RosterAssignments
             .Where(a => a.AssignmentId != fixture.AssignmentId)
             .FirstAsync();
         replacement.MemberId.Should().Be(fixture.DanaMemberId);

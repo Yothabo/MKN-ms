@@ -19,44 +19,15 @@ namespace MknMs.IntegrationTests;
 /// <summary>
 /// Integration tests for process 12.0 Create Manual Assignment.
 /// </summary>
-public class CreateManualAssignmentTests : IAsyncLifetime
+public class CreateManualAssignmentTests : IntegrationTestBase
 {
-    private const string TestConnectionString =
-        "Host=127.0.0.1;Port=5432;Database=mkn_test;Username=mkn_dev";
+    private readonly IDispatchNotificationService _notification = new FakeDispatchNotificationService();
+    private readonly TimeProvider _clock = new FakeTimeProvider(
+        new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero));
 
-    private MknDbContext _db = null!;
-    private IDispatchNotificationService _notification = null!;
-    private TimeProvider _clock = null!;
-
-    public async Task InitializeAsync()
+    protected override async Task OnInitializedAsync()
     {
-        var options = new DbContextOptionsBuilder<MknDbContext>()
-            .UseNpgsql(TestConnectionString)
-            .Options;
-
-        _db = new MknDbContext(options);
-        _notification = new FakeDispatchNotificationService();
-        _clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero));
-
-        await _db.Database.ExecuteSqlRawAsync(
-            "TRUNCATE TABLE materializer_run, attendance_record, roster_assignment, " +
-            "service_occurrence_duty, service_occurrence, service_schedule, " +
-            "service_definition_duty, branch_time_slot, service_definition, " +
-            "service_type, time_of_day, branch, identifier_history, eligibility, " +
-            "duty_rule, admin, member, member_attribute_value, member_status, " +
-            "attendance_rule_scope, attendance_rule, readmission, role, duty, " +
-            "system_setting, outcome_state, assignment_status, permission_tier, " +
-            "attribute_type, capability, event_branch, configuration_audit_log, " +
-            "entity_deletion_policy, notification_subscription " +
-            "RESTART IDENTITY CASCADE;");
-
-        await TestSeed.EnsureRequiredSettingsAsync(_db);
-    }
-
-    public Task DisposeAsync()
-    {
-        _db.Dispose();
-        return Task.CompletedTask;
+        await TestSeed.EnsureRequiredSettingsAsync(Db);
     }
 
     private sealed record Fixture(
@@ -77,16 +48,16 @@ public class CreateManualAssignmentTests : IAsyncLifetime
         var tier = new PermissionTier { Name = "Full Admin" };
         var status = new AssignmentStatus { Name = "Confirmed", IsTerminal = false };
 
-        _db.ServiceTypes.Add(serviceType);
-        _db.TimeOfDays.Add(timeOfDay);
-        _db.Roles.Add(role);
-        _db.Branches.Add(branch);
-        _db.Duties.Add(duty);
-        _db.PermissionTiers.Add(tier);
-        _db.AssignmentStatuses.Add(status);
-        await _db.SaveChangesAsync();
+        Db.ServiceTypes.Add(serviceType);
+        Db.TimeOfDays.Add(timeOfDay);
+        Db.Roles.Add(role);
+        Db.Branches.Add(branch);
+        Db.Duties.Add(duty);
+        Db.PermissionTiers.Add(tier);
+        Db.AssignmentStatuses.Add(status);
+        await Db.SaveChangesAsync();
 
-        var statusId = await TestSeed.EnsureDefaultMemberStatusAsync(_db);
+        var statusId = await TestSeed.EnsureDefaultMemberStatusAsync(Db);
 
         var eligible = new Member
         {
@@ -108,17 +79,17 @@ public class CreateManualAssignmentTests : IAsyncLifetime
             BranchId = branch.BranchId, RoleId = role.RoleId,
             MemberStatusId = statusId,
         };
-        _db.Members.Add(eligible);
-        _db.Members.Add(ineligible);
-        await _db.SaveChangesAsync();
+        Db.Members.Add(eligible);
+        Db.Members.Add(ineligible);
+        await Db.SaveChangesAsync();
 
         var admin = new Admin
         {
             MemberId = eligible.MemberId,
             PermissionTierId = tier.PermissionTierId,
         };
-        _db.Admins.Add(admin);
-        await _db.SaveChangesAsync();
+        Db.Admins.Add(admin);
+        await Db.SaveChangesAsync();
 
         var slot = new BranchTimeSlot
         {
@@ -126,8 +97,8 @@ public class CreateManualAssignmentTests : IAsyncLifetime
             DayOfWeek = "Sunday",
             TimeOfDayId = timeOfDay.TimeOfDayId,
         };
-        _db.BranchTimeSlots.Add(slot);
-        await _db.SaveChangesAsync();
+        Db.BranchTimeSlots.Add(slot);
+        await Db.SaveChangesAsync();
 
         var definition = new ServiceDefinition
         {
@@ -135,16 +106,16 @@ public class CreateManualAssignmentTests : IAsyncLifetime
             ServiceTypeId = serviceType.ServiceTypeId,
             OwningBranchId = null,
         };
-        _db.ServiceDefinitions.Add(definition);
-        await _db.SaveChangesAsync();
+        Db.ServiceDefinitions.Add(definition);
+        await Db.SaveChangesAsync();
 
-        _db.ServiceDefinitionDuties.Add(new ServiceDefinitionDuty
+        Db.ServiceDefinitionDuties.Add(new ServiceDefinitionDuty
         {
             ServiceDefId = definition.ServiceDefId,
             DutyId = duty.DutyId,
             RequiredSlotCount = 1,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         var schedule = new ServiceSchedule
         {
@@ -152,23 +123,23 @@ public class CreateManualAssignmentTests : IAsyncLifetime
             TimeSlotId = slot.TimeSlotId,
             StartTime = new TimeOnly(9, 0),
         };
-        _db.ServiceSchedules.Add(schedule);
-        await _db.SaveChangesAsync();
+        Db.ServiceSchedules.Add(schedule);
+        await Db.SaveChangesAsync();
 
         if (withEligibilityFlagRule)
         {
             // Eligibility Flag criterion referencing this same duty.
-            _db.DutyRules.Add(new DutyRule
+            Db.DutyRules.Add(new DutyRule
             {
                 DutyId = duty.DutyId,
                 TierOrder = 1,
                 CriteriaType = "EligibilityFlag",
                 CriteriaValue = duty.DutyId.ToString(),
             });
-            await _db.SaveChangesAsync();
+            await Db.SaveChangesAsync();
 
             // Only the "eligible" member holds the grant.
-            _db.Eligibilities.Add(new Eligibility
+            Db.Eligibilities.Add(new Eligibility
             {
                 MemberId = eligible.MemberId,
                 DutyId = duty.DutyId,
@@ -177,7 +148,7 @@ public class CreateManualAssignmentTests : IAsyncLifetime
                 RevokedDate = null,
                 RevokedReason = null,
             });
-            await _db.SaveChangesAsync();
+            await Db.SaveChangesAsync();
         }
         else
         {
@@ -185,17 +156,17 @@ public class CreateManualAssignmentTests : IAsyncLifetime
             // to prove manual assignment bypasses non-EligibilityFlag
             // criteria. Rule requires a role neither member holds.
             var unusedRole = new Role { Name = "Steward", IsActive = true };
-            _db.Roles.Add(unusedRole);
-            await _db.SaveChangesAsync();
+            Db.Roles.Add(unusedRole);
+            await Db.SaveChangesAsync();
 
-            _db.DutyRules.Add(new DutyRule
+            Db.DutyRules.Add(new DutyRule
             {
                 DutyId = duty.DutyId,
                 TierOrder = 1,
                 CriteriaType = "Role",
                 CriteriaValue = "Steward",
             });
-            await _db.SaveChangesAsync();
+            await Db.SaveChangesAsync();
         }
 
         var occurrence = new ServiceOccurrence
@@ -210,8 +181,8 @@ public class CreateManualAssignmentTests : IAsyncLifetime
             CreatedBy = null,
             ChangedBy = null,
         };
-        _db.ServiceOccurrences.Add(occurrence);
-        await _db.SaveChangesAsync();
+        Db.ServiceOccurrences.Add(occurrence);
+        await Db.SaveChangesAsync();
 
         return new Fixture(
             occurrence.OccurrenceId,
@@ -226,7 +197,7 @@ public class CreateManualAssignmentTests : IAsyncLifetime
     public async Task Create_WithNullStatus_WritesRowAndDispatchesNotification()
     {
         var f = await SeedFixtureAsync();
-        var service = new CreateManualAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
+        var service = new CreateManualAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db));
 
         var result = await service.RunAsync(new CreateManualAssignmentCommand
         {
@@ -241,7 +212,7 @@ public class CreateManualAssignmentTests : IAsyncLifetime
         result.NotificationDispatched.Should().BeTrue();
         result.AssignmentId.Should().BeGreaterThan(0);
 
-        var row = await _db.RosterAssignments
+        var row = await Db.RosterAssignments
             .FirstAsync(a => a.AssignmentId == result.AssignmentId);
 
         row.AssignmentSource.Should().Be("Manual");
@@ -254,7 +225,7 @@ public class CreateManualAssignmentTests : IAsyncLifetime
     public async Task Create_WithNonNullStatus_DoesNotDispatchNotification()
     {
         var f = await SeedFixtureAsync();
-        var service = new CreateManualAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
+        var service = new CreateManualAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db));
 
         var result = await service.RunAsync(new CreateManualAssignmentCommand
         {
@@ -268,7 +239,7 @@ public class CreateManualAssignmentTests : IAsyncLifetime
         result.Status.Should().Be("Success");
         result.NotificationDispatched.Should().BeFalse();
 
-        var row = await _db.RosterAssignments
+        var row = await Db.RosterAssignments
             .FirstAsync(a => a.AssignmentId == result.AssignmentId);
         row.AssignmentStatusId.Should().Be(f.NonTerminalStatusId);
     }
@@ -277,7 +248,7 @@ public class CreateManualAssignmentTests : IAsyncLifetime
     public async Task Create_Duplicate_Fails()
     {
         var f = await SeedFixtureAsync();
-        var service = new CreateManualAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
+        var service = new CreateManualAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db));
 
         await service.RunAsync(new CreateManualAssignmentCommand
         {
@@ -305,7 +276,7 @@ public class CreateManualAssignmentTests : IAsyncLifetime
     public async Task Create_WithEligibilityFlagRule_AndNoGrant_Fails()
     {
         var f = await SeedFixtureAsync(withEligibilityFlagRule: true);
-        var service = new CreateManualAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
+        var service = new CreateManualAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db));
 
         // The "ineligible" member has no grant.
         var result = await service.RunAsync(new CreateManualAssignmentCommand
@@ -320,7 +291,7 @@ public class CreateManualAssignmentTests : IAsyncLifetime
         result.Status.Should().Be("Failure");
         result.ErrorDetail.Should().Contain("Eligibility");
 
-        var count = await _db.RosterAssignments.CountAsync();
+        var count = await Db.RosterAssignments.CountAsync();
         count.Should().Be(0);
     }
 
@@ -328,7 +299,7 @@ public class CreateManualAssignmentTests : IAsyncLifetime
     public async Task Create_WithEligibilityFlagRule_AndGrant_Succeeds()
     {
         var f = await SeedFixtureAsync(withEligibilityFlagRule: true);
-        var service = new CreateManualAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
+        var service = new CreateManualAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db));
 
         var result = await service.RunAsync(new CreateManualAssignmentCommand
         {
@@ -346,7 +317,7 @@ public class CreateManualAssignmentTests : IAsyncLifetime
     public async Task Create_WithNonEligibilityCriteria_BypassesThem()
     {
         var f = await SeedFixtureAsync(withEligibilityFlagRule: false);
-        var service = new CreateManualAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
+        var service = new CreateManualAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db));
 
         // The duty has a Role=Steward rule. Neither member holds
         // Steward. Manual assignment bypasses it. §17.1 B1.
@@ -366,7 +337,7 @@ public class CreateManualAssignmentTests : IAsyncLifetime
     public async Task Create_WithMissingReferents_Fails()
     {
         var f = await SeedFixtureAsync();
-        var service = new CreateManualAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
+        var service = new CreateManualAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db));
 
         var missingMember = await service.RunAsync(new CreateManualAssignmentCommand
         {
@@ -395,7 +366,7 @@ public class CreateManualAssignmentTests : IAsyncLifetime
     public async Task Create_WithMissingDutyOccurrenceAndTargetStatus_Fails()
     {
         var f = await SeedFixtureAsync();
-        var service = new CreateManualAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
+        var service = new CreateManualAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db));
 
         // Missing duty; all other referents valid.
         var missingDuty = await service.RunAsync(new CreateManualAssignmentCommand
@@ -444,16 +415,16 @@ public class CreateManualAssignmentTests : IAsyncLifetime
         var f = await SeedFixtureAsync();
 
         var secondDuty = new Duty { Name = "Welcome duty", IsActive = true };
-        _db.Duties.Add(secondDuty);
-        await _db.SaveChangesAsync();
+        Db.Duties.Add(secondDuty);
+        await Db.SaveChangesAsync();
 
         var proposal = new AssignmentStatus { Name = "Proposed", IsTerminal = false };
-        _db.AssignmentStatuses.Add(proposal);
-        await _db.SaveChangesAsync();
+        Db.AssignmentStatuses.Add(proposal);
+        await Db.SaveChangesAsync();
 
         // Seed a non-terminal assignment for the eligible member on
         // the same occurrence, on a different duty.
-        _db.RosterAssignments.Add(new RosterAssignment
+        Db.RosterAssignments.Add(new RosterAssignment
         {
             MemberId = f.EligibleMemberId,
             DutyId = secondDuty.DutyId,
@@ -464,9 +435,9 @@ public class CreateManualAssignmentTests : IAsyncLifetime
             AssignedBy = null,
             CreatedAt = _clock.GetUtcNow(),
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new CreateManualAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
+        var service = new CreateManualAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db));
 
         var result = await service.RunAsync(new CreateManualAssignmentCommand
         {
@@ -479,7 +450,7 @@ public class CreateManualAssignmentTests : IAsyncLifetime
 
         result.Status.Should().Be("Success");
 
-        var total = await _db.RosterAssignments.CountAsync();
+        var total = await Db.RosterAssignments.CountAsync();
         total.Should().Be(2);
     }
 
@@ -487,7 +458,7 @@ public class CreateManualAssignmentTests : IAsyncLifetime
     public async Task Create_DoesNotEnforceSlotCapacity()
     {
         var f = await SeedFixtureAsync();
-        var service = new CreateManualAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db));
+        var service = new CreateManualAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db));
 
         // Fill the slot via 12.0 (first assignment).
         var first = await service.RunAsync(new CreateManualAssignmentCommand
@@ -512,7 +483,7 @@ public class CreateManualAssignmentTests : IAsyncLifetime
         });
 
         second.Status.Should().Be("Success");
-        var total = await _db.RosterAssignments.CountAsync();
+        var total = await Db.RosterAssignments.CountAsync();
         total.Should().Be(2);
     }
 
@@ -523,12 +494,12 @@ public class CreateManualAssignmentTests : IAsyncLifetime
         // whose IsActive = true. An inactive admin is rejected.
         var f = await SeedFixtureAsync();
 
-        var admin = await _db.Admins.FirstAsync(a => a.AdminId == f.AdminId);
+        var admin = await Db.Admins.FirstAsync(a => a.AdminId == f.AdminId);
         admin.IsActive = false;
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         var service = new CreateManualAssignmentService(
-            _db, _notification, _clock, new OccurrenceLockService(_db));
+            Db, _notification, _clock, new OccurrenceLockService(Db));
 
         var result = await service.RunAsync(new CreateManualAssignmentCommand
         {
@@ -542,7 +513,7 @@ public class CreateManualAssignmentTests : IAsyncLifetime
         result.Status.Should().Be("Failure");
         result.ErrorDetail.Should().Contain("is not active");
 
-        var count = await _db.RosterAssignments.CountAsync();
+        var count = await Db.RosterAssignments.CountAsync();
         count.Should().Be(0);
     }
 }

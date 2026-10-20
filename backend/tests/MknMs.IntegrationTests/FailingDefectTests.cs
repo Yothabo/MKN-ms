@@ -39,46 +39,19 @@ namespace MknMs.IntegrationTests;
 ///
 /// Specification: §10.1.2, §11.1.3, §11.1.6, §11.1.7, §11.3, §15.2.1.
 /// </remarks>
-public class FailingDefectTests : IAsyncLifetime
+public class FailingDefectTests : IntegrationTestBase
 {
-    private const string TestConnectionString =
-        "Host=127.0.0.1;Port=5432;Database=mkn_test;Username=mkn_dev";
-
     private static readonly DateTimeOffset Now = new(2026, 10, 6, 12, 0, 0, TimeSpan.Zero);
 
-    private MknDbContext _db = null!;
-    private IDispatchNotificationService _notification = null!;
-    private TimeProvider _clock = null!;
+    private readonly IDispatchNotificationService _notification = new FakeDispatchNotificationService();
+    private readonly TimeProvider _clock = new FakeTimeProvider(Now);
 
-    public async Task InitializeAsync()
+    protected override async Task OnInitializedAsync()
     {
-        var options = new DbContextOptionsBuilder<MknDbContext>()
-            .UseNpgsql(TestConnectionString)
-            .Options;
-
-        _db = new MknDbContext(options);
-        _notification = new FakeDispatchNotificationService();
-        _clock = new FakeTimeProvider(Now);
-
-        await _db.Database.ExecuteSqlRawAsync(
-            "TRUNCATE TABLE materializer_run, attendance_record, roster_assignment, " +
-            "service_occurrence_duty, service_occurrence, service_schedule, " +
-            "service_definition_duty, branch_time_slot, service_definition, " +
-            "service_type, time_of_day, branch, identifier_history, eligibility, " +
-            "duty_rule, admin, member, member_attribute_value, member_status, " +
-            "attendance_rule_scope, attendance_rule, readmission, role, duty, " +
-            "system_setting, outcome_state, assignment_status, permission_tier, " +
-            "attribute_type, capability, event_branch, configuration_audit_log, " +
-            "entity_deletion_policy, notification_subscription " +
-            "RESTART IDENTITY CASCADE;");
-
-        await TestSeed.EnsureRequiredSettingsAsync(_db);
-    }
-
-    public Task DisposeAsync()
-    {
-        _db.Dispose();
-        return Task.CompletedTask;
+        // No migration seeds SystemSetting. These tests depend on
+        // ApplicationTimeZone and AttendanceRegisterEnabled being
+        // present. Seed them per fact. The helper is idempotent.
+        await TestSeed.EnsureRequiredSettingsAsync(Db);
     }
 
     private sealed record Fixture(
@@ -96,40 +69,35 @@ public class FailingDefectTests : IAsyncLifetime
         bool danaEligible,
         TimeSpan? assignmentAge = null)
     {
-        _db.ServiceTypes.Add(new ServiceType { Name = "Regular" });
-        _db.TimeOfDays.Add(new TimeOfDay { Name = "TestSlot" });
+        Db.ServiceTypes.Add(new ServiceType { Name = "Regular" });
+        Db.TimeOfDays.Add(new TimeOfDay { Name = "TestSlot" });
 
         var role = new Role { Name = "Member", IsActive = true };
-        _db.Roles.Add(role);
+        Db.Roles.Add(role);
 
         var duty = new Duty { Name = "Test duty", IsActive = true };
-        _db.Duties.Add(duty);
+        Db.Duties.Add(duty);
 
         var branch = new Branch { Name = "Main", Location = "Main Street", IsActive = true };
-        _db.Branches.Add(branch);
+        Db.Branches.Add(branch);
 
         var tier = new PermissionTier { Name = "Full Admin" };
-        _db.PermissionTiers.Add(tier);
+        Db.PermissionTiers.Add(tier);
 
         var confirmed = new AssignmentStatus { Name = "Confirmed", IsTerminal = false };
         var declined = new AssignmentStatus { Name = "Declined", IsTerminal = true };
         var timedOut = new AssignmentStatus { Name = "Timed Out", IsTerminal = true };
-        _db.AssignmentStatuses.AddRange(confirmed, declined, timedOut);
-        await _db.SaveChangesAsync();
+        Db.AssignmentStatuses.AddRange(confirmed, declined, timedOut);
+        await Db.SaveChangesAsync();
 
-        _db.SystemSettings.AddRange(
+        Db.SystemSettings.AddRange(
             new SystemSetting { Key = "InitialAssignmentStatusID", Value = confirmed.AssignmentStatusId.ToString(), Required = true },
             new SystemSetting { Key = "DeclinedStatusID", Value = declined.AssignmentStatusId.ToString(), Required = true },
             new SystemSetting { Key = "TimedOutStatusID", Value = timedOut.AssignmentStatusId.ToString(), Required = true },
             new SystemSetting { Key = "ConfirmationTimeoutHours", Value = "48", Required = true });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var memberStatus = new MemberStatus
-        {
-            Name = "Active", IsRosterable = true, IsDefault = true, IsDeleted = false,
-        };
-        _db.MemberStatuses.Add(memberStatus);
-        await _db.SaveChangesAsync();
+        var memberStatusId = await TestSeed.EnsureDefaultMemberStatusAsync(Db);
 
         Member NewMember(string name, string phone) => new()
         {
@@ -139,38 +107,38 @@ public class FailingDefectTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Other",
             Phone = phone, Email = null,
             BranchId = branch.BranchId, RoleId = role.RoleId,
-            MemberStatusId = memberStatus.MemberStatusId,
+            MemberStatusId = memberStatusId,
         };
 
         var alex = NewMember("Alex", "+27-000-0000");
         var beatrice = NewMember("Beatrice", "+27-000-0001");
         var dana = NewMember("Dana", "+27-000-0002");
-        _db.Members.AddRange(alex, beatrice, dana);
-        await _db.SaveChangesAsync();
+        Db.Members.AddRange(alex, beatrice, dana);
+        await Db.SaveChangesAsync();
 
         var admin = new Admin { MemberId = alex.MemberId, PermissionTierId = tier.PermissionTierId };
-        _db.Admins.Add(admin);
-        await _db.SaveChangesAsync();
+        Db.Admins.Add(admin);
+        await Db.SaveChangesAsync();
 
         var slot = new BranchTimeSlot
         {
             BranchId = branch.BranchId,
             DayOfWeek = "Sunday",
-            TimeOfDayId = _db.TimeOfDays.Local.First().TimeOfDayId,
+            TimeOfDayId = Db.TimeOfDays.Local.First().TimeOfDayId,
         };
-        _db.BranchTimeSlots.Add(slot);
-        await _db.SaveChangesAsync();
+        Db.BranchTimeSlots.Add(slot);
+        await Db.SaveChangesAsync();
 
         var definition = new ServiceDefinition
         {
             Name = "Service",
-            ServiceTypeId = _db.ServiceTypes.Local.First().ServiceTypeId,
+            ServiceTypeId = Db.ServiceTypes.Local.First().ServiceTypeId,
             OwningBranchId = null,
         };
-        _db.ServiceDefinitions.Add(definition);
-        await _db.SaveChangesAsync();
+        Db.ServiceDefinitions.Add(definition);
+        await Db.SaveChangesAsync();
 
-        _db.ServiceDefinitionDuties.Add(new ServiceDefinitionDuty
+        Db.ServiceDefinitionDuties.Add(new ServiceDefinitionDuty
         {
             ServiceDefId = definition.ServiceDefId,
             DutyId = duty.DutyId,
@@ -183,8 +151,8 @@ public class FailingDefectTests : IAsyncLifetime
             TimeSlotId = slot.TimeSlotId,
             StartTime = new TimeOnly(9, 0),
         };
-        _db.ServiceSchedules.Add(schedule);
-        await _db.SaveChangesAsync();
+        Db.ServiceSchedules.Add(schedule);
+        await Db.SaveChangesAsync();
 
         Eligibility Grant(int memberId) => new()
         {
@@ -196,8 +164,8 @@ public class FailingDefectTests : IAsyncLifetime
             RevokedReason = null,
         };
 
-        _db.Eligibilities.Add(Grant(beatrice.MemberId));
-        if (danaEligible) _db.Eligibilities.Add(Grant(dana.MemberId));
+        Db.Eligibilities.Add(Grant(beatrice.MemberId));
+        if (danaEligible) Db.Eligibilities.Add(Grant(dana.MemberId));
 
         var occurrence = new ServiceOccurrence
         {
@@ -211,8 +179,8 @@ public class FailingDefectTests : IAsyncLifetime
             CreatedBy = null,
             ChangedBy = null,
         };
-        _db.ServiceOccurrences.Add(occurrence);
-        await _db.SaveChangesAsync();
+        Db.ServiceOccurrences.Add(occurrence);
+        await Db.SaveChangesAsync();
 
         var assignment = new RosterAssignment
         {
@@ -225,8 +193,8 @@ public class FailingDefectTests : IAsyncLifetime
             AssignedBy = null,
             CreatedAt = Now - (assignmentAge ?? TimeSpan.Zero),
         };
-        _db.RosterAssignments.Add(assignment);
-        await _db.SaveChangesAsync();
+        Db.RosterAssignments.Add(assignment);
+        await Db.SaveChangesAsync();
 
         return new Fixture(
             occurrence.OccurrenceId, duty.DutyId,
@@ -248,18 +216,18 @@ public class FailingDefectTests : IAsyncLifetime
         // zero assignments created.
         var f = await SeedAsync(new DateOnly(2026, 10, 11), danaEligible: false);
 
-        var declined = await _db.RosterAssignments.FirstAsync(a => a.AssignmentId == f.BeatriceAssignmentId);
+        var declined = await Db.RosterAssignments.FirstAsync(a => a.AssignmentId == f.BeatriceAssignmentId);
         declined.AssignmentStatusId = f.DeclinedStatusId;
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new GenerateAssignmentService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<GenerateAssignmentService>.Instance);
+        var service = new GenerateAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
         var result = await service.RunAsync(new GenerateAssignmentCommand { OccurrenceId = f.OccurrenceId });
 
         result.Status.Should().Be("Success", result.ErrorDetail ?? "");
         result.AssignmentsCreated.Should().Be(0);
         result.DutiesUnfilled.Should().Be(1);
 
-        var total = await _db.RosterAssignments.CountAsync();
+        var total = await Db.RosterAssignments.CountAsync();
         total.Should().Be(1, "only the original declined row should exist");
     }
 
@@ -273,7 +241,7 @@ public class FailingDefectTests : IAsyncLifetime
     {
         var f = await SeedAsync(new DateOnly(2026, 10, 11), danaEligible: true);
 
-        var confirmation = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<ManageConfirmationService>.Instance);
+        var confirmation = new ManageConfirmationService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<ManageConfirmationService>.Instance);
 
         // Beatrice declines; the service replaces her with Dana.
         var declineResult = await confirmation.RunAsync(new ManageConfirmationCommand
@@ -297,7 +265,7 @@ public class FailingDefectTests : IAsyncLifetime
         confirmResult.Status.Should().Be("Failure");
         confirmResult.ErrorDetail.Should().Contain("already filled");
 
-        var liveCount = await _db.RosterAssignments
+        var liveCount = await Db.RosterAssignments
             .AsNoTracking()
             .CountAsync(a => a.OccurrenceId == f.OccurrenceId
                 && a.DutyId == f.DutyId
@@ -319,7 +287,7 @@ public class FailingDefectTests : IAsyncLifetime
             danaEligible: true,
             assignmentAge: TimeSpan.FromHours(72));
 
-        var service = new ManageConfirmationService(_db, _notification, _clock, new OccurrenceLockService(_db), NullLogger<ManageConfirmationService>.Instance);
+        var service = new ManageConfirmationService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<ManageConfirmationService>.Instance);
 
         var result = await service.RunAsync(new ManageConfirmationCommand
         {
@@ -337,7 +305,7 @@ public class FailingDefectTests : IAsyncLifetime
         result.ReplacementsCreated.Should().Be(0);
         result.SlotsLeftVacant.Should().Be(0);
 
-        var rows = await _db.RosterAssignments.AsNoTracking().ToListAsync();
+        var rows = await Db.RosterAssignments.AsNoTracking().ToListAsync();
         rows.Should().HaveCount(1);
         rows.Single().AssignmentStatusId.Should().Be(f.TimedOutStatusId);
 

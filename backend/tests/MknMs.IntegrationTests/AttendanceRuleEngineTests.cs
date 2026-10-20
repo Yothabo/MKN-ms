@@ -23,45 +23,12 @@ namespace MknMs.IntegrationTests;
 /// order, outcome vocabulary, manual invocation, and required
 /// settings.
 /// </remarks>
-public class AttendanceRuleEngineTests : IAsyncLifetime
+public class AttendanceRuleEngineTests : IntegrationTestBase
 {
-    private const string TestConnectionString =
-        "Host=127.0.0.1;Port=5432;Database=mkn_test;Username=mkn_dev";
-
     private static readonly DateTimeOffset Now = new(2026, 10, 11, 12, 0, 0, TimeSpan.Zero);
 
-    private MknDbContext _db = null!;
-    private FakeDispatchNotificationService _notification = null!;
-    private TimeProvider _clock = null!;
-
-    public async Task InitializeAsync()
-    {
-        var options = new DbContextOptionsBuilder<MknDbContext>()
-            .UseNpgsql(TestConnectionString)
-            .Options;
-
-        _db = new MknDbContext(options);
-        _notification = new FakeDispatchNotificationService();
-        _clock = new FakeTimeProvider(Now);
-
-        await _db.Database.ExecuteSqlRawAsync(
-            "TRUNCATE TABLE materializer_run, attendance_record, roster_assignment, " +
-            "service_occurrence_duty, service_occurrence, service_schedule, " +
-            "service_definition_duty, branch_time_slot, service_definition, " +
-            "service_type, time_of_day, branch, identifier_history, eligibility, " +
-            "duty_rule, admin, member, member_attribute_value, member_status, " +
-            "attendance_rule_scope, attendance_rule, readmission, role, duty, " +
-            "system_setting, outcome_state, assignment_status, permission_tier, " +
-            "attribute_type, capability, event_branch, configuration_audit_log, " +
-            "entity_deletion_policy, notification_subscription " +
-            "RESTART IDENTITY CASCADE;");
-    }
-
-    public Task DisposeAsync()
-    {
-        _db.Dispose();
-        return Task.CompletedTask;
-    }
+    private readonly FakeDispatchNotificationService _notification = new FakeDispatchNotificationService();
+    private readonly TimeProvider _clock = new FakeTimeProvider(Now);
 
     // -----------------------------------------------------------------
     // Fixture
@@ -87,10 +54,7 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
             IsDeleted = false,
             UsesAttendanceRegister = null,
         };
-        var defaultStatus = new MemberStatus
-        {
-            Name = "Active", IsRosterable = true, IsDefault = true, IsDeleted = false,
-        };
+        var defaultStatusId = await TestSeed.EnsureDefaultMemberStatusAsync(Db);
         var otherStatus = new MemberStatus
         {
             Name = "Inactive", IsRosterable = false, IsDefault = false, IsDeleted = false,
@@ -100,28 +64,27 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
             Name = "Full Admin", IsDefault = true, IsDeleted = false,
         };
 
-        _db.ServiceTypes.Add(serviceType);
-        _db.TimeOfDays.Add(timeOfDay);
-        _db.Roles.Add(role);
-        _db.Branches.Add(branch);
-        _db.MemberStatuses.Add(defaultStatus);
-        _db.MemberStatuses.Add(otherStatus);
-        _db.PermissionTiers.Add(tier);
+        Db.ServiceTypes.Add(serviceType);
+        Db.TimeOfDays.Add(timeOfDay);
+        Db.Roles.Add(role);
+        Db.Branches.Add(branch);
+        Db.MemberStatuses.Add(otherStatus);
+        Db.PermissionTiers.Add(tier);
 
-        _db.SystemSettings.Add(new SystemSetting
+        Db.SystemSettings.Add(new SystemSetting
         {
             Key = "ApplicationTimeZone",
             Value = "Africa/Johannesburg",
             Required = true,
         });
-        _db.SystemSettings.Add(new SystemSetting
+        Db.SystemSettings.Add(new SystemSetting
         {
             Key = "AttendanceRegisterEnabled",
             Value = registerEnabled ? "true" : "false",
             Required = true,
         });
 
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         var member = new Member
         {
@@ -132,23 +95,23 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
             Phone = "+27-000-0000", Email = null,
             BranchId = branch.BranchId,
             RoleId = role.RoleId,
-            MemberStatusId = defaultStatus.MemberStatusId,
+            MemberStatusId = defaultStatusId,
         };
-        _db.Members.Add(member);
-        await _db.SaveChangesAsync();
+        Db.Members.Add(member);
+        await Db.SaveChangesAsync();
 
         var admin = new Admin
         {
             MemberId = member.MemberId,
             PermissionTierId = tier.PermissionTierId,
         };
-        _db.Admins.Add(admin);
-        await _db.SaveChangesAsync();
+        Db.Admins.Add(admin);
+        await Db.SaveChangesAsync();
 
         return new Fixture(
             branch.BranchId,
             role.RoleId,
-            defaultStatus.MemberStatusId,
+            defaultStatusId,
             otherStatus.MemberStatusId,
             member.MemberId,
             admin.AdminId);
@@ -160,12 +123,12 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
     {
         // A schedule and occurrence, so an AttendanceRecord can point
         // at a real occurrence.
-        var slot = await _db.BranchTimeSlots
+        var slot = await Db.BranchTimeSlots
             .FirstOrDefaultAsync(bts => bts.BranchId == f.BranchId);
 
         if (slot is null)
         {
-            var timeOfDayId = await _db.TimeOfDays
+            var timeOfDayId = await Db.TimeOfDays
                 .Select(t => t.TimeOfDayId).FirstAsync();
             slot = new BranchTimeSlot
             {
@@ -173,11 +136,11 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
                 DayOfWeek = "Sunday",
                 TimeOfDayId = timeOfDayId,
             };
-            _db.BranchTimeSlots.Add(slot);
-            await _db.SaveChangesAsync();
+            Db.BranchTimeSlots.Add(slot);
+            await Db.SaveChangesAsync();
         }
 
-        var serviceTypeId = await _db.ServiceTypes
+        var serviceTypeId = await Db.ServiceTypes
             .Select(st => st.ServiceTypeId).FirstAsync();
 
         var definition = new ServiceDefinition
@@ -186,8 +149,8 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
             ServiceTypeId = serviceTypeId,
             OwningBranchId = null,
         };
-        _db.ServiceDefinitions.Add(definition);
-        await _db.SaveChangesAsync();
+        Db.ServiceDefinitions.Add(definition);
+        await Db.SaveChangesAsync();
 
         var schedule = new ServiceSchedule
         {
@@ -195,8 +158,8 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
             TimeSlotId = slot.TimeSlotId,
             StartTime = new TimeOnly(9, 0),
         };
-        _db.ServiceSchedules.Add(schedule);
-        await _db.SaveChangesAsync();
+        Db.ServiceSchedules.Add(schedule);
+        await Db.SaveChangesAsync();
 
         var occurrence = new ServiceOccurrence
         {
@@ -210,22 +173,22 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
             CreatedBy = null,
             ChangedBy = null,
         };
-        _db.ServiceOccurrences.Add(occurrence);
-        await _db.SaveChangesAsync();
+        Db.ServiceOccurrences.Add(occurrence);
+        await Db.SaveChangesAsync();
 
         return occurrence.OccurrenceId;
     }
 
     private async Task AddAttendanceAsync(int memberId, int occurrenceId)
     {
-        _db.AttendanceRecords.Add(new AttendanceRecord
+        Db.AttendanceRecords.Add(new AttendanceRecord
         {
             MemberId = memberId,
             OccurrenceId = occurrenceId,
             Timestamp = Now,
             Source = "Manual",
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
     }
 
     private async Task<int> AddRuleAsync(
@@ -246,8 +209,8 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
             Enabled = enabled,
             IsDeleted = false,
         };
-        _db.AttendanceRules.Add(rule);
-        await _db.SaveChangesAsync();
+        Db.AttendanceRules.Add(rule);
+        await Db.SaveChangesAsync();
         return rule.AttendanceRuleId;
     }
 
@@ -261,7 +224,7 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
         var f = await SeedAsync();
         await AddRuleAsync("absent", "AbsenceDays", "90", "SetStatus", f.OtherStatusId);
 
-        var service = new AttendanceRuleEngineService(_db, _notification, _clock);
+        var service = new AttendanceRuleEngineService(Db, _notification, _clock);
         var result = await service.RunAsync(new AttendanceRuleEngineCommand
         {
             TriggerType = "Scheduled",
@@ -271,7 +234,7 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
         result.RulesEvaluated.Should().Be(1);
         result.StatusChangesApplied.Should().Be(1);
 
-        var member = await _db.Members.FirstAsync();
+        var member = await Db.Members.FirstAsync();
         member.MemberStatusId.Should().Be(f.OtherStatusId);
     }
 
@@ -287,7 +250,7 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
 
         await AddRuleAsync("absent", "AbsenceDays", "90", "SetStatus", f.OtherStatusId);
 
-        var service = new AttendanceRuleEngineService(_db, _notification, _clock);
+        var service = new AttendanceRuleEngineService(Db, _notification, _clock);
         var result = await service.RunAsync(new AttendanceRuleEngineCommand
         {
             TriggerType = "Scheduled",
@@ -296,7 +259,7 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
         result.Status.Should().Be("Success");
         result.StatusChangesApplied.Should().Be(0);
 
-        var member = await _db.Members.FirstAsync();
+        var member = await Db.Members.FirstAsync();
         member.MemberStatusId.Should().Be(f.DefaultStatusId);
     }
 
@@ -312,13 +275,13 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
 
         await AddRuleAsync("absent", "AbsenceDays", "90", "SetStatus", f.OtherStatusId);
 
-        var service = new AttendanceRuleEngineService(_db, _notification, _clock);
+        var service = new AttendanceRuleEngineService(Db, _notification, _clock);
         await service.RunAsync(new AttendanceRuleEngineCommand
         {
             TriggerType = "Scheduled",
         });
 
-        var member = await _db.Members.FirstAsync();
+        var member = await Db.Members.FirstAsync();
         member.MemberStatusId.Should().Be(f.OtherStatusId);
     }
 
@@ -332,13 +295,13 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
         var f = await SeedAsync(registerEnabled: false);
         await AddRuleAsync("absent", "AbsenceDays", "90", "SetStatus", f.OtherStatusId);
 
-        var service = new AttendanceRuleEngineService(_db, _notification, _clock);
+        var service = new AttendanceRuleEngineService(Db, _notification, _clock);
         await service.RunAsync(new AttendanceRuleEngineCommand
         {
             TriggerType = "Scheduled",
         });
 
-        var member = await _db.Members.FirstAsync();
+        var member = await Db.Members.FirstAsync();
         member.MemberStatusId.Should().Be(f.DefaultStatusId);
     }
 
@@ -347,19 +310,19 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
     {
         var f = await SeedAsync(registerEnabled: false);
 
-        var branch = await _db.Branches.FirstAsync();
+        var branch = await Db.Branches.FirstAsync();
         branch.UsesAttendanceRegister = true;
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         await AddRuleAsync("absent", "AbsenceDays", "90", "SetStatus", f.OtherStatusId);
 
-        var service = new AttendanceRuleEngineService(_db, _notification, _clock);
+        var service = new AttendanceRuleEngineService(Db, _notification, _clock);
         await service.RunAsync(new AttendanceRuleEngineCommand
         {
             TriggerType = "Scheduled",
         });
 
-        var member = await _db.Members.FirstAsync();
+        var member = await Db.Members.FirstAsync();
         member.MemberStatusId.Should().Be(f.OtherStatusId);
     }
 
@@ -374,7 +337,7 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
         await AddRuleAsync("first", "AbsenceDays", "90", "SetStatus", f.OtherStatusId);
         await AddRuleAsync("second", "AbsenceDays", "90", "SetStatus", f.DefaultStatusId);
 
-        var service = new AttendanceRuleEngineService(_db, _notification, _clock);
+        var service = new AttendanceRuleEngineService(Db, _notification, _clock);
         var result = await service.RunAsync(new AttendanceRuleEngineCommand
         {
             TriggerType = "Scheduled",
@@ -383,7 +346,7 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
         result.Status.Should().Be("Success");
         result.StatusChangesApplied.Should().Be(2);
 
-        var member = await _db.Members.FirstAsync();
+        var member = await Db.Members.FirstAsync();
         member.MemberStatusId.Should().Be(f.DefaultStatusId);
     }
 
@@ -394,7 +357,7 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
         await AddRuleAsync("status", "AbsenceDays", "90", "SetStatus", f.OtherStatusId);
         await AddRuleAsync("notify", "AbsenceDays", "90", "Notify");
 
-        var service = new AttendanceRuleEngineService(_db, _notification, _clock);
+        var service = new AttendanceRuleEngineService(Db, _notification, _clock);
         var result = await service.RunAsync(new AttendanceRuleEngineCommand
         {
             TriggerType = "Scheduled",
@@ -412,7 +375,7 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
         await AddRuleAsync("notify-1", "AbsenceDays", "90", "Notify");
         await AddRuleAsync("notify-2", "AbsenceDays", "90", "Notify");
 
-        var service = new AttendanceRuleEngineService(_db, _notification, _clock);
+        var service = new AttendanceRuleEngineService(Db, _notification, _clock);
         var result = await service.RunAsync(new AttendanceRuleEngineCommand
         {
             TriggerType = "Scheduled",
@@ -432,7 +395,7 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
         var f = await SeedAsync();
         await AddRuleAsync("absent", "AbsenceDays", "90", "SetStatus", f.DefaultStatusId);
 
-        var service = new AttendanceRuleEngineService(_db, _notification, _clock);
+        var service = new AttendanceRuleEngineService(Db, _notification, _clock);
         var result = await service.RunAsync(new AttendanceRuleEngineCommand
         {
             TriggerType = "Scheduled",
@@ -441,7 +404,7 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
         result.Status.Should().Be("Success");
         result.StatusChangesApplied.Should().Be(1);
 
-        var member = await _db.Members.FirstAsync();
+        var member = await Db.Members.FirstAsync();
         member.MemberStatusId.Should().Be(f.DefaultStatusId);
     }
 
@@ -455,7 +418,7 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
         var f = await SeedAsync();
         await AddRuleAsync("notify", "AbsenceDays", "90", "Notify");
 
-        var service = new AttendanceRuleEngineService(_db, _notification, _clock);
+        var service = new AttendanceRuleEngineService(Db, _notification, _clock);
         var first = await service.RunAsync(new AttendanceRuleEngineCommand
         {
             TriggerType = "Scheduled",
@@ -479,7 +442,7 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
         var f = await SeedAsync();
         await AddRuleAsync("manual", "Manual", null, "SetStatus", f.OtherStatusId);
 
-        var service = new AttendanceRuleEngineService(_db, _notification, _clock);
+        var service = new AttendanceRuleEngineService(Db, _notification, _clock);
         var result = await service.RunAsync(new AttendanceRuleEngineCommand
         {
             TriggerType = "Scheduled",
@@ -488,7 +451,7 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
         result.Status.Should().Be("Success");
         result.RulesEvaluated.Should().Be(0);
 
-        var member = await _db.Members.FirstAsync();
+        var member = await Db.Members.FirstAsync();
         member.MemberStatusId.Should().Be(f.DefaultStatusId);
     }
 
@@ -498,7 +461,7 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
         var f = await SeedAsync();
         var ruleId = await AddRuleAsync("manual", "Manual", "999", "SetStatus", f.OtherStatusId);
 
-        var service = new AttendanceRuleEngineService(_db, _notification, _clock);
+        var service = new AttendanceRuleEngineService(Db, _notification, _clock);
         var result = await service.RunAsync(new AttendanceRuleEngineCommand
         {
             TriggerType = "Manual",
@@ -510,7 +473,7 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
         result.RulesEvaluated.Should().Be(1);
         result.StatusChangesApplied.Should().Be(1);
 
-        var member = await _db.Members.FirstAsync();
+        var member = await Db.Members.FirstAsync();
         member.MemberStatusId.Should().Be(f.OtherStatusId);
     }
 
@@ -520,7 +483,7 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
         var f = await SeedAsync();
         var ruleId = await AddRuleAsync("absent", "AbsenceDays", "90", "SetStatus", f.OtherStatusId);
 
-        var service = new AttendanceRuleEngineService(_db, _notification, _clock);
+        var service = new AttendanceRuleEngineService(Db, _notification, _clock);
         var result = await service.RunAsync(new AttendanceRuleEngineCommand
         {
             TriggerType = "Manual",
@@ -542,7 +505,7 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
         var f = await SeedAsync();
         var ruleId = await AddRuleAsync("manual", "Manual", null, "SetStatus", f.OtherStatusId);
 
-        var service = new AttendanceRuleEngineService(_db, _notification, _clock);
+        var service = new AttendanceRuleEngineService(Db, _notification, _clock);
         var result = await service.RunAsync(new AttendanceRuleEngineCommand
         {
             TriggerType = "Manual",
@@ -554,7 +517,7 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
         result.ErrorCode.Should().Be("not_found");
         result.ErrorDetail.Should().Contain("Admin 9999");
 
-        var member = await _db.Members.FirstAsync();
+        var member = await Db.Members.FirstAsync();
         member.MemberStatusId.Should().Be(f.DefaultStatusId);
     }
 
@@ -567,11 +530,11 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
         var f = await SeedAsync();
         var ruleId = await AddRuleAsync("manual", "Manual", null, "SetStatus", f.OtherStatusId);
 
-        var admin = await _db.Admins.FirstAsync(a => a.AdminId == f.AdminId);
+        var admin = await Db.Admins.FirstAsync(a => a.AdminId == f.AdminId);
         admin.IsActive = false;
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new AttendanceRuleEngineService(_db, _notification, _clock);
+        var service = new AttendanceRuleEngineService(Db, _notification, _clock);
         var result = await service.RunAsync(new AttendanceRuleEngineCommand
         {
             TriggerType = "Manual",
@@ -583,7 +546,7 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
         result.ErrorCode.Should().Be("not_found");
         result.ErrorDetail.Should().Contain("is not active");
 
-        var member = await _db.Members.FirstAsync();
+        var member = await Db.Members.FirstAsync();
         member.MemberStatusId.Should().Be(f.DefaultStatusId);
     }
 
@@ -595,7 +558,7 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
         var f = await SeedAsync();
         var ruleId = await AddRuleAsync("manual", "Manual", null, "SetStatus", f.OtherStatusId);
 
-        var service = new AttendanceRuleEngineService(_db, _notification, _clock);
+        var service = new AttendanceRuleEngineService(Db, _notification, _clock);
 
         var first = await service.RunAsync(new AttendanceRuleEngineCommand
         {
@@ -615,7 +578,7 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
         second.Status.Should().Be("Success");
         second.StatusChangesApplied.Should().Be(1);
 
-        var member = await _db.Members.FirstAsync();
+        var member = await Db.Members.FirstAsync();
         member.MemberStatusId.Should().Be(f.OtherStatusId);
     }
 
@@ -628,25 +591,25 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
     {
         var f = await SeedAsync();
 
-        _db.Readmissions.Add(new Readmission
+        Db.Readmissions.Add(new Readmission
         {
             MemberId = f.MemberId,
             ReadmissionDate = new DateOnly(2025, 1, 1),
             PerformedByAdminId = f.AdminId,
             Reason = null,
         });
-        _db.Readmissions.Add(new Readmission
+        Db.Readmissions.Add(new Readmission
         {
             MemberId = f.MemberId,
             ReadmissionDate = new DateOnly(2025, 6, 1),
             PerformedByAdminId = f.AdminId,
             Reason = null,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         await AddRuleAsync("readmit", "ReadmissionCount", "2", "SetStatus", f.OtherStatusId);
 
-        var service = new AttendanceRuleEngineService(_db, _notification, _clock);
+        var service = new AttendanceRuleEngineService(Db, _notification, _clock);
         var result = await service.RunAsync(new AttendanceRuleEngineCommand
         {
             TriggerType = "Scheduled",
@@ -661,18 +624,18 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
     {
         var f = await SeedAsync();
 
-        _db.Readmissions.Add(new Readmission
+        Db.Readmissions.Add(new Readmission
         {
             MemberId = f.MemberId,
             ReadmissionDate = new DateOnly(2025, 1, 1),
             PerformedByAdminId = f.AdminId,
             Reason = null,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         await AddRuleAsync("readmit", "ReadmissionCount", "2", "SetStatus", f.OtherStatusId);
 
-        var service = new AttendanceRuleEngineService(_db, _notification, _clock);
+        var service = new AttendanceRuleEngineService(Db, _notification, _clock);
         var result = await service.RunAsync(new AttendanceRuleEngineCommand
         {
             TriggerType = "Scheduled",
@@ -687,18 +650,18 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
     {
         var f = await SeedAsync(registerEnabled: false);
 
-        _db.Readmissions.Add(new Readmission
+        Db.Readmissions.Add(new Readmission
         {
             MemberId = f.MemberId,
             ReadmissionDate = new DateOnly(2025, 1, 1),
             PerformedByAdminId = f.AdminId,
             Reason = null,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         await AddRuleAsync("readmit", "ReadmissionCount", "1", "SetStatus", f.OtherStatusId);
 
-        var service = new AttendanceRuleEngineService(_db, _notification, _clock);
+        var service = new AttendanceRuleEngineService(Db, _notification, _clock);
         var result = await service.RunAsync(new AttendanceRuleEngineCommand
         {
             TriggerType = "Scheduled",
@@ -715,21 +678,21 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
         // 3.0 owns Readmission creation.
         var f = await SeedAsync();
 
-        _db.Readmissions.Add(new Readmission
+        Db.Readmissions.Add(new Readmission
         {
             MemberId = f.MemberId,
             ReadmissionDate = new DateOnly(2025, 1, 1),
             PerformedByAdminId = f.AdminId,
             Reason = null,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var before = await _db.Readmissions.CountAsync();
+        var before = await Db.Readmissions.CountAsync();
         before.Should().Be(1);
 
         await AddRuleAsync("readmit", "ReadmissionCount", "1", "SetStatus", f.OtherStatusId);
 
-        var service = new AttendanceRuleEngineService(_db, _notification, _clock);
+        var service = new AttendanceRuleEngineService(Db, _notification, _clock);
         var result = await service.RunAsync(new AttendanceRuleEngineCommand
         {
             TriggerType = "Scheduled",
@@ -738,7 +701,7 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
         result.Status.Should().Be("Success");
         result.StatusChangesApplied.Should().Be(1);
 
-        var after = await _db.Readmissions.CountAsync();
+        var after = await Db.Readmissions.CountAsync();
         after.Should().Be(before);
     }
 
@@ -751,12 +714,12 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
     {
         var f = await SeedAsync();
 
-        var setting = await _db.SystemSettings
+        var setting = await Db.SystemSettings
             .FirstAsync(s => s.Key == "AttendanceRegisterEnabled");
-        _db.SystemSettings.Remove(setting);
-        await _db.SaveChangesAsync();
+        Db.SystemSettings.Remove(setting);
+        await Db.SaveChangesAsync();
 
-        var service = new AttendanceRuleEngineService(_db, _notification, _clock);
+        var service = new AttendanceRuleEngineService(Db, _notification, _clock);
         var result = await service.RunAsync(new AttendanceRuleEngineCommand
         {
             TriggerType = "Scheduled",
@@ -771,12 +734,12 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
     {
         var f = await SeedAsync();
 
-        var setting = await _db.SystemSettings
+        var setting = await Db.SystemSettings
             .FirstAsync(s => s.Key == "ApplicationTimeZone");
-        _db.SystemSettings.Remove(setting);
-        await _db.SaveChangesAsync();
+        Db.SystemSettings.Remove(setting);
+        await Db.SaveChangesAsync();
 
-        var service = new AttendanceRuleEngineService(_db, _notification, _clock);
+        var service = new AttendanceRuleEngineService(Db, _notification, _clock);
         var result = await service.RunAsync(new AttendanceRuleEngineCommand
         {
             TriggerType = "Scheduled",
@@ -797,7 +760,7 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
         await AddRuleAsync("disabled", "AbsenceDays", "90", "SetStatus",
             f.OtherStatusId, enabled: false);
 
-        var service = new AttendanceRuleEngineService(_db, _notification, _clock);
+        var service = new AttendanceRuleEngineService(Db, _notification, _clock);
         var result = await service.RunAsync(new AttendanceRuleEngineCommand
         {
             TriggerType = "Scheduled",
@@ -806,7 +769,7 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
         result.Status.Should().Be("Success");
         result.RulesEvaluated.Should().Be(0);
 
-        var member = await _db.Members.FirstAsync();
+        var member = await Db.Members.FirstAsync();
         member.MemberStatusId.Should().Be(f.DefaultStatusId);
     }
     [Fact]
@@ -819,13 +782,13 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
         // Soft-delete the outcome status. The rule was valid at write
         // time; the status is now soft-deleted. The engine must skip
         // the outcome rather than write a soft-deleted status.
-        var status = await _db.MemberStatuses
+        var status = await Db.MemberStatuses
             .FirstAsync(s => s.MemberStatusId == f.OtherStatusId);
         status.IsDeleted = true;
         status.IsActive = false;
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new AttendanceRuleEngineService(_db, _notification, _clock);
+        var service = new AttendanceRuleEngineService(Db, _notification, _clock);
         var result = await service.RunAsync(new AttendanceRuleEngineCommand
         {
             TriggerType = "Manual",
@@ -836,7 +799,7 @@ public class AttendanceRuleEngineTests : IAsyncLifetime
         result.Status.Should().Be("Success");
         result.StatusChangesApplied.Should().Be(0);
 
-        var member = await _db.Members.FirstAsync();
+        var member = await Db.Members.FirstAsync();
         member.MemberStatusId.Should().Be(f.DefaultStatusId);
     }
 }
