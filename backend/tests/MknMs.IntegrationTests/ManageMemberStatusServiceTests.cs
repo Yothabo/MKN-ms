@@ -21,38 +21,12 @@ namespace MknMs.IntegrationTests;
 /// Tests for ManageMemberStatusService.SoftDeleteAsync and the
 /// MemberStatus cascade.
 /// </summary>
-public class ManageMemberStatusServiceTests : IAsyncLifetime
+public class ManageMemberStatusServiceTests : IntegrationTestBase
 {
-    private const string TestConnectionString =
-        "Host=127.0.0.1;Port=5432;Database=mkn_test;Username=mkn_dev";
-
     private static readonly DateTimeOffset Now =
         new(2026, 10, 13, 14, 0, 0, TimeSpan.Zero);
 
-    private MknDbContext _db = null!;
-    private TimeProvider _clock = null!;
-
-    public async Task InitializeAsync()
-    {
-        var options = new DbContextOptionsBuilder<MknDbContext>()
-            .UseNpgsql(TestConnectionString)
-            .Options;
-
-        _db = new MknDbContext(options);
-        _clock = new FakeTimeProvider(Now);
-
-        await _db.Database.ExecuteSqlRawAsync(
-            "TRUNCATE TABLE configuration_audit_log, entity_deletion_policy, " +
-            "notification_subscription, attendance_rule_scope, attendance_rule, " +
-            "member, member_status, branch, role, admin, permission_tier " +
-            "RESTART IDENTITY CASCADE;");
-    }
-
-    public Task DisposeAsync()
-    {
-        _db.Dispose();
-        return Task.CompletedTask;
-    }
+    private readonly TimeProvider _clock = new FakeTimeProvider(Now);
 
     private sealed record Fixture(
         int DefaultStatusId,
@@ -64,10 +38,7 @@ public class ManageMemberStatusServiceTests : IAsyncLifetime
 
     private async Task<Fixture> SeedAsync()
     {
-        var defaultStatus = new MemberStatus
-        {
-            Name = "Active", IsRosterable = true, IsDefault = true, IsDeleted = false,
-        };
+        var defaultStatusId = await TestSeed.EnsureDefaultMemberStatusAsync(Db);
         var otherStatus = new MemberStatus
         {
             Name = "Inactive", IsRosterable = false, IsDefault = false, IsDeleted = false,
@@ -79,14 +50,13 @@ public class ManageMemberStatusServiceTests : IAsyncLifetime
             Name = "Full Admin", IsDefault = true, IsDeleted = false,
         };
 
-        _db.MemberStatuses.Add(defaultStatus);
-        _db.MemberStatuses.Add(otherStatus);
-        _db.Roles.Add(role);
-        _db.Branches.Add(branch);
-        _db.PermissionTiers.Add(tier);
-        await _db.SaveChangesAsync();
+        Db.MemberStatuses.Add(otherStatus);
+        Db.Roles.Add(role);
+        Db.Branches.Add(branch);
+        Db.PermissionTiers.Add(tier);
+        await Db.SaveChangesAsync();
 
-        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        Db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
         {
             EntityType = "MemberStatus",
             RequiresApprovalForDelete = false,
@@ -100,7 +70,7 @@ public class ManageMemberStatusServiceTests : IAsyncLifetime
         // to exercise the member-write guard. Without a policy row for
         // each entity type, RecordAsync refuses with
         // ConfigurationMissing before the state check is reached.
-        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        Db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
         {
             EntityType = "Role",
             RequiresApprovalForDelete = false,
@@ -110,7 +80,7 @@ public class ManageMemberStatusServiceTests : IAsyncLifetime
             IsActive = true,
             IsDeleted = false,
         });
-        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        Db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
         {
             EntityType = "Branch",
             RequiresApprovalForDelete = false,
@@ -120,7 +90,7 @@ public class ManageMemberStatusServiceTests : IAsyncLifetime
             IsActive = true,
             IsDeleted = false,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
 
         var member = new Member
@@ -133,16 +103,16 @@ public class ManageMemberStatusServiceTests : IAsyncLifetime
             BranchId = branch.BranchId, RoleId = role.RoleId,
             MemberStatusId = otherStatus.MemberStatusId,
         };
-        _db.Members.Add(member);
-        await _db.SaveChangesAsync();
+        Db.Members.Add(member);
+        await Db.SaveChangesAsync();
 
         var admin = new Admin
         {
             MemberId = member.MemberId,
             PermissionTierId = tier.PermissionTierId,
         };
-        _db.Admins.Add(admin);
-        await _db.SaveChangesAsync();
+        Db.Admins.Add(admin);
+        await Db.SaveChangesAsync();
 
         // A rule whose OutcomeStatusId names the deleted status.
         var outcomeRule = new AttendanceRule
@@ -166,20 +136,20 @@ public class ManageMemberStatusServiceTests : IAsyncLifetime
             Enabled = true,
             IsDeleted = false,
         };
-        _db.AttendanceRules.Add(outcomeRule);
-        _db.AttendanceRules.Add(scopedRule);
-        await _db.SaveChangesAsync();
+        Db.AttendanceRules.Add(outcomeRule);
+        Db.AttendanceRules.Add(scopedRule);
+        await Db.SaveChangesAsync();
 
-        _db.AttendanceRuleScopes.Add(new AttendanceRuleScope
+        Db.AttendanceRuleScopes.Add(new AttendanceRuleScope
         {
             AttendanceRuleId = scopedRule.AttendanceRuleId,
             CriteriaType = "MemberStatus",
             CriteriaValue = $"1,{otherStatus.MemberStatusId},2",
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         return new Fixture(
-            defaultStatus.MemberStatusId,
+            defaultStatusId,
             otherStatus.MemberStatusId,
             member.MemberId,
             admin.AdminId,
@@ -188,9 +158,9 @@ public class ManageMemberStatusServiceTests : IAsyncLifetime
     }
 
     private ManageMemberStatusService MakeService() =>
-        new(_db,
-            new ConfigurationLifecycleService(_db, _clock),
-            new ConfigurationCascadeService(_db));
+        new(Db,
+            new ConfigurationLifecycleService(Db, _clock),
+            new ConfigurationCascadeService(Db));
 
     [Fact]
     public async Task SoftDelete_DefaultStatus_IsBlocked()
@@ -204,13 +174,13 @@ public class ManageMemberStatusServiceTests : IAsyncLifetime
         result.IsSuccess.Should().BeFalse();
         result.Error!.Code.Should().Be(ConfigurationErrorCodes.LifecycleViolation);
 
-        _db.ChangeTracker.Clear();
-        var persisted = await _db.MemberStatuses
+        Db.ChangeTracker.Clear();
+        var persisted = await Db.MemberStatuses
             .AsNoTracking()
             .FirstAsync(s => s.MemberStatusId == f.DefaultStatusId);
         persisted.IsDeleted.Should().BeFalse();
 
-        var audit = await _db.ConfigurationAuditLogs.CountAsync();
+        var audit = await Db.ConfigurationAuditLogs.CountAsync();
         audit.Should().Be(0);
     }
 
@@ -225,7 +195,7 @@ public class ManageMemberStatusServiceTests : IAsyncLifetime
 
         result.IsSuccess.Should().BeTrue();
 
-        var member = await _db.Members.FirstAsync(m => m.MemberId == f.MemberId);
+        var member = await Db.Members.FirstAsync(m => m.MemberId == f.MemberId);
         member.MemberStatusId.Should().Be(f.DefaultStatusId);
     }
 
@@ -238,7 +208,7 @@ public class ManageMemberStatusServiceTests : IAsyncLifetime
         await service.SoftDeleteAsync(
             f.OtherStatusId, f.AdminId, f.AdminId, true, "no longer used");
 
-        var exists = await _db.AttendanceRules
+        var exists = await Db.AttendanceRules
             .AnyAsync(r => r.AttendanceRuleId == f.OutcomeRuleId);
         exists.Should().BeFalse();
     }
@@ -252,7 +222,7 @@ public class ManageMemberStatusServiceTests : IAsyncLifetime
         await service.SoftDeleteAsync(
             f.OtherStatusId, f.AdminId, f.AdminId, true, "no longer used");
 
-        var scopes = await _db.AttendanceRuleScopes
+        var scopes = await Db.AttendanceRuleScopes
             .Where(s => s.AttendanceRuleId == f.ScopedRuleId)
             .ToListAsync();
 
@@ -270,7 +240,7 @@ public class ManageMemberStatusServiceTests : IAsyncLifetime
         await service.SoftDeleteAsync(
             f.OtherStatusId, f.AdminId, f.AdminId, true, "no longer used");
 
-        var audit = await _db.ConfigurationAuditLogs.SingleAsync();
+        var audit = await Db.ConfigurationAuditLogs.SingleAsync();
         audit.Action.Should().Be(ConfigurationLifecycleActions.SoftDelete);
         audit.EntityType.Should().Be("MemberStatus");
         audit.Reason.Should().Be("no longer used");
@@ -285,10 +255,7 @@ public class ManageMemberStatusServiceTests : IAsyncLifetime
         // is deleted.
         var role = new Role { Name = "R", IsDefault = true, IsDeleted = false };
         var branch = new Branch { Name = "B", Location = "L", IsDeleted = false };
-        var defaultStatus = new MemberStatus
-        {
-            Name = "Active", IsRosterable = true, IsDefault = true, IsDeleted = false,
-        };
+        var defaultStatusId2 = await TestSeed.EnsureDefaultMemberStatusAsync(Db);
         var other = new MemberStatus
         {
             Name = "Other", IsRosterable = false, IsDefault = false, IsDeleted = false,
@@ -297,12 +264,11 @@ public class ManageMemberStatusServiceTests : IAsyncLifetime
         {
             Name = "Full Admin", IsDefault = true, IsDeleted = false,
         };
-        _db.Roles.Add(role);
-        _db.Branches.Add(branch);
-        _db.MemberStatuses.Add(defaultStatus);
-        _db.MemberStatuses.Add(other);
-        _db.PermissionTiers.Add(tier);
-        await _db.SaveChangesAsync();
+        Db.Roles.Add(role);
+        Db.Branches.Add(branch);
+        Db.MemberStatuses.Add(other);
+        Db.PermissionTiers.Add(tier);
+        await Db.SaveChangesAsync();
 
         var adminMember = new Member
         {
@@ -312,18 +278,18 @@ public class ManageMemberStatusServiceTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Other",
             Phone = "+27-1", Email = null,
             BranchId = branch.BranchId, RoleId = role.RoleId,
-            MemberStatusId = defaultStatus.MemberStatusId,
+            MemberStatusId = defaultStatusId2,
         };
-        _db.Members.Add(adminMember);
-        await _db.SaveChangesAsync();
+        Db.Members.Add(adminMember);
+        await Db.SaveChangesAsync();
 
         var admin = new Admin
         {
             MemberId = adminMember.MemberId,
             PermissionTierId = tier.PermissionTierId,
         };
-        _db.Admins.Add(admin);
-        await _db.SaveChangesAsync();
+        Db.Admins.Add(admin);
+        await Db.SaveChangesAsync();
 
         var rule = new AttendanceRule
         {
@@ -333,24 +299,24 @@ public class ManageMemberStatusServiceTests : IAsyncLifetime
             Enabled = true,
             IsDeleted = false,
         };
-        _db.AttendanceRules.Add(rule);
-        await _db.SaveChangesAsync();
+        Db.AttendanceRules.Add(rule);
+        await Db.SaveChangesAsync();
 
-        _db.AttendanceRuleScopes.Add(new AttendanceRuleScope
+        Db.AttendanceRuleScopes.Add(new AttendanceRuleScope
         {
             AttendanceRuleId = rule.AttendanceRuleId,
             CriteriaType = "MemberStatus",
             CriteriaValue = "13",
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         var service = MakeService();
         await service.SoftDeleteAsync(
             other.MemberStatusId, admin.AdminId, admin.AdminId, true, "test");
 
         // The scope row for "13" is untouched.
-        _db.ChangeTracker.Clear();
-        var scopes = await _db.AttendanceRuleScopes
+        Db.ChangeTracker.Clear();
+        var scopes = await Db.AttendanceRuleScopes
             .Where(s => s.AttendanceRuleId == rule.AttendanceRuleId)
             .ToListAsync();
         scopes.Should().HaveCount(1);
@@ -394,7 +360,7 @@ public class ManageMemberStatusServiceTests : IAsyncLifetime
         await service.SoftDeleteAsync(
             f.OtherStatusId, f.AdminId, f.AdminId, true, "test");
 
-        var memberService = new ManageMemberRecordService(_db);
+        var memberService = new ManageMemberRecordService(Db);
         var result = await memberService.SetStatusAsync(f.MemberId, f.OtherStatusId);
 
         result.IsSuccess.Should().BeFalse();
@@ -406,20 +372,20 @@ public class ManageMemberStatusServiceTests : IAsyncLifetime
         var f = await SeedAsync();
 
         var newRole = new Role { Name = "TempRole", IsActive = true, IsDeleted = false };
-        _db.Roles.Add(newRole);
-        await _db.SaveChangesAsync();
+        Db.Roles.Add(newRole);
+        await Db.SaveChangesAsync();
 
         var roleService = new ConfigureRoleService(
-            _db,
-            new ConfigurationLifecycleService(_db, _clock),
-            new ConfigurationCascadeService(_db));
+            Db,
+            new ConfigurationLifecycleService(Db, _clock),
+            new ConfigurationCascadeService(Db));
         var roleDelete = await roleService.SoftDeleteAsync(
             newRole.RoleId, f.AdminId, f.AdminId, true, "test");
         roleDelete.IsSuccess.Should().BeTrue(
             "the fixture must seed an EntityDeletionPolicy for Role; without it, the cascade blocks and the test premise fails");
 
-        var member = await _db.Members.FirstAsync(m => m.MemberId == f.MemberId);
-        var memberService = new ManageMemberRecordService(_db);
+        var member = await Db.Members.FirstAsync(m => m.MemberId == f.MemberId);
+        var memberService = new ManageMemberRecordService(Db);
         var result = await memberService.UpdateAsync(
             member.MemberId,
             new UpdateMemberRequest
@@ -446,20 +412,20 @@ public class ManageMemberStatusServiceTests : IAsyncLifetime
         var f = await SeedAsync();
 
         var newBranch = new Branch { Name = "TempBranch", Location = "Elsewhere", IsActive = true, IsDeleted = false };
-        _db.Branches.Add(newBranch);
-        await _db.SaveChangesAsync();
+        Db.Branches.Add(newBranch);
+        await Db.SaveChangesAsync();
 
         var branchService = new ConfigureBranchService(
-            _db,
-            new ConfigurationLifecycleService(_db, _clock),
-            new ConfigurationCascadeService(_db));
+            Db,
+            new ConfigurationLifecycleService(Db, _clock),
+            new ConfigurationCascadeService(Db));
         var branchDelete = await branchService.SoftDeleteAsync(
             newBranch.BranchId, f.AdminId, f.AdminId, true, "test");
         branchDelete.IsSuccess.Should().BeTrue(
             "the fixture must seed an EntityDeletionPolicy for Branch; without it, the cascade blocks and the test premise fails");
 
-        var member = await _db.Members.FirstAsync(m => m.MemberId == f.MemberId);
-        var memberService = new ManageMemberRecordService(_db);
+        var member = await Db.Members.FirstAsync(m => m.MemberId == f.MemberId);
+        var memberService = new ManageMemberRecordService(Db);
         var result = await memberService.UpdateAsync(
             member.MemberId,
             new UpdateMemberRequest

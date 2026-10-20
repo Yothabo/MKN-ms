@@ -20,59 +20,29 @@ namespace MknMs.IntegrationTests;
 /// Disable (Enabled), Deactivate (IsActive), Soft-delete (IsDeleted
 /// + scope-row removal).
 /// </summary>
-public class ManageAttendanceRuleServiceTests : IAsyncLifetime
+public class ManageAttendanceRuleServiceTests : IntegrationTestBase
 {
-    private const string TestConnectionString =
-        "Host=127.0.0.1;Port=5432;Database=mkn_test;Username=mkn_dev";
-
     private static readonly DateTimeOffset Now =
         new(2026, 10, 14, 11, 0, 0, TimeSpan.Zero);
 
-    private MknDbContext _db = null!;
-    private TimeProvider _clock = null!;
-
-    public async Task InitializeAsync()
-    {
-        var options = new DbContextOptionsBuilder<MknDbContext>()
-            .UseNpgsql(TestConnectionString)
-            .Options;
-
-        _db = new MknDbContext(options);
-        _clock = new FakeTimeProvider(Now);
-
-        await _db.Database.ExecuteSqlRawAsync(
-            "TRUNCATE TABLE configuration_audit_log, entity_deletion_policy, " +
-            "notification_subscription, attendance_rule_scope, attendance_rule, " +
-            "member, member_status, branch, role, admin, permission_tier " +
-            "RESTART IDENTITY CASCADE;");
-    }
-
-    public Task DisposeAsync()
-    {
-        _db.Dispose();
-        return Task.CompletedTask;
-    }
+    private readonly TimeProvider _clock = new FakeTimeProvider(Now);
 
     private async Task<int> SeedAdminAsync()
     {
         var role = new Role { Name = "R", IsDefault = true, IsDeleted = false };
         var branch = new Branch { Name = "B", Location = "L", IsDeleted = false };
-        var status = new MemberStatus
-        {
-            Name = "Active", IsRosterable = true, IsDefault = true, IsDeleted = false,
-        };
+        var statusId = await TestSeed.EnsureDefaultMemberStatusAsync(Db);
         var tier = new PermissionTier
         {
             Name = "Full Admin", IsDefault = true, IsDeleted = false,
         };
 
-        _db.Roles.Add(role);
-        _db.Branches.Add(branch);
-        _db.MemberStatuses.Add(status);
-        _db.PermissionTiers.Add(tier);
-        await _db.SaveChangesAsync();
+        Db.Roles.Add(role);
+        Db.Branches.Add(branch);
+        Db.PermissionTiers.Add(tier);
+        await Db.SaveChangesAsync();
 
-        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        Db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
         {
             EntityType = "AttendanceRule",
             RequiresApprovalForDelete = false,
@@ -82,7 +52,7 @@ public class ManageAttendanceRuleServiceTests : IAsyncLifetime
             IsActive = true,
             IsDeleted = false,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
 
         var member = new Member
@@ -93,26 +63,26 @@ public class ManageAttendanceRuleServiceTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Other",
             Phone = "+27-0", Email = null,
             BranchId = branch.BranchId, RoleId = role.RoleId,
-            MemberStatusId = status.MemberStatusId,
+            MemberStatusId = statusId,
         };
-        _db.Members.Add(member);
-        await _db.SaveChangesAsync();
+        Db.Members.Add(member);
+        await Db.SaveChangesAsync();
 
         var admin = new Admin
         {
             MemberId = member.MemberId,
             PermissionTierId = tier.PermissionTierId,
         };
-        _db.Admins.Add(admin);
-        await _db.SaveChangesAsync();
+        Db.Admins.Add(admin);
+        await Db.SaveChangesAsync();
 
         return admin.AdminId;
     }
 
     private ManageAttendanceRuleService MakeService() =>
-        new(_db,
-            new ConfigurationLifecycleService(_db, _clock),
-            new ConfigurationCascadeService(_db));
+        new(Db,
+            new ConfigurationLifecycleService(Db, _clock),
+            new ConfigurationCascadeService(Db));
 
     private async Task<int> SeedRuleWithScopeAsync(int adminId)
     {
@@ -127,16 +97,16 @@ public class ManageAttendanceRuleServiceTests : IAsyncLifetime
             IsActive = true,
             IsDeleted = false,
         };
-        _db.AttendanceRules.Add(rule);
-        await _db.SaveChangesAsync();
+        Db.AttendanceRules.Add(rule);
+        await Db.SaveChangesAsync();
 
-        _db.AttendanceRuleScopes.Add(new AttendanceRuleScope
+        Db.AttendanceRuleScopes.Add(new AttendanceRuleScope
         {
             AttendanceRuleId = rule.AttendanceRuleId,
             CriteriaType = "Role",
             CriteriaValue = "R",
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         return rule.AttendanceRuleId;
     }
@@ -156,18 +126,18 @@ public class ManageAttendanceRuleServiceTests : IAsyncLifetime
 
         result.IsSuccess.Should().BeTrue();
 
-        var rule = await _db.AttendanceRules
+        var rule = await Db.AttendanceRules
             .AsNoTracking().FirstAsync(r => r.AttendanceRuleId == ruleId);
         rule.Enabled.Should().BeFalse();
         rule.IsActive.Should().BeTrue();
         rule.IsDeleted.Should().BeFalse();
 
-        var scopes = await _db.AttendanceRuleScopes
+        var scopes = await Db.AttendanceRuleScopes
             .Where(s => s.AttendanceRuleId == ruleId).CountAsync();
         scopes.Should().Be(1);
 
         // Disable is not a §9.7 lifecycle operation: no audit row.
-        var audits = await _db.ConfigurationAuditLogs.CountAsync();
+        var audits = await Db.ConfigurationAuditLogs.CountAsync();
         audits.Should().Be(0);
     }
 
@@ -183,16 +153,16 @@ public class ManageAttendanceRuleServiceTests : IAsyncLifetime
 
         result.IsSuccess.Should().BeTrue();
 
-        var rule = await _db.AttendanceRules
+        var rule = await Db.AttendanceRules
             .AsNoTracking().FirstAsync(r => r.AttendanceRuleId == ruleId);
         rule.Enabled.Should().BeTrue();
         rule.IsActive.Should().BeTrue();
 
-        var scopes = await _db.AttendanceRuleScopes
+        var scopes = await Db.AttendanceRuleScopes
             .Where(s => s.AttendanceRuleId == ruleId).CountAsync();
         scopes.Should().Be(1);
 
-        var audits = await _db.ConfigurationAuditLogs.CountAsync();
+        var audits = await Db.ConfigurationAuditLogs.CountAsync();
         audits.Should().Be(0);
     }
 
@@ -212,17 +182,17 @@ public class ManageAttendanceRuleServiceTests : IAsyncLifetime
 
         result.IsSuccess.Should().BeTrue();
 
-        var rule = await _db.AttendanceRules
+        var rule = await Db.AttendanceRules
             .AsNoTracking().FirstAsync(r => r.AttendanceRuleId == ruleId);
         rule.IsActive.Should().BeFalse();
         rule.Enabled.Should().BeTrue();
         rule.IsDeleted.Should().BeFalse();
 
-        var scopes = await _db.AttendanceRuleScopes
+        var scopes = await Db.AttendanceRuleScopes
             .Where(s => s.AttendanceRuleId == ruleId).CountAsync();
         scopes.Should().Be(1);
 
-        var audit = await _db.ConfigurationAuditLogs.SingleAsync();
+        var audit = await Db.ConfigurationAuditLogs.SingleAsync();
         audit.Action.Should().Be(ConfigurationLifecycleActions.Deactivate);
     }
 
@@ -242,16 +212,16 @@ public class ManageAttendanceRuleServiceTests : IAsyncLifetime
 
         result.IsSuccess.Should().BeTrue();
 
-        var rule = await _db.AttendanceRules
+        var rule = await Db.AttendanceRules
             .AsNoTracking().FirstAsync(r => r.AttendanceRuleId == ruleId);
         rule.IsDeleted.Should().BeTrue();
         rule.IsActive.Should().BeFalse();
 
-        var scopes = await _db.AttendanceRuleScopes
+        var scopes = await Db.AttendanceRuleScopes
             .Where(s => s.AttendanceRuleId == ruleId).CountAsync();
         scopes.Should().Be(0);
 
-        var audit = await _db.ConfigurationAuditLogs.SingleAsync();
+        var audit = await Db.ConfigurationAuditLogs.SingleAsync();
         audit.Action.Should().Be(ConfigurationLifecycleActions.SoftDelete);
         audit.ConsequencesPreviewed.Should().Contain("removed");
     }
@@ -277,9 +247,9 @@ public class ManageAttendanceRuleServiceTests : IAsyncLifetime
         // IsActive = true.
         var adminId = await SeedAdminAsync();
 
-        var admin = await _db.Admins.FirstAsync(a => a.AdminId == adminId);
+        var admin = await Db.Admins.FirstAsync(a => a.AdminId == adminId);
         admin.IsActive = false;
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         var service = MakeService();
 
