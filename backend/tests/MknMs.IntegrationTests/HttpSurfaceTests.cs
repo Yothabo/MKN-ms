@@ -2,8 +2,10 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using MknMs.Domain.D10_ConfigLookups;
 using MknMs.Domain.D11_SystemSetting;
 using MknMs.Domain.D1_RoleDuty;
@@ -43,15 +45,15 @@ namespace MknMs.IntegrationTests;
 /// and strengthened after a DELETE endpoint returned 500 because its
 /// test sent no body.
 /// </remarks>
-public class HttpSurfaceTests : IClassFixture<WebApplicationFactory<Program>>, IAsyncLifetime
+public class HttpSurfaceTests : IClassFixture<HttpSurfaceFactory>, IAsyncLifetime
 {
-    private const string TestConnectionString =
-        "Host=127.0.0.1;Port=5432;Database=mkn_test;Username=mkn_dev";
+    private static readonly string TestConnectionString =
+        TestSeed.PerClassConnectionString("mkn_test");
 
-    private readonly WebApplicationFactory<Program> _factory;
+    private readonly HttpSurfaceFactory _factory;
     private MknDbContext _db = null!;
 
-    public HttpSurfaceTests(WebApplicationFactory<Program> factory)
+    public HttpSurfaceTests(HttpSurfaceFactory factory)
     {
         // The factory is per-class (IClassFixture). Its host is bound to
         // mkn_test via appsettings.Development.json. The class uses
@@ -67,6 +69,8 @@ public class HttpSurfaceTests : IClassFixture<WebApplicationFactory<Program>>, I
 
     public async Task InitializeAsync()
     {
+        await TestSeed.EnsureSharedTestDatabaseAsync();
+
         var options = new DbContextOptionsBuilder<MknDbContext>()
             .UseNpgsql(TestConnectionString)
             .Options;
@@ -665,5 +669,40 @@ public class HttpSurfaceTests : IClassFixture<WebApplicationFactory<Program>>, I
                 actingAdminId = 1,
             });
         await AssertValidationFailureAsync(response, "ScheduledEnd");
+    }
+}
+
+/// <summary>
+/// WebApplicationFactory subclass that injects the test-side connection
+/// string into the in-process host.
+/// </summary>
+/// <remarks>
+/// The default <c>WebApplicationFactory&lt;Program&gt;</c> reads
+/// <c>ConnectionStrings:MknDb</c> from <c>appsettings.Development.json</c>,
+/// which hardcodes 127.0.0.1:5432 with Username=mkn_dev and no password.
+/// On a CI runner that string cannot reach the services: postgres container,
+/// so every HTTP request fails at connection-open. This override replaces
+/// the value with the same connection string the class's own DbContext uses
+/// — <see cref="TestSeed.PerClassConnectionString"/> pointed at mkn_test —
+/// so the host and the test-side DbContext talk to the same database.
+///
+/// The factory is constructed once per class by xUnit's IClassFixture. The
+/// host is built once and reused across facts; the class never disposes it
+/// between facts. That is the arrangement Quartz's static LogProvider
+/// requires — disposing the host mid-class leaves the next fact's Quartz
+/// reference pointing at a disposed LoggerFactory.
+/// </remarks>
+public sealed class HttpSurfaceFactory : WebApplicationFactory<Program>
+{
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        builder.ConfigureAppConfiguration((_, config) =>
+        {
+            config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:MknDb"] =
+                    TestSeed.PerClassConnectionString("mkn_test"),
+            });
+        });
     }
 }

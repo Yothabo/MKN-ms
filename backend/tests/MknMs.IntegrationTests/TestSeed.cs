@@ -120,4 +120,51 @@ internal static class TestSeed
         };
         return builder.ConnectionString;
     }
+
+    /// <summary>
+    /// Ensures the shared <c>mkn_test</c> database exists with the
+    /// current migration chain applied.
+    /// </summary>
+    /// <remarks>
+    /// The per-class fixture creates its own <c>mkn_test_{guid}</c>
+    /// databases on demand. One class — <c>HttpSurfaceTests</c> — uses
+    /// the shared <c>mkn_test</c> instead, because it holds a
+    /// class-scoped <c>WebApplicationFactory&lt;Program&gt;</c> whose
+    /// host is built once and reused across facts. On a developer
+    /// machine <c>mkn_test</c> already exists (created manually). On a
+    /// fresh CI runner it does not, and every HTTP request fails at
+    /// <c>RelationalConnection.OpenAsync</c> with 3D000. This helper
+    /// closes that gap by creating the database if absent and applying
+    /// the migration chain.
+    ///
+    /// Idempotent. <c>CREATE DATABASE</c> is guarded on <c>pg_database</c>;
+    /// <c>MigrateAsync</c> is itself idempotent (each migration is
+    /// tracked by name in <c>__EFMigrationsHistory</c>).
+    /// </remarks>
+    public static async Task EnsureSharedTestDatabaseAsync()
+    {
+        const string databaseName = "mkn_test";
+
+        await using (var admin = new NpgsqlConnection(AdminConnectionString()))
+        {
+            await admin.OpenAsync();
+            await using var check = admin.CreateCommand();
+            check.CommandText = "SELECT 1 FROM pg_database WHERE datname = @db";
+            check.Parameters.AddWithValue("@db", databaseName);
+            var exists = await check.ExecuteScalarAsync() is not null;
+
+            if (!exists)
+            {
+                await using var create = admin.CreateCommand();
+                create.CommandText = $"CREATE DATABASE {databaseName}";
+                await create.ExecuteNonQueryAsync();
+            }
+        }
+
+        var options = new DbContextOptionsBuilder<MknDbContext>()
+            .UseNpgsql(PerClassConnectionString(databaseName))
+            .Options;
+        await using var db = new MknDbContext(options);
+        await db.Database.MigrateAsync();
+    }
 }
