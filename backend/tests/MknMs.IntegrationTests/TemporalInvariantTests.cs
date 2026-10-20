@@ -30,47 +30,21 @@ namespace MknMs.IntegrationTests;
 /// reading process must see an offset of zero, regardless of the
 /// offset the writing process supplied.
 /// </remarks>
-public class TemporalInvariantTests : IAsyncLifetime
+public class TemporalInvariantTests : IntegrationTestBase
 {
-    private const string TestConnectionString =
-        "Host=127.0.0.1;Port=5432;Database=mkn_test;Username=mkn_dev";
-
     private static readonly DateTimeOffset Now =
         new(2026, 10, 6, 12, 0, 0, TimeSpan.Zero);
 
-    private MknDbContext _db = null!;
-    private IDispatchNotificationService _notification = null!;
-    private TimeProvider _clock = null!;
+    private readonly IDispatchNotificationService _notification = new FakeDispatchNotificationService();
+    private readonly TimeProvider _clock = new FakeTimeProvider(Now);
 
-    public async Task InitializeAsync()
+    protected override async Task OnInitializedAsync()
     {
-        var options = new DbContextOptionsBuilder<MknDbContext>()
-            .UseNpgsql(TestConnectionString)
-            .Options;
-
-        _db = new MknDbContext(options);
-        _notification = new FakeDispatchNotificationService();
-        _clock = new FakeTimeProvider(Now);
-
-        await _db.Database.ExecuteSqlRawAsync(
-            "TRUNCATE TABLE materializer_run, attendance_record, roster_assignment, " +
-            "service_occurrence_duty, service_occurrence, service_schedule, " +
-            "service_definition_duty, branch_time_slot, service_definition, " +
-            "service_type, time_of_day, branch, identifier_history, eligibility, " +
-            "duty_rule, admin, member, member_attribute_value, member_status, " +
-            "attendance_rule_scope, attendance_rule, readmission, role, duty, " +
-            "system_setting, outcome_state, assignment_status, permission_tier, " +
-            "attribute_type, capability, event_branch, configuration_audit_log, " +
-            "entity_deletion_policy, notification_subscription " +
-            "RESTART IDENTITY CASCADE;");
-
-        await TestSeed.EnsureRequiredSettingsAsync(_db);
-    }
-
-    public Task DisposeAsync()
-    {
-        _db.Dispose();
-        return Task.CompletedTask;
+        // The per-class database is created by MigrateAsync but the
+        // required settings are not seeded by any migration; the tests
+        // below depend on ApplicationTimeZone and AttendanceRegisterEnabled
+        // being present. Seed them here. The helper is idempotent.
+        await TestSeed.EnsureRequiredSettingsAsync(Db);
     }
 
     private async Task<int> SeedOccurrenceAsync()
@@ -79,10 +53,10 @@ public class TemporalInvariantTests : IAsyncLifetime
         var timeOfDay = new TimeOfDay { Name = "Morning" };
         var branch = new Branch { Name = "Main", Location = "Main Street" };
 
-        _db.ServiceTypes.Add(serviceType);
-        _db.TimeOfDays.Add(timeOfDay);
-        _db.Branches.Add(branch);
-        await _db.SaveChangesAsync();
+        Db.ServiceTypes.Add(serviceType);
+        Db.TimeOfDays.Add(timeOfDay);
+        Db.Branches.Add(branch);
+        await Db.SaveChangesAsync();
 
         var slot = new BranchTimeSlot
         {
@@ -90,16 +64,16 @@ public class TemporalInvariantTests : IAsyncLifetime
             DayOfWeek = "Sunday",
             TimeOfDayId = timeOfDay.TimeOfDayId,
         };
-        _db.BranchTimeSlots.Add(slot);
-        await _db.SaveChangesAsync();
+        Db.BranchTimeSlots.Add(slot);
+        await Db.SaveChangesAsync();
 
         var definition = new ServiceDefinition
         {
             Name = "Sunday Service",
             ServiceTypeId = serviceType.ServiceTypeId,
         };
-        _db.ServiceDefinitions.Add(definition);
-        await _db.SaveChangesAsync();
+        Db.ServiceDefinitions.Add(definition);
+        await Db.SaveChangesAsync();
 
         var schedule = new ServiceSchedule
         {
@@ -107,8 +81,8 @@ public class TemporalInvariantTests : IAsyncLifetime
             TimeSlotId = slot.TimeSlotId,
             StartTime = new TimeOnly(9, 0),
         };
-        _db.ServiceSchedules.Add(schedule);
-        await _db.SaveChangesAsync();
+        Db.ServiceSchedules.Add(schedule);
+        await Db.SaveChangesAsync();
 
         var occurrence = new ServiceOccurrence
         {
@@ -116,8 +90,8 @@ public class TemporalInvariantTests : IAsyncLifetime
             Date = new DateOnly(2026, 10, 11),
             GeneratedBy = "System",
         };
-        _db.ServiceOccurrences.Add(occurrence);
-        await _db.SaveChangesAsync();
+        Db.ServiceOccurrences.Add(occurrence);
+        await Db.SaveChangesAsync();
 
         return occurrence.OccurrenceId;
     }
@@ -125,16 +99,16 @@ public class TemporalInvariantTests : IAsyncLifetime
     private async Task<(int MemberId, int AdminId)> SeedMemberAndAdminAsync()
     {
         var role = new Role { Name = "Member" };
-        _db.Roles.Add(role);
+        Db.Roles.Add(role);
 
         var tier = new PermissionTier { Name = "Full Admin", IsDefault = true };
-        _db.PermissionTiers.Add(tier);
+        Db.PermissionTiers.Add(tier);
 
-        var branch = await _db.Branches.FirstAsync();
+        var branch = await Db.Branches.FirstAsync();
 
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var statusId = await TestSeed.EnsureDefaultMemberStatusAsync(_db);
+        var statusId = await TestSeed.EnsureDefaultMemberStatusAsync(Db);
 
         var member = new Member
         {
@@ -147,16 +121,16 @@ public class TemporalInvariantTests : IAsyncLifetime
             MemberStatusId = statusId,
             ReceiptNumber = "R-0001",
         };
-        _db.Members.Add(member);
-        await _db.SaveChangesAsync();
+        Db.Members.Add(member);
+        await Db.SaveChangesAsync();
 
         var admin = new Admin
         {
             MemberId = member.MemberId,
             PermissionTierId = tier.PermissionTierId,
         };
-        _db.Admins.Add(admin);
-        await _db.SaveChangesAsync();
+        Db.Admins.Add(admin);
+        await Db.SaveChangesAsync();
 
         return (member.MemberId, admin.AdminId);
     }
@@ -167,7 +141,7 @@ public class TemporalInvariantTests : IAsyncLifetime
         var occurrenceId = await SeedOccurrenceAsync();
         var (memberId, _) = await SeedMemberAndAdminAsync();
 
-        var service = new RecordAttendanceService(_db, _clock);
+        var service = new RecordAttendanceService(Db, _clock);
         var result = await service.RunAsync(new RecordAttendanceCommand
         {
             MemberId = memberId,
@@ -177,8 +151,8 @@ public class TemporalInvariantTests : IAsyncLifetime
         result.Status.Should().Be("Success");
         result.Recorded.Should().BeTrue();
 
-        _db.ChangeTracker.Clear();
-        var row = await _db.AttendanceRecords
+        Db.ChangeTracker.Clear();
+        var row = await Db.AttendanceRecords
             .AsNoTracking()
             .FirstAsync(a => a.RecordId == result.RecordId);
 
@@ -192,11 +166,11 @@ public class TemporalInvariantTests : IAsyncLifetime
         var (memberId, adminId) = await SeedMemberAndAdminAsync();
 
         var duty = new Duty { Name = "Reading duty" };
-        _db.Duties.Add(duty);
-        await _db.SaveChangesAsync();
+        Db.Duties.Add(duty);
+        await Db.SaveChangesAsync();
 
         var service = new CreateManualAssignmentService(
-            _db, _notification, _clock, new OccurrenceLockService(_db));
+            Db, _notification, _clock, new OccurrenceLockService(Db));
 
         var result = await service.RunAsync(new CreateManualAssignmentCommand
         {
@@ -209,8 +183,8 @@ public class TemporalInvariantTests : IAsyncLifetime
 
         result.Status.Should().Be("Success");
 
-        _db.ChangeTracker.Clear();
-        var row = await _db.RosterAssignments
+        Db.ChangeTracker.Clear();
+        var row = await Db.RosterAssignments
             .AsNoTracking()
             .FirstAsync(a => a.AssignmentId == result.AssignmentId);
 

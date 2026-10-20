@@ -15,43 +15,15 @@ namespace MknMs.IntegrationTests;
 /// Tests for SetMemberAttributeService — the writer for
 /// MemberAttributeValue.
 /// </summary>
-public class SetMemberAttributeServiceTests : IAsyncLifetime
+public class SetMemberAttributeServiceTests : IntegrationTestBase
 {
-    private const string TestConnectionString =
-        "Host=127.0.0.1;Port=5432;Database=mkn_test;Username=mkn_dev";
-
-    private MknDbContext _db = null!;
-
-    public async Task InitializeAsync()
-    {
-        var options = new DbContextOptionsBuilder<MknDbContext>()
-            .UseNpgsql(TestConnectionString)
-            .Options;
-
-        _db = new MknDbContext(options);
-
-        await _db.Database.ExecuteSqlRawAsync(
-            "TRUNCATE TABLE member_attribute_value, attribute_type, " +
-            "member, member_status, branch, role, admin, permission_tier " +
-            "RESTART IDENTITY CASCADE;");
-    }
-
-    public Task DisposeAsync()
-    {
-        _db.Dispose();
-        return Task.CompletedTask;
-    }
-
     private sealed record Fixture(int MemberId, int AdminId, int AttrId);
 
     private async Task<Fixture> SeedAsync(bool attrSoftDeleted = false)
     {
         var role = new Role { Name = "R", IsDefault = true, IsDeleted = false };
         var branch = new Branch { Name = "B", Location = "L", IsDeleted = false };
-        var status = new MemberStatus
-        {
-            Name = "Active", IsRosterable = true, IsDefault = true, IsDeleted = false,
-        };
+        var statusId = await TestSeed.EnsureDefaultMemberStatusAsync(Db);
         var tier = new PermissionTier
         {
             Name = "Full Admin", IsDefault = true, IsDeleted = false,
@@ -61,12 +33,11 @@ public class SetMemberAttributeServiceTests : IAsyncLifetime
             Name = "Purity", IsActive = !attrSoftDeleted, IsDeleted = attrSoftDeleted,
         };
 
-        _db.Roles.Add(role);
-        _db.Branches.Add(branch);
-        _db.MemberStatuses.Add(status);
-        _db.PermissionTiers.Add(tier);
-        _db.AttributeTypes.Add(attr);
-        await _db.SaveChangesAsync();
+        Db.Roles.Add(role);
+        Db.Branches.Add(branch);
+        Db.PermissionTiers.Add(tier);
+        Db.AttributeTypes.Add(attr);
+        await Db.SaveChangesAsync();
 
         var member = new Member
         {
@@ -76,10 +47,10 @@ public class SetMemberAttributeServiceTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Other",
             Phone = "+27-0", Email = null,
             BranchId = branch.BranchId, RoleId = role.RoleId,
-            MemberStatusId = status.MemberStatusId,
+            MemberStatusId = statusId,
         };
-        _db.Members.Add(member);
-        await _db.SaveChangesAsync();
+        Db.Members.Add(member);
+        await Db.SaveChangesAsync();
 
         var admin = new Admin
         {
@@ -87,8 +58,8 @@ public class SetMemberAttributeServiceTests : IAsyncLifetime
             PermissionTierId = tier.PermissionTierId,
             IsActive = true,
         };
-        _db.Admins.Add(admin);
-        await _db.SaveChangesAsync();
+        Db.Admins.Add(admin);
+        await Db.SaveChangesAsync();
 
         return new Fixture(member.MemberId, admin.AdminId, attr.AttributeTypeId);
     }
@@ -97,7 +68,7 @@ public class SetMemberAttributeServiceTests : IAsyncLifetime
     public async Task Set_NewPair_InsertsRow()
     {
         var f = await SeedAsync();
-        var service = new SetMemberAttributeService(_db);
+        var service = new SetMemberAttributeService(Db);
 
         var result = await service.SetAsync(new SetMemberAttributeCommand
         {
@@ -113,7 +84,7 @@ public class SetMemberAttributeServiceTests : IAsyncLifetime
         result.Value.RecordedDate.Should().Be(new DateOnly(2026, 10, 1));
         result.Value.RecordedBy.Should().Be(f.AdminId);
 
-        var count = await _db.MemberAttributeValues.CountAsync();
+        var count = await Db.MemberAttributeValues.CountAsync();
         count.Should().Be(1);
     }
 
@@ -121,7 +92,7 @@ public class SetMemberAttributeServiceTests : IAsyncLifetime
     public async Task Set_ExistingPair_ReplacesValue()
     {
         var f = await SeedAsync();
-        var service = new SetMemberAttributeService(_db);
+        var service = new SetMemberAttributeService(Db);
 
         var first = await service.SetAsync(new SetMemberAttributeCommand
         {
@@ -146,10 +117,10 @@ public class SetMemberAttributeServiceTests : IAsyncLifetime
         second.IsSuccess.Should().BeTrue();
         second.Value!.MemberAttributeValueId.Should().Be(firstId);
 
-        var count = await _db.MemberAttributeValues.CountAsync();
+        var count = await Db.MemberAttributeValues.CountAsync();
         count.Should().Be(1);
 
-        var persisted = await _db.MemberAttributeValues.AsNoTracking()
+        var persisted = await Db.MemberAttributeValues.AsNoTracking()
             .FirstAsync();
         persisted.Value.Should().Be("Impure");
         persisted.RecordedDate.Should().Be(new DateOnly(2026, 10, 15));
@@ -159,7 +130,7 @@ public class SetMemberAttributeServiceTests : IAsyncLifetime
     public async Task Set_WithMissingMember_Fails()
     {
         var f = await SeedAsync();
-        var service = new SetMemberAttributeService(_db);
+        var service = new SetMemberAttributeService(Db);
 
         var result = await service.SetAsync(new SetMemberAttributeCommand
         {
@@ -178,7 +149,7 @@ public class SetMemberAttributeServiceTests : IAsyncLifetime
     public async Task Set_WithSoftDeletedAttributeType_Fails()
     {
         var f = await SeedAsync(attrSoftDeleted: true);
-        var service = new SetMemberAttributeService(_db);
+        var service = new SetMemberAttributeService(Db);
 
         var result = await service.SetAsync(new SetMemberAttributeCommand
         {
@@ -197,11 +168,11 @@ public class SetMemberAttributeServiceTests : IAsyncLifetime
     public async Task Set_WithInactiveAdmin_Fails()
     {
         var f = await SeedAsync();
-        var admin = await _db.Admins.FirstAsync(a => a.AdminId == f.AdminId);
+        var admin = await Db.Admins.FirstAsync(a => a.AdminId == f.AdminId);
         admin.IsActive = false;
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var service = new SetMemberAttributeService(_db);
+        var service = new SetMemberAttributeService(Db);
 
         var result = await service.SetAsync(new SetMemberAttributeCommand
         {
@@ -220,7 +191,7 @@ public class SetMemberAttributeServiceTests : IAsyncLifetime
     public async Task Set_WithBlankValue_Fails()
     {
         var f = await SeedAsync();
-        var service = new SetMemberAttributeService(_db);
+        var service = new SetMemberAttributeService(Db);
 
         var result = await service.SetAsync(new SetMemberAttributeCommand
         {
