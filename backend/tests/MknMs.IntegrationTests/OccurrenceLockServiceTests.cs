@@ -11,39 +11,13 @@ namespace MknMs.IntegrationTests;
 /// session-level advisory lock; verifying it requires a real
 /// database session, not a mock.
 /// </summary>
-public class OccurrenceLockServiceTests : IAsyncLifetime
+public class OccurrenceLockServiceTests : IntegrationTestBase
 {
-    private const string TestConnectionString =
-        "Host=127.0.0.1;Port=5432;Database=mkn_test;Username=mkn_dev";
-
-    private MknDbContext _dbA = null!;
-    private MknDbContext _dbB = null!;
-
-    public Task InitializeAsync()
-    {
-        var optionsA = new DbContextOptionsBuilder<MknDbContext>()
-            .UseNpgsql(TestConnectionString)
-            .Options;
-        var optionsB = new DbContextOptionsBuilder<MknDbContext>()
-            .UseNpgsql(TestConnectionString)
-            .Options;
-
-        _dbA = new MknDbContext(optionsA);
-        _dbB = new MknDbContext(optionsB);
-
-        return Task.CompletedTask;
-    }
-
-    public async Task DisposeAsync()
-    {
-        await _dbA.DisposeAsync();
-        await _dbB.DisposeAsync();
-    }
-
     [Fact]
     public async Task Acquire_OnFreeOccurrence_ReturnsLease()
     {
-        var service = new OccurrenceLockService(_dbA);
+        await using var dbA = CreateContext();
+        var service = new OccurrenceLockService(dbA);
 
         await using var lease = await service.TryAcquireAsync(9001);
 
@@ -53,8 +27,10 @@ public class OccurrenceLockServiceTests : IAsyncLifetime
     [Fact]
     public async Task Acquire_TwiceOnSameOccurrence_SecondReturnsNull()
     {
-        var serviceA = new OccurrenceLockService(_dbA);
-        var serviceB = new OccurrenceLockService(_dbB);
+        await using var dbA = CreateContext();
+        await using var dbB = CreateContext();
+        var serviceA = new OccurrenceLockService(dbA);
+        var serviceB = new OccurrenceLockService(dbB);
 
         await using var leaseA = await serviceA.TryAcquireAsync(9002);
         leaseA.Should().NotBeNull();
@@ -67,8 +43,10 @@ public class OccurrenceLockServiceTests : IAsyncLifetime
     [Fact]
     public async Task Release_ThenReacquire_Succeeds()
     {
-        var serviceA = new OccurrenceLockService(_dbA);
-        var serviceB = new OccurrenceLockService(_dbB);
+        await using var dbA = CreateContext();
+        await using var dbB = CreateContext();
+        var serviceA = new OccurrenceLockService(dbA);
+        var serviceB = new OccurrenceLockService(dbB);
 
         var leaseA = await serviceA.TryAcquireAsync(9003);
         leaseA.Should().NotBeNull();
@@ -82,8 +60,10 @@ public class OccurrenceLockServiceTests : IAsyncLifetime
     [Fact]
     public async Task Acquire_DifferentOccurrences_DoNotBlockEachOther()
     {
-        var serviceA = new OccurrenceLockService(_dbA);
-        var serviceB = new OccurrenceLockService(_dbB);
+        await using var dbA = CreateContext();
+        await using var dbB = CreateContext();
+        var serviceA = new OccurrenceLockService(dbA);
+        var serviceB = new OccurrenceLockService(dbB);
 
         await using var leaseA = await serviceA.TryAcquireAsync(9004);
         await using var leaseB = await serviceB.TryAcquireAsync(9005);
@@ -96,14 +76,14 @@ public class OccurrenceLockServiceTests : IAsyncLifetime
     [Fact]
     public async Task DisposeAsync_IsIdempotent()
     {
-        var service = new OccurrenceLockService(_dbA);
+        await using var dbA = CreateContext();
+        var service = new OccurrenceLockService(dbA);
         var lease = await service.TryAcquireAsync(9006);
         lease.Should().NotBeNull();
 
         await lease!.DisposeAsync();
         await lease.DisposeAsync();  // must not throw
 
-        // A second acquisition on the same occurrence succeeds.
         await using var second = await service.TryAcquireAsync(9006);
         second.Should().NotBeNull();
     }
@@ -111,7 +91,8 @@ public class OccurrenceLockServiceTests : IAsyncLifetime
     [Fact]
     public async Task Acquire_WithNonPositiveId_Throws()
     {
-        var service = new OccurrenceLockService(_dbA);
+        await using var dbA = CreateContext();
+        var service = new OccurrenceLockService(dbA);
 
         var act = async () => await service.TryAcquireAsync(0);
 
