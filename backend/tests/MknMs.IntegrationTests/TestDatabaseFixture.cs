@@ -37,8 +37,7 @@ namespace MknMs.IntegrationTests;
 /// </remarks>
 public sealed class TestDatabaseFixture : IAsyncLifetime
 {
-    private const string AdminConnectionString =
-        "Host=127.0.0.1;Port=5432;Database=postgres;Username=mkn_dev";
+    private static readonly string AdminConnectionString = TestSeed.AdminConnectionString();
 
     private const string Prefix = "mkn_test_";
 
@@ -59,8 +58,7 @@ public sealed class TestDatabaseFixture : IAsyncLifetime
             await cmd.ExecuteNonQueryAsync();
         }
 
-        ConnectionString =
-            $"Host=127.0.0.1;Port=5432;Database={_databaseName};Username=mkn_dev";
+        ConnectionString = TestSeed.PerClassConnectionString(_databaseName);
 
         var options = new DbContextOptionsBuilder<MknDbContext>()
             .UseNpgsql(ConnectionString)

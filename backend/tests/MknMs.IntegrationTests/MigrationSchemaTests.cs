@@ -185,8 +185,7 @@ public class MigrationSchemaTests : IClassFixture<MigrationSchemaFixture>
 /// </summary>
 public sealed class MigrationSchemaFixture : IAsyncLifetime
 {
-    private const string AdminConnectionString =
-        "Host=127.0.0.1;Port=5432;Database=postgres;Username=mkn_dev";
+    private static readonly string AdminConnectionString = TestSeed.AdminConnectionString();
 
     private const string ScratchPrefix = "mkn_migration_";
 
@@ -206,8 +205,7 @@ public sealed class MigrationSchemaFixture : IAsyncLifetime
             await cmd.ExecuteNonQueryAsync();
         }
 
-        _scratchConnectionString =
-            $"Host=127.0.0.1;Port=5432;Database={_scratchDb};Username=mkn_dev";
+        _scratchConnectionString = TestSeed.PerClassConnectionString(_scratchDb);
 
         var options = new DbContextOptionsBuilder<MknDbContext>()
             .UseNpgsql(_scratchConnectionString)
