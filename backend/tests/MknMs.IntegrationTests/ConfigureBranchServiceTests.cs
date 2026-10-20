@@ -17,63 +17,33 @@ namespace MknMs.IntegrationTests;
 /// Tests for ConfigureBranchService.SoftDeleteAsync and the Branch
 /// cascade.
 /// </summary>
-public class ConfigureBranchServiceTests : IAsyncLifetime
+public class ConfigureBranchServiceTests : IntegrationTestBase
 {
-    private const string TestConnectionString =
-        "Host=127.0.0.1;Port=5432;Database=mkn_test;Username=mkn_dev";
-
     private static readonly DateTimeOffset Now =
         new(2026, 10, 13, 16, 0, 0, TimeSpan.Zero);
 
-    private MknDbContext _db = null!;
-    private TimeProvider _clock = null!;
-
-    public async Task InitializeAsync()
-    {
-        var options = new DbContextOptionsBuilder<MknDbContext>()
-            .UseNpgsql(TestConnectionString)
-            .Options;
-
-        _db = new MknDbContext(options);
-        _clock = new FakeTimeProvider(Now);
-
-        await _db.Database.ExecuteSqlRawAsync(
-            "TRUNCATE TABLE configuration_audit_log, entity_deletion_policy, " +
-            "notification_subscription, branch_time_slot, member, member_status, " +
-            "branch, role, admin, permission_tier, time_of_day, event_branch, event " +
-            "RESTART IDENTITY CASCADE;");
-    }
-
-    public Task DisposeAsync()
-    {
-        _db.Dispose();
-        return Task.CompletedTask;
-    }
+    private readonly TimeProvider _clock = new FakeTimeProvider(Now);
 
     private async Task<(int branchId, int adminId)> SeedAsync(bool withMember = false)
     {
         var role = new Role { Name = "R", IsDefault = true, IsDeleted = false };
         var branch = new Branch { Name = "B", Location = "L", IsDeleted = false };
         var otherBranch = new Branch { Name = "B2", Location = "L2", IsDeleted = false };
-        var status = new MemberStatus
-        {
-            Name = "Active", IsRosterable = true, IsDefault = true, IsDeleted = false,
-        };
+        var statusId = await TestSeed.EnsureDefaultMemberStatusAsync(Db);
         var tier = new PermissionTier
         {
             Name = "Full Admin", IsDefault = true, IsDeleted = false,
         };
         var timeOfDay = new TimeOfDay { Name = "Morning" };
 
-        _db.Roles.Add(role);
-        _db.Branches.Add(branch);
-        _db.Branches.Add(otherBranch);
-        _db.MemberStatuses.Add(status);
-        _db.PermissionTiers.Add(tier);
-        _db.TimeOfDays.Add(timeOfDay);
-        await _db.SaveChangesAsync();
+        Db.Roles.Add(role);
+        Db.Branches.Add(branch);
+        Db.Branches.Add(otherBranch);
+        Db.PermissionTiers.Add(tier);
+        Db.TimeOfDays.Add(timeOfDay);
+        await Db.SaveChangesAsync();
 
-        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        Db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
         {
             EntityType = "Branch",
             RequiresApprovalForDelete = false,
@@ -83,7 +53,7 @@ public class ConfigureBranchServiceTests : IAsyncLifetime
             IsActive = true,
             IsDeleted = false,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
 
         var adminMember = new Member
@@ -94,18 +64,18 @@ public class ConfigureBranchServiceTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Other",
             Phone = "+27-1", Email = null,
             BranchId = otherBranch.BranchId, RoleId = role.RoleId,
-            MemberStatusId = status.MemberStatusId,
+            MemberStatusId = statusId,
         };
-        _db.Members.Add(adminMember);
-        await _db.SaveChangesAsync();
+        Db.Members.Add(adminMember);
+        await Db.SaveChangesAsync();
 
         var admin = new Admin
         {
             MemberId = adminMember.MemberId,
             PermissionTierId = tier.PermissionTierId,
         };
-        _db.Admins.Add(admin);
-        await _db.SaveChangesAsync();
+        Db.Admins.Add(admin);
+        await Db.SaveChangesAsync();
 
         if (withMember)
         {
@@ -117,36 +87,36 @@ public class ConfigureBranchServiceTests : IAsyncLifetime
                 MembershipStage = "Full", Gender = "Other",
                 Phone = "+27-2", Email = null,
                 BranchId = branch.BranchId, RoleId = role.RoleId,
-                MemberStatusId = status.MemberStatusId,
+                MemberStatusId = statusId,
             };
-            _db.Members.Add(extra);
-            await _db.SaveChangesAsync();
+            Db.Members.Add(extra);
+            await Db.SaveChangesAsync();
         }
 
         // Branch time slots referencing the branch.
-        _db.BranchTimeSlots.Add(new BranchTimeSlot
+        Db.BranchTimeSlots.Add(new BranchTimeSlot
         {
             BranchId = branch.BranchId,
             DayOfWeek = "Sunday",
             TimeOfDayId = timeOfDay.TimeOfDayId,
             IsDeleted = false,
         });
-        _db.BranchTimeSlots.Add(new BranchTimeSlot
+        Db.BranchTimeSlots.Add(new BranchTimeSlot
         {
             BranchId = branch.BranchId,
             DayOfWeek = "Wednesday",
             TimeOfDayId = timeOfDay.TimeOfDayId,
             IsDeleted = false,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         return (branch.BranchId, admin.AdminId);
     }
 
     private ConfigureBranchService MakeService() =>
-        new(_db,
-            new ConfigurationLifecycleService(_db, _clock),
-            new ConfigurationCascadeService(_db));
+        new(Db,
+            new ConfigurationLifecycleService(Db, _clock),
+            new ConfigurationCascadeService(Db));
 
     [Fact]
     public async Task SoftDelete_WithMembers_IsBlocked()
@@ -160,11 +130,11 @@ public class ConfigureBranchServiceTests : IAsyncLifetime
         result.IsSuccess.Should().BeFalse();
         result.Error!.Code.Should().Be(ConfigurationErrorCodes.LifecycleViolation);
 
-        _db.ChangeTracker.Clear();
-        var persisted = await _db.Branches.AsNoTracking().FirstAsync(b => b.BranchId == branch);
+        Db.ChangeTracker.Clear();
+        var persisted = await Db.Branches.AsNoTracking().FirstAsync(b => b.BranchId == branch);
         persisted.IsDeleted.Should().BeFalse();
 
-        var slots = await _db.BranchTimeSlots.CountAsync(s => s.BranchId == branch);
+        var slots = await Db.BranchTimeSlots.CountAsync(s => s.BranchId == branch);
         slots.Should().Be(2, "a blocked soft delete must not remove slots");
     }
 
@@ -179,13 +149,13 @@ public class ConfigureBranchServiceTests : IAsyncLifetime
 
         result.IsSuccess.Should().BeTrue();
 
-        var slots = await _db.BranchTimeSlots.CountAsync(s => s.BranchId == branch);
+        var slots = await Db.BranchTimeSlots.CountAsync(s => s.BranchId == branch);
         slots.Should().Be(0);
 
-        var persisted = await _db.Branches.AsNoTracking().FirstAsync(b => b.BranchId == branch);
+        var persisted = await Db.Branches.AsNoTracking().FirstAsync(b => b.BranchId == branch);
         persisted.IsDeleted.Should().BeTrue();
 
-        var audit = await _db.ConfigurationAuditLogs.SingleAsync();
+        var audit = await Db.ConfigurationAuditLogs.SingleAsync();
         audit.ConsequencesPreviewed.Should().Contain("removed");
     }
 
@@ -218,9 +188,9 @@ public class ConfigureBranchServiceTests : IAsyncLifetime
     public async Task Create_WithInactiveAdmin_Fails()
     {
         var (_, actingAdminId) = await SeedAsync();
-        var admin = await _db.Admins.FirstAsync(a => a.AdminId == actingAdminId);
+        var admin = await Db.Admins.FirstAsync(a => a.AdminId == actingAdminId);
         admin.IsActive = false;
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         var service = MakeService();
         var result = await service.CreateAsync("NewBranch", "Somewhere", actingAdminId);

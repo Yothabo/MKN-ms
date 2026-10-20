@@ -17,38 +17,12 @@ namespace MknMs.IntegrationTests;
 /// Tests for ManageEventService.SoftDeleteAsync and the Event
 /// cascade.
 /// </summary>
-public class ManageEventServiceTests : IAsyncLifetime
+public class ManageEventServiceTests : IntegrationTestBase
 {
-    private const string TestConnectionString =
-        "Host=127.0.0.1;Port=5432;Database=mkn_test;Username=mkn_dev";
-
     private static readonly DateTimeOffset Now =
         new(2026, 10, 13, 22, 30, 0, TimeSpan.Zero);
 
-    private MknDbContext _db = null!;
-    private TimeProvider _clock = null!;
-
-    public async Task InitializeAsync()
-    {
-        var options = new DbContextOptionsBuilder<MknDbContext>()
-            .UseNpgsql(TestConnectionString)
-            .Options;
-
-        _db = new MknDbContext(options);
-        _clock = new FakeTimeProvider(Now);
-
-        await _db.Database.ExecuteSqlRawAsync(
-            "TRUNCATE TABLE configuration_audit_log, entity_deletion_policy, " +
-            "notification_subscription, event_duty, program_item, program, " +
-            "member, member_status, branch, role, event, admin, permission_tier " +
-            "RESTART IDENTITY CASCADE;");
-    }
-
-    public Task DisposeAsync()
-    {
-        _db.Dispose();
-        return Task.CompletedTask;
-    }
+    private readonly TimeProvider _clock = new FakeTimeProvider(Now);
 
     private sealed record Fixture(
         int EventId,
@@ -61,24 +35,20 @@ public class ManageEventServiceTests : IAsyncLifetime
     {
         var role = new Role { Name = "R", IsDefault = true, IsDeleted = false };
         var branch = new Branch { Name = "B", Location = "L", IsDeleted = false };
-        var status = new MemberStatus
-        {
-            Name = "Active", IsRosterable = true, IsDefault = true, IsDeleted = false,
-        };
+        var statusId = await TestSeed.EnsureDefaultMemberStatusAsync(Db);
         var tier = new PermissionTier
         {
             Name = "Full Admin", IsDefault = true, IsDeleted = false,
         };
         var duty = new Duty { Name = "MC duty", IsActive = true, IsDeleted = false };
 
-        _db.Roles.Add(role);
-        _db.Branches.Add(branch);
-        _db.MemberStatuses.Add(status);
-        _db.PermissionTiers.Add(tier);
-        _db.Duties.Add(duty);
-        await _db.SaveChangesAsync();
+        Db.Roles.Add(role);
+        Db.Branches.Add(branch);
+        Db.PermissionTiers.Add(tier);
+        Db.Duties.Add(duty);
+        await Db.SaveChangesAsync();
 
-        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        Db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
         {
             EntityType = "Event",
             RequiresApprovalForDelete = false,
@@ -88,7 +58,7 @@ public class ManageEventServiceTests : IAsyncLifetime
             IsActive = true,
             IsDeleted = false,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
 
         var member = new Member
@@ -99,18 +69,18 @@ public class ManageEventServiceTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Other",
             Phone = "+27-0", Email = null,
             BranchId = branch.BranchId, RoleId = role.RoleId,
-            MemberStatusId = status.MemberStatusId,
+            MemberStatusId = statusId,
         };
-        _db.Members.Add(member);
-        await _db.SaveChangesAsync();
+        Db.Members.Add(member);
+        await Db.SaveChangesAsync();
 
         var admin = new Admin
         {
             MemberId = member.MemberId,
             PermissionTierId = tier.PermissionTierId,
         };
-        _db.Admins.Add(admin);
-        await _db.SaveChangesAsync();
+        Db.Admins.Add(admin);
+        await Db.SaveChangesAsync();
 
         var evt = new Event
         {
@@ -121,8 +91,8 @@ public class ManageEventServiceTests : IAsyncLifetime
             HostBranchId = branch.BranchId,
             IsDeleted = false,
         };
-        _db.Events.Add(evt);
-        await _db.SaveChangesAsync();
+        Db.Events.Add(evt);
+        await Db.SaveChangesAsync();
 
         var program = new MknMs.Domain.D9_EventProgram.Program
         {
@@ -130,8 +100,8 @@ public class ManageEventServiceTests : IAsyncLifetime
             Title = "Main",
             IsDeleted = false,
         };
-        _db.Programs.Add(program);
-        await _db.SaveChangesAsync();
+        Db.Programs.Add(program);
+        await Db.SaveChangesAsync();
 
         var item = new ProgramItem
         {
@@ -142,8 +112,8 @@ public class ManageEventServiceTests : IAsyncLifetime
             ScheduledEnd = Now.AddDays(15).AddHours(1),
             IsDeleted = false,
         };
-        _db.ProgramItems.Add(item);
-        await _db.SaveChangesAsync();
+        Db.ProgramItems.Add(item);
+        await Db.SaveChangesAsync();
 
         var eventDuty = new EventDuty
         {
@@ -152,8 +122,8 @@ public class ManageEventServiceTests : IAsyncLifetime
             RequiredSlotCount = 1,
             IsDeleted = false,
         };
-        _db.EventDuties.Add(eventDuty);
-        await _db.SaveChangesAsync();
+        Db.EventDuties.Add(eventDuty);
+        await Db.SaveChangesAsync();
 
         return new Fixture(
             evt.EventId,
@@ -164,9 +134,9 @@ public class ManageEventServiceTests : IAsyncLifetime
     }
 
     private ManageEventService MakeService() =>
-        new(_db,
-            new ConfigurationLifecycleService(_db, _clock),
-            new ConfigurationCascadeService(_db));
+        new(Db,
+            new ConfigurationLifecycleService(Db, _clock),
+            new ConfigurationCascadeService(Db));
 
     [Fact]
     public async Task SoftDelete_RemovesProgramItemEventDutyCascade()
@@ -179,17 +149,17 @@ public class ManageEventServiceTests : IAsyncLifetime
 
         result.IsSuccess.Should().BeTrue();
 
-        (await _db.EventDuties.CountAsync()).Should().Be(0);
-        (await _db.ProgramItems.CountAsync()).Should().Be(0);
-        (await _db.Programs.CountAsync()).Should().Be(0);
+        (await Db.EventDuties.CountAsync()).Should().Be(0);
+        (await Db.ProgramItems.CountAsync()).Should().Be(0);
+        (await Db.Programs.CountAsync()).Should().Be(0);
 
-        var evt = await _db.Events
+        var evt = await Db.Events
             .AsNoTracking()
             .FirstAsync(e => e.EventId == f.EventId);
         evt.IsDeleted.Should().BeTrue();
         evt.IsActive.Should().BeFalse();
 
-        var audit = await _db.ConfigurationAuditLogs.SingleAsync();
+        var audit = await Db.ConfigurationAuditLogs.SingleAsync();
         audit.ConsequencesPreviewed.Should().Contain("removed");
     }
 
@@ -199,8 +169,8 @@ public class ManageEventServiceTests : IAsyncLifetime
         var f = await SeedAsync();
 
         var st = new ServiceType { Name = "Regular" };
-        _db.ServiceTypes.Add(st);
-        await _db.SaveChangesAsync();
+        Db.ServiceTypes.Add(st);
+        await Db.SaveChangesAsync();
 
         var occurrence = new ServiceOccurrence
         {
@@ -214,14 +184,14 @@ public class ManageEventServiceTests : IAsyncLifetime
             CreatedBy = f.AdminId,
             ChangedBy = null,
         };
-        _db.ServiceOccurrences.Add(occurrence);
-        await _db.SaveChangesAsync();
+        Db.ServiceOccurrences.Add(occurrence);
+        await Db.SaveChangesAsync();
 
         var service = MakeService();
         await service.SoftDeleteAsync(
             f.EventId, f.AdminId, f.AdminId, true, "retired");
 
-        var stillThere = await _db.ServiceOccurrences
+        var stillThere = await Db.ServiceOccurrences
             .AnyAsync(o => o.EventId == f.EventId);
         stillThere.Should().BeTrue(
             "§9.7 preserves event-sourced Service Occurrence rows");

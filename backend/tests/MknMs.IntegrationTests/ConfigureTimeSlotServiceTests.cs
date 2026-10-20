@@ -17,48 +17,18 @@ namespace MknMs.IntegrationTests;
 /// Tests for ConfigureTimeSlotService.SoftDeleteAsync and the
 /// BranchTimeSlot cascade.
 /// </summary>
-public class ConfigureTimeSlotServiceTests : IAsyncLifetime
+public class ConfigureTimeSlotServiceTests : IntegrationTestBase
 {
-    private const string TestConnectionString =
-        "Host=127.0.0.1;Port=5432;Database=mkn_test;Username=mkn_dev";
-
     private static readonly DateTimeOffset Now =
         new(2026, 10, 13, 18, 0, 0, TimeSpan.Zero);
 
-    private MknDbContext _db = null!;
-    private TimeProvider _clock = null!;
-
-    public async Task InitializeAsync()
-    {
-        var options = new DbContextOptionsBuilder<MknDbContext>()
-            .UseNpgsql(TestConnectionString)
-            .Options;
-
-        _db = new MknDbContext(options);
-        _clock = new FakeTimeProvider(Now);
-
-        await _db.Database.ExecuteSqlRawAsync(
-            "TRUNCATE TABLE configuration_audit_log, entity_deletion_policy, " +
-            "notification_subscription, service_schedule, service_definition, " +
-            "service_type, branch_time_slot, time_of_day, member, member_status, " +
-            "branch, role, admin, permission_tier " +
-            "RESTART IDENTITY CASCADE;");
-    }
-
-    public Task DisposeAsync()
-    {
-        _db.Dispose();
-        return Task.CompletedTask;
-    }
+    private readonly TimeProvider _clock = new FakeTimeProvider(Now);
 
     private async Task<(int slotId, int adminId, int defId)> SeedAsync()
     {
         var role = new Role { Name = "R", IsDefault = true, IsDeleted = false };
         var branch = new Branch { Name = "B", Location = "L", IsDeleted = false };
-        var status = new MemberStatus
-        {
-            Name = "Active", IsRosterable = true, IsDefault = true, IsDeleted = false,
-        };
+        var statusId = await TestSeed.EnsureDefaultMemberStatusAsync(Db);
         var tier = new PermissionTier
         {
             Name = "Full Admin", IsDefault = true, IsDeleted = false,
@@ -66,15 +36,14 @@ public class ConfigureTimeSlotServiceTests : IAsyncLifetime
         var tod = new TimeOfDay { Name = "Morning" };
         var st = new ServiceType { Name = "Regular" };
 
-        _db.Roles.Add(role);
-        _db.Branches.Add(branch);
-        _db.MemberStatuses.Add(status);
-        _db.PermissionTiers.Add(tier);
-        _db.TimeOfDays.Add(tod);
-        _db.ServiceTypes.Add(st);
-        await _db.SaveChangesAsync();
+        Db.Roles.Add(role);
+        Db.Branches.Add(branch);
+        Db.PermissionTiers.Add(tier);
+        Db.TimeOfDays.Add(tod);
+        Db.ServiceTypes.Add(st);
+        await Db.SaveChangesAsync();
 
-        _db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
+        Db.EntityDeletionPolicies.Add(new EntityDeletionPolicy
         {
             EntityType = "BranchTimeSlot",
             RequiresApprovalForDelete = false,
@@ -84,7 +53,7 @@ public class ConfigureTimeSlotServiceTests : IAsyncLifetime
             IsActive = true,
             IsDeleted = false,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
 
         var adminMember = new Member
@@ -95,17 +64,17 @@ public class ConfigureTimeSlotServiceTests : IAsyncLifetime
             MembershipStage = "Full", Gender = "Other",
             Phone = "+27-1", Email = null,
             BranchId = branch.BranchId, RoleId = role.RoleId,
-            MemberStatusId = status.MemberStatusId,
+            MemberStatusId = statusId,
         };
-        _db.Members.Add(adminMember);
-        await _db.SaveChangesAsync();
+        Db.Members.Add(adminMember);
+        await Db.SaveChangesAsync();
 
         var admin = new Admin
         {
             MemberId = adminMember.MemberId,
             PermissionTierId = tier.PermissionTierId,
         };
-        _db.Admins.Add(admin);
+        Db.Admins.Add(admin);
 
         var slot = new BranchTimeSlot
         {
@@ -114,37 +83,37 @@ public class ConfigureTimeSlotServiceTests : IAsyncLifetime
             TimeOfDayId = tod.TimeOfDayId,
             IsDeleted = false,
         };
-        _db.BranchTimeSlots.Add(slot);
-        await _db.SaveChangesAsync();
+        Db.BranchTimeSlots.Add(slot);
+        await Db.SaveChangesAsync();
 
         var definition = new ServiceDefinition
         {
             Name = "S", ServiceTypeId = st.ServiceTypeId, IsDeleted = false,
         };
-        _db.ServiceDefinitions.Add(definition);
-        await _db.SaveChangesAsync();
+        Db.ServiceDefinitions.Add(definition);
+        await Db.SaveChangesAsync();
 
         return (slot.TimeSlotId, admin.AdminId, definition.ServiceDefId);
     }
 
     private ConfigureTimeSlotService MakeService() =>
-        new(_db,
-            new ConfigurationLifecycleService(_db, _clock),
-            new ConfigurationCascadeService(_db));
+        new(Db,
+            new ConfigurationLifecycleService(Db, _clock),
+            new ConfigurationCascadeService(Db));
 
     [Fact]
     public async Task SoftDelete_WithActiveSchedule_IsBlocked()
     {
         var (slot, admin, def) = await SeedAsync();
 
-        _db.ServiceSchedules.Add(new ServiceSchedule
+        Db.ServiceSchedules.Add(new ServiceSchedule
         {
             ServiceDefId = def,
             TimeSlotId = slot,
             StartTime = new TimeOnly(9, 0),
             IsDeleted = false,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         var service = MakeService();
         var result = await service.SoftDeleteAsync(
@@ -153,16 +122,16 @@ public class ConfigureTimeSlotServiceTests : IAsyncLifetime
         result.IsSuccess.Should().BeFalse();
         result.Error!.Code.Should().Be(ConfigurationErrorCodes.LifecycleViolation);
 
-        _db.ChangeTracker.Clear();
-        var persisted = await _db.BranchTimeSlots
+        Db.ChangeTracker.Clear();
+        var persisted = await Db.BranchTimeSlots
             .AsNoTracking()
             .FirstAsync(t => t.TimeSlotId == slot);
         persisted.IsDeleted.Should().BeFalse();
 
-        var schedules = await _db.ServiceSchedules.CountAsync();
+        var schedules = await Db.ServiceSchedules.CountAsync();
         schedules.Should().Be(1);
 
-        var audit = await _db.ConfigurationAuditLogs.CountAsync();
+        var audit = await Db.ConfigurationAuditLogs.CountAsync();
         audit.Should().Be(0);
     }
 
@@ -171,7 +140,7 @@ public class ConfigureTimeSlotServiceTests : IAsyncLifetime
     {
         var (slot, admin, def) = await SeedAsync();
 
-        _db.ServiceSchedules.Add(new ServiceSchedule
+        Db.ServiceSchedules.Add(new ServiceSchedule
         {
             ServiceDefId = def,
             TimeSlotId = slot,
@@ -179,7 +148,7 @@ public class ConfigureTimeSlotServiceTests : IAsyncLifetime
             IsActive = false,
             IsDeleted = false,
         });
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         var service = MakeService();
         var result = await service.SoftDeleteAsync(
@@ -187,15 +156,15 @@ public class ConfigureTimeSlotServiceTests : IAsyncLifetime
 
         result.IsSuccess.Should().BeTrue();
 
-        var schedules = await _db.ServiceSchedules.CountAsync();
+        var schedules = await Db.ServiceSchedules.CountAsync();
         schedules.Should().Be(0);
 
-        var persisted = await _db.BranchTimeSlots
+        var persisted = await Db.BranchTimeSlots
             .AsNoTracking()
             .FirstAsync(t => t.TimeSlotId == slot);
         persisted.IsDeleted.Should().BeTrue();
 
-        var audit = await _db.ConfigurationAuditLogs.SingleAsync();
+        var audit = await Db.ConfigurationAuditLogs.SingleAsync();
         audit.ConsequencesPreviewed.Should().Contain("removed");
     }
 
@@ -240,9 +209,9 @@ public class ConfigureTimeSlotServiceTests : IAsyncLifetime
     public async Task Deactivate_WithInactiveAdmin_Fails()
     {
         var (slotId, actingAdminId, _) = await SeedAsync();
-        var admin = await _db.Admins.FirstAsync(a => a.AdminId == actingAdminId);
+        var admin = await Db.Admins.FirstAsync(a => a.AdminId == actingAdminId);
         admin.IsActive = false;
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
         var service = MakeService();
         var result = await service.DeactivateAsync(
