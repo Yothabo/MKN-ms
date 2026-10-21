@@ -286,7 +286,9 @@ public class ManageConfirmationTests : IntegrationTestBase
     // Tests
     // -----------------------------------------------------------------
 
+    // Matrix row 7.0:dc0451f28ec9: An assignment with `AssignmentStatusID = NULL` | Confirm is received
     [Fact]
+    [Trait("MatrixRow", "7.0:dc0451f28ec9")]
     public async Task Confirm_TransitionsToInitialStatusWithoutReplacement()
     {
         var fixture = await SeedFixtureAsync();
@@ -311,7 +313,9 @@ public class ManageConfirmationTests : IntegrationTestBase
         totalAssignments.Should().Be(1);
     }
 
+    // Matrix row 7.0:38e640cd73bd: A decline with a terminal status and one candidate available | Decline is processed
     [Fact]
+    [Trait("MatrixRow", "7.0:38e640cd73bd")]
     public async Task Decline_WithTerminalStatus_AndCandidateAvailable_CreatesReplacement()
     {
         var fixture = await SeedFixtureAsync();
@@ -348,7 +352,9 @@ public class ManageConfirmationTests : IntegrationTestBase
         replacement.ApprovedBy.Should().BeNull();
     }
 
+    // Matrix row 7.0:1bd5a14a7ee9: A decline with a terminal status and no candidate available | Decline is processed
     [Fact]
+    [Trait("MatrixRow", "7.0:1bd5a14a7ee9")]
     public async Task Decline_WithTerminalStatus_AndNoCandidate_SlotLeftVacant()
     {
         var fixture = await SeedFixtureAsync();
@@ -376,7 +382,9 @@ public class ManageConfirmationTests : IntegrationTestBase
         totalAssignments.Should().Be(1);
     }
 
+    // Matrix row 7.0:bad2159cf30e: A member who previously declined the slot | Decline is processed again
     [Fact]
+    [Trait("MatrixRow", "7.0:bad2159cf30e")]
     public async Task Decline_WithTerminalStatus_ExcludesMemberAlreadyTerminalOnThisSlot()
     {
         var fixture = await SeedFixtureAsync();
@@ -410,7 +418,9 @@ public class ManageConfirmationTests : IntegrationTestBase
         totalAssignments.Should().Be(2);
     }
 
+    // Matrix row 7.0:c7e8c401e964: An assignment with `AssignmentStatusID = NULL` past the timeout | The sweep runs
     [Fact]
+    [Trait("MatrixRow", "7.0:c7e8c401e964")]
     public async Task Sweep_WithTimedOutAssignment_TransitionsAndReplaces()
     {
         var fixture = await SeedFixtureAsync();
@@ -436,7 +446,9 @@ public class ManageConfirmationTests : IntegrationTestBase
         original.AssignmentStatusId.Should().Be(fixture.TimedOutStatusId);
     }
 
+    // Matrix row 7.0:70d1d7b08ed6: An assignment whose elapsed age is below `ConfirmationTimeoutHours` | The sweep runs
     [Fact]
+    [Trait("MatrixRow", "7.0:70d1d7b08ed6")]
     public async Task Sweep_WithAssignmentInsideWindow_DoesNotTransition()
     {
         var fixture = await SeedFixtureAsync();
@@ -456,7 +468,9 @@ public class ManageConfirmationTests : IntegrationTestBase
         assignment.AssignmentStatusId.Should().BeNull();
     }
 
+    // Matrix row 7.0:b52cc205ea92: `InitialAssignmentStatusID` is absent | Confirm is requested
     [Fact]
+    [Trait("MatrixRow", "7.0:b52cc205ea92")]
     public async Task Confirm_WithoutInitialStatusSetting_Fails()
     {
         var fixture = await SeedFixtureAsync(includeInitialStatusSetting: false);
@@ -472,7 +486,9 @@ public class ManageConfirmationTests : IntegrationTestBase
         result.ErrorDetail.Should().Contain("InitialAssignmentStatusID");
     }
 
+    // Matrix row 7.0:870bae674fa2: `DeclinedStatusID` is absent | Decline is requested
     [Fact]
+    [Trait("MatrixRow", "7.0:870bae674fa2")]
     public async Task Decline_WithoutDeclinedStatusSetting_Fails()
     {
         var fixture = await SeedFixtureAsync();
@@ -534,7 +550,9 @@ public class ManageConfirmationTests : IntegrationTestBase
         assignment.AssignmentStatusId.Should().Be(fixture.ProposedStatusId);
     }
 
+    // Matrix row 7.0:28da3be2da15: A terminal assignment | A non-terminal transition is requested, and the slot has room
     [Fact]
+    [Trait("MatrixRow", "7.0:28da3be2da15")]
     public async Task Confirm_TerminalToNonTerminalWithRoom_Succeeds()
     {
         var fixture = await SeedFixtureAsync();
@@ -572,7 +590,9 @@ public class ManageConfirmationTests : IntegrationTestBase
         liveCount.Should().Be(1);
     }
 
+    // Matrix row 7.0:d5982a2b9b85: A terminal-to-terminal transition | The transition is applied
     [Fact]
+    [Trait("MatrixRow", "7.0:d5982a2b9b85")]
     public async Task Confirm_TerminalToTerminal_NoCapacityCheck()
     {
         var fixture = await SeedFixtureAsync();
@@ -598,7 +618,9 @@ public class ManageConfirmationTests : IntegrationTestBase
         after.AssignmentStatusId.Should().Be(fixture.DeclinedStatusId);
     }
 
+    // Matrix row 7.0:3cd8ecb2132a: A member who previously timed out on the slot | Decline is processed again
     [Fact]
+    [Trait("MatrixRow", "7.0:3cd8ecb2132a")]
     public async Task Decline_ExcludesMemberWhoPreviouslyTimedOutOnThisSlot()
     {
         var fixture = await SeedFixtureAsync();
@@ -635,7 +657,9 @@ public class ManageConfirmationTests : IntegrationTestBase
         danaTerminal.Should().Be(1);
     }
 
+    // Matrix row 7.0:5d023cd4fe8b: `TimedOutStatusID` is absent | The sweep runs
     [Fact]
+    [Trait("MatrixRow", "7.0:5d023cd4fe8b")]
     public async Task Sweep_WithoutTimedOutStatusSetting_Fails()
     {
         var fixture = await SeedFixtureAsync();
@@ -665,7 +689,9 @@ public class ManageConfirmationTests : IntegrationTestBase
         after.AssignmentStatusId.Should().BeNull();
     }
 
+    // Matrix row 7.0:3ecfc0933ba5: An assignment whose target status is non-terminal | Decline is processed
     [Fact]
+    [Trait("MatrixRow", "7.0:3ecfc0933ba5")]
     public async Task Decline_WithNonTerminalTargetStatus_DoesNotReResolve()
     {
         var fixture = await SeedFixtureAsync();
@@ -692,7 +718,9 @@ public class ManageConfirmationTests : IntegrationTestBase
         assignments.Should().Be(1);
     }
 
+    // Matrix row 7.0:efc492b2c577: A replacement is created | The replacement's 9.0 invocation fails
     [Fact]
+    [Trait("MatrixRow", "7.0:efc492b2c577")]
     public async Task Decline_ReplacementNotificationFails_ReplacementCommitted()
     {
         var fixture = await SeedFixtureAsync();
