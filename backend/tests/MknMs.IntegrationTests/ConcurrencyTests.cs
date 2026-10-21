@@ -289,7 +289,9 @@ public class ConcurrencyTests : IntegrationTestBase
         return nullCount + nonTerminalWithStatus;
     }
 
+    // Matrix row 5.0:1a2ddeb46ef6: Two 5.0 runs executing concurrently on the same occurrence | Both runs complete
     [Fact]
+    [Trait("MatrixRow", "5.0:1a2ddeb46ef6")]
     public async Task Two5_0Runs_Concurrent_CapacityHolds()
     {
         for (var iteration = 0; iteration < Iterations; iteration++)
@@ -332,7 +334,9 @@ public class ConcurrencyTests : IntegrationTestBase
         }
     }
 
+    // Matrix row 5.0:f6729122a326: A 5.0 run and a concurrent 12.0 manual assignment on the same occurrence | Both complete
     [Fact]
+    [Trait("MatrixRow", "5.0:f6729122a326")]
     public async Task Five0AndTwelve0_Concurrent_CapacityHolds()
     {
         for (var iteration = 0; iteration < Iterations; iteration++)
@@ -389,7 +393,9 @@ public class ConcurrencyTests : IntegrationTestBase
         }
     }
 
+    // Matrix row 7.0:424915778748: A 7.0 decline and a concurrent 5.0 run targeting the same slot | Both complete
     [Fact]
+    [Trait("MatrixRow", "7.0:424915778748")]
     public async Task Five0AndSeven0ReResolution_Concurrent_CapacityHolds()
     {
         for (var iteration = 0; iteration < Iterations; iteration++)
@@ -456,7 +462,9 @@ public class ConcurrencyTests : IntegrationTestBase
         }
     }
 
+    // Matrix row 7.0:424915778748: A 7.0 decline and a concurrent 5.0 run targeting the same slot | Both complete
     [Fact]
+    [Trait("MatrixRow", "7.0:424915778748")]
     public async Task RespondAnd5_0_Concurrent_CapacityHolds()
     {
         // B6, §11.3: the respond path takes the occurrence lock before
