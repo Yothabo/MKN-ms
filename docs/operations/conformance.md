@@ -1,0 +1,74 @@
+# Conformance Declaration
+
+*At HEAD `36aa19b`. Supersedes any earlier unversioned copy of this declaration.*
+
+---
+
+## Statement
+
+The implementation at commit `36aa19b` conforms to the frozen specification at `5601ed5` (tag `spec-v1.0-freeze`) as amended by the specification's §15.8 register, subject to the deferred items listed below.
+
+Every process defined by the specification is implemented. Every required setting and its consumer behaves as the specification states. Every schema amendment listed in §15.1–§15.4 and §15.8 is present. No behaviour is present in the implementation that the specification does not define.
+
+---
+
+## Scope of this declaration
+
+This declaration covers the backend. It does not cover a web frontend; none is part of the current specification's scope, and none is in this repository's `web/` directory that is connected to the backend.
+
+Authentication, authorization, tap ingestion, notification templates as entities, per-member channel preferences, the capability matrix, and the permission model's enforcement are out of scope and deferred. Each is stated in the specification as deferred or out of scope, and each is listed in the runbook.
+
+---
+
+## What "conforms" means here
+
+The word is used in the conformance-review sense: the implementation's behaviour matches the specification's stated behaviour, tested against the acceptance matrix at `docs/processes/acceptance-matrix.md` and the process invariants at each process document. The specification is the authority; where the implementation and the specification disagree, the specification wins.
+
+Conformance is not the same as completeness:
+
+- The specification deliberately defers certain features. A conforming implementation omits them.
+- The specification fixes certain shapes (entity definitions, constraint rules, invocation topology). A conforming implementation follows them.
+- The specification leaves certain choices open (physical index shapes, concurrency mechanism, HTTP style, seed values). A conforming implementation makes those choices and records them where the specification names them.
+
+---
+
+## Verification at this commit
+
+- **Build**: 0 errors.
+- **Unit tests**: 36 of 36 pass.
+- **Integration tests**: 365 of 365 pass, on the developer environment. The CI workflow runs the same suite against a postgres service on the Ubuntu runner.
+- **Consistency check**: green. No stale references in the `docs/` tree; no undefined decision labels; no removed columns outside a removal context.
+- **CI**: build, unit, and integration jobs green on the PR that merged this commit. Required checks are enforced on `main` via a repository ruleset.
+
+---
+
+## The deferred list
+
+Each of the following is a specification-stated deferral or a documented decision. None is a defect. The full statement and the operator workaround for each is in `docs/operations/runbook.md`.
+
+1. **Health / last-N endpoint.** Requires a specification amendment introducing a job-run entity.
+2. **Authentication.** Specification states that authentication is upstream of the process layer.
+3. **Authorization enforcement.** Same — upstream, not modelled.
+4. **Capability matrix.** §9.1.8 states it is deferred.
+5. **Permission-model enforcement.** Deferred by the specification.
+6. **Tap ingestion.** `AttendanceRecord.Source` names `Tap`; no path produces it in this phase.
+7. **Notification templates as entities.** Message content is composed in code; §14.1.6.
+8. **Per-member channel preferences.** Single global channel; §14.1.2.
+9. **Manual assignment bypasses `MemberStatus`.** Deliberate; §17.1 B1. Recorded as a known risk.
+
+---
+
+## What a future amendment would close
+
+An amendment to the frozen specification could close any of the deferred items. Each would require:
+
+1. A stated rule with its source in the specification.
+2. A change to the specification file itself, not to a derived document.
+3. Propagation to every derived document that references the affected rule.
+4. A commit that names the amendment.
+
+The amendment ritual is recorded in `FREEZE.md`. No deferred item in this declaration has been changed by a silent implementation choice.
+
+---
+
+*Source: the frozen specification, the implementation at `36aa19b`, the acceptance matrix, and the runbook. Subordinate to the specification.*
