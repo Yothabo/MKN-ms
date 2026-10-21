@@ -218,7 +218,9 @@ public class AttendanceRuleEngineTests : IntegrationTestBase
     // AbsenceDays
     // -----------------------------------------------------------------
 
+    // Matrix row 13.0:49f670cb350b: A rule with TriggerType = AbsenceDays, TriggerValue = 90, and a member absent 91 calendar days | The scheduled run executes
     [Fact]
+    [Trait("MatrixRow", "13.0:49f670cb350b")]
     public async Task AbsenceDays_91Days_NoAttendance_Fires()
     {
         var f = await SeedAsync();
@@ -238,7 +240,9 @@ public class AttendanceRuleEngineTests : IntegrationTestBase
         member.MemberStatusId.Should().Be(f.OtherStatusId);
     }
 
+    // Matrix row 13.0:689811309a11: A rule with TriggerType = AbsenceDays, TriggerValue = 90, and a member absent exactly 90 calendar days | The scheduled run executes
     [Fact]
+    [Trait("MatrixRow", "13.0:689811309a11")]
     public async Task AbsenceDays_ExactBoundary_AttendanceOnBoundaryDay_DoesNotFire()
     {
         var f = await SeedAsync();
@@ -263,7 +267,9 @@ public class AttendanceRuleEngineTests : IntegrationTestBase
         member.MemberStatusId.Should().Be(f.DefaultStatusId);
     }
 
+    // Matrix row 13.0:49f670cb350b: A rule with TriggerType = AbsenceDays, TriggerValue = 90, and a member absent 91 calendar days | The scheduled run executes
     [Fact]
+    [Trait("MatrixRow", "13.0:49f670cb350b")]
     public async Task AbsenceDays_AttendanceOutsideWindow_Fires()
     {
         var f = await SeedAsync();
@@ -289,7 +295,9 @@ public class AttendanceRuleEngineTests : IntegrationTestBase
     // Register scope
     // -----------------------------------------------------------------
 
+    // Matrix row 13.0:c98c2eba5313: A member whose effective register scope is off | The scheduled run executes
     [Fact]
+    [Trait("MatrixRow", "13.0:c98c2eba5313")]
     public async Task AbsenceDays_RegisterOffAtBranch_IsSkipped()
     {
         var f = await SeedAsync(registerEnabled: false);
@@ -330,7 +338,9 @@ public class AttendanceRuleEngineTests : IntegrationTestBase
     // Evaluation order (B8)
     // -----------------------------------------------------------------
 
+    // Matrix row 13.0:d1ff8223b96f: Two SetStatus rules for the same member on the same run | The scheduled run executes
     [Fact]
+    [Trait("MatrixRow", "13.0:d1ff8223b96f")]
     public async Task TwoSetStatusRules_LaterWins()
     {
         var f = await SeedAsync();
@@ -350,7 +360,9 @@ public class AttendanceRuleEngineTests : IntegrationTestBase
         member.MemberStatusId.Should().Be(f.DefaultStatusId);
     }
 
+    // Matrix row 13.0:3358777a1604: A SetStatus rule and a Notify rule on the same member | The scheduled run executes
     [Fact]
+    [Trait("MatrixRow", "13.0:3358777a1604")]
     public async Task SetStatusAndNotify_BothTakeEffect()
     {
         var f = await SeedAsync();
@@ -368,7 +380,9 @@ public class AttendanceRuleEngineTests : IntegrationTestBase
         result.NotificationsDispatched.Should().Be(1);
     }
 
+    // Matrix row 13.0:ddeaa0100a56: Two Notify rules on the same member | The scheduled run executes
     [Fact]
+    [Trait("MatrixRow", "13.0:ddeaa0100a56")]
     public async Task TwoNotifyRules_TwoDispatches()
     {
         var f = await SeedAsync();
@@ -385,7 +399,9 @@ public class AttendanceRuleEngineTests : IntegrationTestBase
         result.NotificationsDispatched.Should().Be(2);
     }
 
+    // Matrix row 13.0:2d9f3ab1417a: A rule whose outcome is SetStatus, and the target status is already the member's current status | The scheduled run executes
     [Fact]
+    [Trait("MatrixRow", "13.0:2d9f3ab1417a")]
     public async Task SetStatus_OnMemberAlreadyInTargetStatus_StateUnchanged()
     {
         // The member is already in the target status. The rule fires
@@ -412,7 +428,9 @@ public class AttendanceRuleEngineTests : IntegrationTestBase
     // Idempotency (B10)
     // -----------------------------------------------------------------
 
+    // Matrix row 13.0:8dd279a8b787: A rule that fires on run 1 and whose trigger still holds on run 2 | The second scheduled run executes
     [Fact]
+    [Trait("MatrixRow", "13.0:8dd279a8b787")]
     public async Task RepeatedRun_TriggerStillHolds_OutcomeReapplied()
     {
         var f = await SeedAsync();
@@ -436,7 +454,9 @@ public class AttendanceRuleEngineTests : IntegrationTestBase
     // Manual rules (B11)
     // -----------------------------------------------------------------
 
+    // Matrix row 13.0:996b73a63d81: A rule with TriggerType = Manual | A scheduled run executes
     [Fact]
+    [Trait("MatrixRow", "13.0:996b73a63d81")]
     public async Task ManualRule_NotEvaluatedByScheduledRun()
     {
         var f = await SeedAsync();
@@ -455,7 +475,9 @@ public class AttendanceRuleEngineTests : IntegrationTestBase
         member.MemberStatusId.Should().Be(f.DefaultStatusId);
     }
 
+    // Matrix row 13.0:a781b2ec365c: A rule with TriggerType = Manual and a specific rule ID | The rule is invoked administratively
     [Fact]
+    [Trait("MatrixRow", "13.0:a781b2ec365c")]
     public async Task ManualInvocation_FiresUnconditionally()
     {
         var f = await SeedAsync();
@@ -495,7 +517,9 @@ public class AttendanceRuleEngineTests : IntegrationTestBase
         result.ErrorDetail.Should().Contain("Attendance Rule");
     }
 
+    // Matrix row 13.0:8ea3fa315942: A rule with TriggerType = Manual and no valid ActingAdminID | The rule is invoked administratively
     [Fact]
+    [Trait("MatrixRow", "13.0:8ea3fa315942")]
     public async Task ManualInvocation_NonexistentAdmin_Fails()
     {
         // §13.6: the manual invocation carries the ActingAdminID of the
@@ -521,7 +545,9 @@ public class AttendanceRuleEngineTests : IntegrationTestBase
         member.MemberStatusId.Should().Be(f.DefaultStatusId);
     }
 
+    // Matrix row 13.0:8ea3fa315942: A rule with TriggerType = Manual and no valid ActingAdminID | The rule is invoked administratively
     [Fact]
+    [Trait("MatrixRow", "13.0:8ea3fa315942")]
     public async Task ManualInvocation_InactiveAdmin_Fails()
     {
         // §13.6: the ActingAdminID resolves to an Admin row whose
@@ -550,7 +576,9 @@ public class AttendanceRuleEngineTests : IntegrationTestBase
         member.MemberStatusId.Should().Be(f.DefaultStatusId);
     }
 
+    // Matrix row 13.0:66a68372a593: Two invocations of the same Manual rule on the same day | Both invocations complete
     [Fact]
+    [Trait("MatrixRow", "13.0:66a68372a593")]
     public async Task ManualInvocation_TwiceSameDay_OutcomeAppliedTwice()
     {
         // §13.6: repeat invocation applies the outcome again; the
@@ -586,7 +614,9 @@ public class AttendanceRuleEngineTests : IntegrationTestBase
     // ReadmissionCount
     // -----------------------------------------------------------------
 
+    // Matrix row 13.0:03b8644a1859: A rule with TriggerType = ReadmissionCount, TriggerValue = 3, and a member with 3 Readmission rows | The scheduled run executes
     [Fact]
+    [Trait("MatrixRow", "13.0:03b8644a1859")]
     public async Task ReadmissionCount_AtThreshold_Fires()
     {
         var f = await SeedAsync();
@@ -619,7 +649,9 @@ public class AttendanceRuleEngineTests : IntegrationTestBase
         result.StatusChangesApplied.Should().Be(1);
     }
 
+    // Matrix row 13.0:175cc70679d1: A member with 2 Readmission rows and a ReadmissionCount = 3 rule | The scheduled run executes
     [Fact]
+    [Trait("MatrixRow", "13.0:175cc70679d1")]
     public async Task ReadmissionCount_BelowThreshold_DoesNotFire()
     {
         var f = await SeedAsync();
@@ -671,7 +703,9 @@ public class AttendanceRuleEngineTests : IntegrationTestBase
         result.StatusChangesApplied.Should().Be(1);
     }
 
+    // Matrix row 13.0:ec68b6d1a138: The engine | A scheduled run
     [Fact]
+    [Trait("MatrixRow", "13.0:ec68b6d1a138")]
     public async Task Engine_DoesNotWriteReadmission()
     {
         // §13.6: the engine reads Readmission and never writes it.
