@@ -118,7 +118,9 @@ public class ConfigureRoleServiceTests : IntegrationTestBase
         result.Error!.Code.Should().Be(ConfigurationErrorCodes.ValidationFailed);
     }
 
+    // Matrix row Deletion: A Role that is the default Role | A soft delete is requested
     [Fact]
+    [Trait("MatrixRow", "Deletion:56bd71b32809")]
     public async Task SoftDelete_DefaultRole_IsBlocked()
     {
         var (defaultRole, _, admin) = await SeedAsync();
@@ -132,7 +134,9 @@ public class ConfigureRoleServiceTests : IntegrationTestBase
         result.Error.Message.Should().Contain("default Role");
     }
 
+    // Matrix row 1.0: An existing Role referenced by a Member | A soft delete is requested
     [Fact]
+    [Trait("MatrixRow", "1.0:d65964902c48")]
     public async Task SoftDelete_NonDefault_WritesEverythingInOneAtomicCommit()
     {
         var (defaultRole, other, admin) = await SeedAsync();
@@ -245,7 +249,9 @@ public class ConfigureRoleServiceTests : IntegrationTestBase
         role.Should().BeNull();
     }
 
+    // Matrix row 1.0: An existing deactivated Role | The Role is reactivated
     [Fact]
+    [Trait("MatrixRow", "1.0:bd9499ca1e0f")]
     public async Task Reactivate_DeactivatedRole_Succeeds()
     {
         // §9.7: deactivation is reversible — reactivation is a single
