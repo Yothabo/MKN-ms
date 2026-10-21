@@ -71,7 +71,9 @@ public class TimeZoneResolverTests : IntegrationTestBase
         result.ErrorCode.Should().Be(ConfigurationErrorCodes.ConfigurationInvalid);
     }
 
+    // Matrix row Temporal:26f9f2fb0ad6: `ApplicationTimeZone = Africa/Johannesburg` and an instant at 22:30 UTC | The date is derived
     [Fact]
+    [Trait("MatrixRow", "Temporal:26f9f2fb0ad6")]
     public async Task ToDateInTimeZone_NearMidnight_ResolvesToCorrectDate()
     {
         // Johannesburg is UTC+2. An instant at 22:30 UTC on the 6th is
