@@ -19,6 +19,11 @@ public interface IConfigureDutyService
 
     Task<ConfigurationResult<Duty>> RenameAsync(int dutyId, string newName, int actingAdminId, CancellationToken cancellationToken = default);
 
+    Task<ConfigurationResult<Duty>> ReactivateAsync(
+        int dutyId,
+        int actingAdminId,
+        CancellationToken cancellationToken = default);
+
     Task<ConfigurationResult<Duty>> DeactivateAsync(
         int dutyId,
         int actingAdminId,
@@ -110,6 +115,47 @@ public sealed class ConfigureDutyService : IConfigureDutyService
         }
 
         entity.Name = newName.Trim();
+        await _db.SaveChangesAsync(cancellationToken);
+        return ConfigurationResult<Duty>.Success(entity);
+    }
+
+    public async Task<ConfigurationResult<Duty>> ReactivateAsync(
+        int dutyId,
+        int actingAdminId,
+        CancellationToken cancellationToken = default)
+    {
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
+        {
+            return ConfigurationResult<Duty>.Failure(adminError);
+        }
+
+        var entity = await _db.Duties.FirstOrDefaultAsync(d => d.DutyId == dutyId, cancellationToken);
+        if (entity is null)
+        {
+            throw new EntityNotFoundException(nameof(Duty), dutyId);
+        }
+
+        if (entity.IsDeleted)
+        {
+            return ConfigurationResult<Duty>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.LifecycleViolation,
+                    "A soft-deleted Duty cannot be reactivated."));
+        }
+
+        if (entity.IsActive)
+        {
+            return ConfigurationResult<Duty>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.AlreadyActive,
+                    "Duty is already active."));
+        }
+
+        // §9.7 scopes the audit-write requirement to deactivation and
+        // soft delete. Reactivation writes no audit row.
+        entity.IsActive = true;
         await _db.SaveChangesAsync(cancellationToken);
         return ConfigurationResult<Duty>.Success(entity);
     }

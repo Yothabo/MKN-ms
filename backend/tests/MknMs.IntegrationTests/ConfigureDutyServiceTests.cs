@@ -195,4 +195,64 @@ public class ConfigureDutyServiceTests : IntegrationTestBase
         result.IsSuccess.Should().BeFalse();
         result.Error!.Code.Should().Be(ConfigurationErrorCodes.ReferencedEntityInactive);
     }
+
+    [Fact]
+    public async Task Reactivate_DeactivatedDuty_Succeeds()
+    {
+        // §9.7: deactivation is reversible — reactivation is a single
+        // admin action.
+        var (dutyId, actingAdminId) = await SeedAsync();
+        var service = MakeService();
+
+        var deactivated = await service.DeactivateAsync(
+            dutyId, actingAdminId, actingAdminId, true, "test");
+        deactivated.IsSuccess.Should().BeTrue();
+
+        var result = await service.ReactivateAsync(dutyId, actingAdminId);
+
+        result.IsSuccess.Should().BeTrue();
+
+        var persisted = await Db.Duties
+            .AsNoTracking()
+            .FirstAsync(d => d.DutyId == dutyId);
+        persisted.IsActive.Should().BeTrue();
+        persisted.IsDeleted.Should().BeFalse();
+
+        // §9.7's audit scope is deactivation and soft delete; the
+        // deactivation above wrote one row, the reactivation writes none.
+        var auditCount = await Db.ConfigurationAuditLogs.CountAsync();
+        auditCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Reactivate_SoftDeletedDuty_Fails()
+    {
+        var (dutyId, actingAdminId) = await SeedAsync();
+        var service = MakeService();
+
+        await service.SoftDeleteAsync(
+            dutyId, actingAdminId, actingAdminId, true, "test");
+
+        var result = await service.ReactivateAsync(dutyId, actingAdminId);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error!.Code.Should().Be(ConfigurationErrorCodes.LifecycleViolation);
+
+        var persisted = await Db.Duties
+            .AsNoTracking()
+            .FirstAsync(d => d.DutyId == dutyId);
+        persisted.IsDeleted.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Reactivate_AlreadyActiveDuty_Fails()
+    {
+        var (dutyId, actingAdminId) = await SeedAsync();
+        var service = MakeService();
+
+        var result = await service.ReactivateAsync(dutyId, actingAdminId);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error!.Code.Should().Be(ConfigurationErrorCodes.AlreadyActive);
+    }
 }

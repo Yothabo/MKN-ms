@@ -65,6 +65,11 @@ public interface IConfigureServiceDutyAndScheduleService
         int actingAdminId,
         CancellationToken cancellationToken = default);
 
+    Task<ConfigurationResult<ServiceSchedule>> ReactivateScheduleAsync(
+        int scheduleId,
+        int actingAdminId,
+        CancellationToken cancellationToken = default);
+
     Task<ConfigurationResult<ServiceSchedule>> DeactivateScheduleAsync(
         int scheduleId,
         int actingAdminId,
@@ -400,6 +405,69 @@ public sealed class ConfigureServiceDutyAndScheduleService : IConfigureServiceDu
         }
 
         entity.StartTime = startTime;
+        await _db.SaveChangesAsync(cancellationToken);
+        return ConfigurationResult<ServiceSchedule>.Success(entity);
+    }
+
+    public async Task<ConfigurationResult<ServiceSchedule>> ReactivateScheduleAsync(
+        int scheduleId,
+        int actingAdminId,
+        CancellationToken cancellationToken = default)
+    {
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
+        {
+            return ConfigurationResult<ServiceSchedule>.Failure(adminError);
+        }
+
+        var entity = await _db.ServiceSchedules
+            .FirstOrDefaultAsync(s => s.ScheduleId == scheduleId, cancellationToken);
+        if (entity is null)
+        {
+            throw new EntityNotFoundException(nameof(ServiceSchedule), scheduleId);
+        }
+
+        if (entity.IsDeleted)
+        {
+            return ConfigurationResult<ServiceSchedule>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.LifecycleViolation,
+                    "A soft-deleted ServiceSchedule cannot be reactivated."));
+        }
+
+        if (entity.IsActive)
+        {
+            return ConfigurationResult<ServiceSchedule>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.AlreadyActive,
+                    "ServiceSchedule is already active."));
+        }
+
+        // Reactivating a schedule while another active schedule already
+        // holds the same (ServiceDefId, TimeSlotId) would violate the
+        // active-row uniqueness constraint (§15.2.3). Check the constraint
+        // explicitly so the caller receives a structured error rather
+        // than a database exception.
+        var conflict = await _db.ServiceSchedules
+            .AnyAsync(s => s.ServiceDefId == entity.ServiceDefId
+                && s.TimeSlotId == entity.TimeSlotId
+                && s.ScheduleId != entity.ScheduleId
+                && s.IsActive
+                && !s.IsDeleted,
+                cancellationToken);
+
+        if (conflict)
+        {
+            return ConfigurationResult<ServiceSchedule>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.DuplicateName,
+                    "Another active schedule already exists for this service and time slot."));
+        }
+
+        // §9.7 scopes the audit-write requirement to deactivation and
+        // soft delete. Reactivation writes no audit row.
+        entity.IsActive = true;
         await _db.SaveChangesAsync(cancellationToken);
         return ConfigurationResult<ServiceSchedule>.Success(entity);
     }

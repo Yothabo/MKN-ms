@@ -213,6 +213,13 @@ public static class ConfigurationEndpoints
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.RenameAsync(id, request.Name, request.ActingAdminId, cancellationToken)));
 
+        routes.MapPost("/api/config/1.0/roles/{id:int}/reactivate", async (
+            int id,
+            [FromBody] ActingAdminRequest request,
+            IConfigureRoleService service,
+            CancellationToken cancellationToken) =>
+            ToHttpResult(await service.ReactivateAsync(id, request.ActingAdminId, cancellationToken)));
+
         routes.MapDelete("/api/config/1.0/roles/{id:int}", async (
             int id,
             [FromBody] LifecycleActionRequest request,
@@ -252,6 +259,13 @@ public static class ConfigurationEndpoints
             IConfigureDutyService service,
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.RenameAsync(id, request.Name, request.ActingAdminId, cancellationToken)));
+
+        routes.MapPost("/api/config/1.0/duties/{id:int}/reactivate", async (
+            int id,
+            [FromBody] ActingAdminRequest request,
+            IConfigureDutyService service,
+            CancellationToken cancellationToken) =>
+            ToHttpResult(await service.ReactivateAsync(id, request.ActingAdminId, cancellationToken)));
 
         routes.MapDelete("/api/config/1.0/duties/{id:int}", async (
             int id,
@@ -293,6 +307,13 @@ public static class ConfigurationEndpoints
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.UpdateAsync(id, request.Name, request.Location, request.ActingAdminId, cancellationToken)));
 
+        routes.MapPost("/api/config/1.0/branches/{id:int}/reactivate", async (
+            int id,
+            [FromBody] ActingAdminRequest request,
+            IConfigureBranchService service,
+            CancellationToken cancellationToken) =>
+            ToHttpResult(await service.ReactivateAsync(id, request.ActingAdminId, cancellationToken)));
+
         routes.MapDelete("/api/config/1.0/branches/{id:int}", async (
             int id,
             [FromBody] LifecycleActionRequest request,
@@ -329,6 +350,13 @@ public static class ConfigurationEndpoints
                 request.BranchId, request.DayOfWeek, request.TimeOfDayId,
                 request.ActingAdminId, cancellationToken)));
 
+        routes.MapPost("/api/config/1.0/time-slots/{id:int}/reactivate", async (
+            int id,
+            [FromBody] ActingAdminRequest request,
+            IConfigureTimeSlotService service,
+            CancellationToken cancellationToken) =>
+            ToHttpResult(await service.ReactivateAsync(id, request.ActingAdminId, cancellationToken)));
+
         routes.MapDelete("/api/config/1.0/time-slots/{id:int}", async (
             int id,
             [FromBody] LifecycleActionRequest request,
@@ -363,6 +391,13 @@ public static class ConfigurationEndpoints
             ToHttpResult(await service.CreateAsync(
                 request.Name, request.ServiceTypeId, request.ActingAdminId,
                 request.OwningBranchId, cancellationToken)));
+
+        routes.MapPost("/api/config/1.0/service-definitions/{id:int}/reactivate", async (
+            int id,
+            [FromBody] ActingAdminRequest request,
+            IConfigureServiceDefinitionService service,
+            CancellationToken cancellationToken) =>
+            ToHttpResult(await service.ReactivateAsync(id, request.ActingAdminId, cancellationToken)));
 
         routes.MapDelete("/api/config/1.0/service-definitions/{id:int}", async (
             int id,
@@ -431,6 +466,13 @@ public static class ConfigurationEndpoints
                 startTime, request.ActingAdminId,
                 cancellationToken));
         });
+
+        routes.MapPost("/api/config/1.0/service-schedules/{id:int}/reactivate", async (
+            int id,
+            [FromBody] ActingAdminRequest request,
+            IConfigureServiceDutyAndScheduleService service,
+            CancellationToken cancellationToken) =>
+            ToHttpResult(await service.ReactivateScheduleAsync(id, request.ActingAdminId, cancellationToken)));
 
         routes.MapDelete("/api/config/1.0/service-schedules/{id:int}", async (
             int id,

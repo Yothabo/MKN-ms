@@ -34,6 +34,11 @@ public interface IConfigureServiceDefinitionService
         int actingAdminId,
         CancellationToken cancellationToken = default);
 
+    Task<ConfigurationResult<ServiceDefinition>> ReactivateAsync(
+        int serviceDefId,
+        int actingAdminId,
+        CancellationToken cancellationToken = default);
+
     Task<ConfigurationResult<ServiceDefinition>> DeactivateAsync(
         int serviceDefId,
         int actingAdminId,
@@ -208,6 +213,48 @@ public sealed class ConfigureServiceDefinitionService : IConfigureServiceDefinit
         entity.Name = name.Trim();
         entity.ServiceTypeId = serviceTypeId;
         entity.OwningBranchId = owningBranchId;
+        await _db.SaveChangesAsync(cancellationToken);
+        return ConfigurationResult<ServiceDefinition>.Success(entity);
+    }
+
+    public async Task<ConfigurationResult<ServiceDefinition>> ReactivateAsync(
+        int serviceDefId,
+        int actingAdminId,
+        CancellationToken cancellationToken = default)
+    {
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
+        {
+            return ConfigurationResult<ServiceDefinition>.Failure(adminError);
+        }
+
+        var entity = await _db.ServiceDefinitions
+            .FirstOrDefaultAsync(s => s.ServiceDefId == serviceDefId, cancellationToken);
+        if (entity is null)
+        {
+            throw new EntityNotFoundException(nameof(ServiceDefinition), serviceDefId);
+        }
+
+        if (entity.IsDeleted)
+        {
+            return ConfigurationResult<ServiceDefinition>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.LifecycleViolation,
+                    "A soft-deleted ServiceDefinition cannot be reactivated."));
+        }
+
+        if (entity.IsActive)
+        {
+            return ConfigurationResult<ServiceDefinition>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.AlreadyActive,
+                    "ServiceDefinition is already active."));
+        }
+
+        // §9.7 scopes the audit-write requirement to deactivation and
+        // soft delete. Reactivation writes no audit row.
+        entity.IsActive = true;
         await _db.SaveChangesAsync(cancellationToken);
         return ConfigurationResult<ServiceDefinition>.Success(entity);
     }

@@ -34,6 +34,11 @@ public interface IConfigureTimeSlotService
         int actingAdminId,
         CancellationToken cancellationToken = default);
 
+    Task<ConfigurationResult<BranchTimeSlot>> ReactivateAsync(
+        int timeSlotId,
+        int actingAdminId,
+        CancellationToken cancellationToken = default);
+
     Task<ConfigurationResult<BranchTimeSlot>> DeactivateAsync(
         int timeSlotId,
         int actingAdminId,
@@ -175,6 +180,48 @@ public sealed class ConfigureTimeSlotService : IConfigureTimeSlotService
 
         entity.DayOfWeek = dayOfWeek;
         entity.TimeOfDayId = timeOfDayId;
+        await _db.SaveChangesAsync(cancellationToken);
+        return ConfigurationResult<BranchTimeSlot>.Success(entity);
+    }
+
+    public async Task<ConfigurationResult<BranchTimeSlot>> ReactivateAsync(
+        int timeSlotId,
+        int actingAdminId,
+        CancellationToken cancellationToken = default)
+    {
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
+        {
+            return ConfigurationResult<BranchTimeSlot>.Failure(adminError);
+        }
+
+        var entity = await _db.BranchTimeSlots
+            .FirstOrDefaultAsync(t => t.TimeSlotId == timeSlotId, cancellationToken);
+        if (entity is null)
+        {
+            throw new EntityNotFoundException(nameof(BranchTimeSlot), timeSlotId);
+        }
+
+        if (entity.IsDeleted)
+        {
+            return ConfigurationResult<BranchTimeSlot>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.LifecycleViolation,
+                    "A soft-deleted BranchTimeSlot cannot be reactivated."));
+        }
+
+        if (entity.IsActive)
+        {
+            return ConfigurationResult<BranchTimeSlot>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.AlreadyActive,
+                    "BranchTimeSlot is already active."));
+        }
+
+        // §9.7 scopes the audit-write requirement to deactivation and
+        // soft delete. Reactivation writes no audit row.
+        entity.IsActive = true;
         await _db.SaveChangesAsync(cancellationToken);
         return ConfigurationResult<BranchTimeSlot>.Success(entity);
     }

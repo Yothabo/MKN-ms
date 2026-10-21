@@ -29,6 +29,11 @@ public interface IConfigureBranchService
         int actingAdminId,
         CancellationToken cancellationToken = default);
 
+    Task<ConfigurationResult<Branch>> ReactivateAsync(
+        int branchId,
+        int actingAdminId,
+        CancellationToken cancellationToken = default);
+
     Task<ConfigurationResult<Branch>> DeactivateAsync(
         int branchId,
         int actingAdminId,
@@ -140,6 +145,47 @@ public sealed class ConfigureBranchService : IConfigureBranchService
 
         entity.Name = name.Trim();
         entity.Location = location.Trim();
+        await _db.SaveChangesAsync(cancellationToken);
+        return ConfigurationResult<Branch>.Success(entity);
+    }
+
+    public async Task<ConfigurationResult<Branch>> ReactivateAsync(
+        int branchId,
+        int actingAdminId,
+        CancellationToken cancellationToken = default)
+    {
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
+        {
+            return ConfigurationResult<Branch>.Failure(adminError);
+        }
+
+        var entity = await _db.Branches.FirstOrDefaultAsync(b => b.BranchId == branchId, cancellationToken);
+        if (entity is null)
+        {
+            throw new EntityNotFoundException(nameof(Branch), branchId);
+        }
+
+        if (entity.IsDeleted)
+        {
+            return ConfigurationResult<Branch>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.LifecycleViolation,
+                    "A soft-deleted Branch cannot be reactivated."));
+        }
+
+        if (entity.IsActive)
+        {
+            return ConfigurationResult<Branch>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.AlreadyActive,
+                    "Branch is already active."));
+        }
+
+        // §9.7 scopes the audit-write requirement to deactivation and
+        // soft delete. Reactivation writes no audit row.
+        entity.IsActive = true;
         await _db.SaveChangesAsync(cancellationToken);
         return ConfigurationResult<Branch>.Success(entity);
     }

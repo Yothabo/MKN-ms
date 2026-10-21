@@ -230,4 +230,62 @@ public class ConfigureBranchServiceTests : IntegrationTestBase
         var branch = await service.GetAsync(branchId);
         branch.Should().BeNull();
     }
+
+    [Fact]
+    public async Task Reactivate_DeactivatedBranch_Succeeds()
+    {
+        // §9.7: deactivation is reversible.
+        var (branchId, adminId) = await SeedAsync();
+        var service = MakeService();
+
+        var deactivated = await service.DeactivateAsync(
+            branchId, adminId, adminId, true, "test");
+        deactivated.IsSuccess.Should().BeTrue();
+
+        var result = await service.ReactivateAsync(branchId, adminId);
+
+        result.IsSuccess.Should().BeTrue();
+
+        var persisted = await Db.Branches
+            .AsNoTracking()
+            .FirstAsync(b => b.BranchId == branchId);
+        persisted.IsActive.Should().BeTrue();
+        persisted.IsDeleted.Should().BeFalse();
+
+        // §9.7's audit scope is deactivation and soft delete; reactivation
+        // writes no row.
+        var auditCount = await Db.ConfigurationAuditLogs.CountAsync();
+        auditCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Reactivate_SoftDeletedBranch_Fails()
+    {
+        var (branchId, adminId) = await SeedAsync();
+        var service = MakeService();
+
+        await service.SoftDeleteAsync(branchId, adminId, adminId, true, "test");
+
+        var result = await service.ReactivateAsync(branchId, adminId);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error!.Code.Should().Be(ConfigurationErrorCodes.LifecycleViolation);
+
+        var persisted = await Db.Branches
+            .AsNoTracking()
+            .FirstAsync(b => b.BranchId == branchId);
+        persisted.IsDeleted.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Reactivate_AlreadyActiveBranch_Fails()
+    {
+        var (branchId, adminId) = await SeedAsync();
+        var service = MakeService();
+
+        var result = await service.ReactivateAsync(branchId, adminId);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error!.Code.Should().Be(ConfigurationErrorCodes.AlreadyActive);
+    }
 }

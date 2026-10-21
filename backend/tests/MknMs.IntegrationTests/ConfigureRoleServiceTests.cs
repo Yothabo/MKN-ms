@@ -244,4 +244,65 @@ public class ConfigureRoleServiceTests : IntegrationTestBase
         var role = await service.GetAsync(otherRoleId);
         role.Should().BeNull();
     }
+
+    [Fact]
+    public async Task Reactivate_DeactivatedRole_Succeeds()
+    {
+        // §9.7: deactivation is reversible — reactivation is a single
+        // admin action. Acceptance matrix: 1.0 reactivate row.
+        var (_, otherRoleId, actingAdminId) = await SeedAsync();
+        var service = MakeService();
+
+        var deactivated = await service.DeactivateAsync(
+            otherRoleId, actingAdminId, actingAdminId, true, "test");
+        deactivated.IsSuccess.Should().BeTrue();
+
+        var result = await service.ReactivateAsync(otherRoleId, actingAdminId);
+
+        result.IsSuccess.Should().BeTrue();
+
+        var persisted = await Db.Roles
+            .AsNoTracking()
+            .FirstAsync(r => r.RoleId == otherRoleId);
+        persisted.IsActive.Should().BeTrue();
+        persisted.IsDeleted.Should().BeFalse();
+
+        // No audit row was written for the reactivation — §9.7's audit
+        // scope is deactivation and soft delete, not reactivation. The
+        // deactivation above did write one; the total is one, not two.
+        var auditCount = await Db.ConfigurationAuditLogs.CountAsync();
+        auditCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Reactivate_SoftDeletedRole_Fails()
+    {
+        var (_, otherRoleId, actingAdminId) = await SeedAsync();
+        var service = MakeService();
+
+        await service.SoftDeleteAsync(
+            otherRoleId, actingAdminId, actingAdminId, true, "test");
+
+        var result = await service.ReactivateAsync(otherRoleId, actingAdminId);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error!.Code.Should().Be(ConfigurationErrorCodes.LifecycleViolation);
+
+        var persisted = await Db.Roles
+            .AsNoTracking()
+            .FirstAsync(r => r.RoleId == otherRoleId);
+        persisted.IsDeleted.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Reactivate_AlreadyActiveRole_Fails()
+    {
+        var (_, otherRoleId, actingAdminId) = await SeedAsync();
+        var service = MakeService();
+
+        var result = await service.ReactivateAsync(otherRoleId, actingAdminId);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error!.Code.Should().Be(ConfigurationErrorCodes.AlreadyActive);
+    }
 }

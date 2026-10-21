@@ -265,4 +265,63 @@ public class ConfigureServiceDefinitionServiceTests : IntegrationTestBase
 
         result.IsSuccess.Should().BeTrue();
     }
+
+    [Fact]
+    public async Task Reactivate_DeactivatedServiceDefinition_Succeeds()
+    {
+        // §9.7: deactivation is reversible.
+        var (defId, actingAdminId, _) = await SeedAsync();
+        var service = MakeService();
+
+        var deactivated = await service.DeactivateAsync(
+            defId, actingAdminId, actingAdminId, true, "test");
+        deactivated.IsSuccess.Should().BeTrue();
+
+        var auditBefore = await Db.ConfigurationAuditLogs.CountAsync();
+
+        var result = await service.ReactivateAsync(defId, actingAdminId);
+
+        result.IsSuccess.Should().BeTrue();
+
+        var persisted = await Db.ServiceDefinitions
+            .AsNoTracking()
+            .FirstAsync(s => s.ServiceDefId == defId);
+        persisted.IsActive.Should().BeTrue();
+        persisted.IsDeleted.Should().BeFalse();
+
+        var auditAfter = await Db.ConfigurationAuditLogs.CountAsync();
+        auditAfter.Should().Be(auditBefore);
+    }
+
+    [Fact]
+    public async Task Reactivate_SoftDeletedServiceDefinition_Fails()
+    {
+        var (defId, actingAdminId, _) = await SeedAsync();
+        var service = MakeService();
+
+        await service.SoftDeleteAsync(
+            defId, actingAdminId, actingAdminId, true, "test");
+
+        var result = await service.ReactivateAsync(defId, actingAdminId);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error!.Code.Should().Be(ConfigurationErrorCodes.LifecycleViolation);
+
+        var persisted = await Db.ServiceDefinitions
+            .AsNoTracking()
+            .FirstAsync(s => s.ServiceDefId == defId);
+        persisted.IsDeleted.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Reactivate_AlreadyActiveServiceDefinition_Fails()
+    {
+        var (defId, actingAdminId, _) = await SeedAsync();
+        var service = MakeService();
+
+        var result = await service.ReactivateAsync(defId, actingAdminId);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error!.Code.Should().Be(ConfigurationErrorCodes.AlreadyActive);
+    }
 }

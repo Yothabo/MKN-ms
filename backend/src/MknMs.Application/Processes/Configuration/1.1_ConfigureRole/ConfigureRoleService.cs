@@ -19,6 +19,11 @@ public interface IConfigureRoleService
 
     Task<ConfigurationResult<Role>> RenameAsync(int roleId, string newName, int actingAdminId, CancellationToken cancellationToken = default);
 
+    Task<ConfigurationResult<Role>> ReactivateAsync(
+        int roleId,
+        int actingAdminId,
+        CancellationToken cancellationToken = default);
+
     Task<ConfigurationResult<Role>> DeactivateAsync(
         int roleId,
         int actingAdminId,
@@ -110,6 +115,48 @@ public sealed class ConfigureRoleService : IConfigureRoleService
         }
 
         entity.Name = newName.Trim();
+        await _db.SaveChangesAsync(cancellationToken);
+        return ConfigurationResult<Role>.Success(entity);
+    }
+
+    public async Task<ConfigurationResult<Role>> ReactivateAsync(
+        int roleId,
+        int actingAdminId,
+        CancellationToken cancellationToken = default)
+    {
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
+        {
+            return ConfigurationResult<Role>.Failure(adminError);
+        }
+
+        var entity = await _db.Roles.FirstOrDefaultAsync(r => r.RoleId == roleId, cancellationToken);
+        if (entity is null)
+        {
+            throw new EntityNotFoundException(nameof(Role), roleId);
+        }
+
+        if (entity.IsDeleted)
+        {
+            return ConfigurationResult<Role>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.LifecycleViolation,
+                    "A soft-deleted Role cannot be reactivated."));
+        }
+
+        if (entity.IsActive)
+        {
+            return ConfigurationResult<Role>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.AlreadyActive,
+                    "Role is already active."));
+        }
+
+        // §9.7 scopes the audit-write requirement to deactivation and
+        // soft delete. Reactivation is not one of those operations; it
+        // reverses a reversible transition and writes no audit row.
+        entity.IsActive = true;
         await _db.SaveChangesAsync(cancellationToken);
         return ConfigurationResult<Role>.Success(entity);
     }

@@ -220,4 +220,64 @@ public class ConfigureTimeSlotServiceTests : IntegrationTestBase
         result.IsSuccess.Should().BeFalse();
         result.Error!.Code.Should().Be(ConfigurationErrorCodes.ReferencedEntityInactive);
     }
+
+    [Fact]
+    public async Task Reactivate_DeactivatedTimeSlot_Succeeds()
+    {
+        // §9.7: deactivation is reversible.
+        var (slotId, adminId, _) = await SeedAsync();
+        var service = MakeService();
+
+        var deactivated = await service.DeactivateAsync(
+            slotId, adminId, adminId, true, "test");
+        deactivated.IsSuccess.Should().BeTrue();
+
+        var auditBefore = await Db.ConfigurationAuditLogs.CountAsync();
+
+        var result = await service.ReactivateAsync(slotId, adminId);
+
+        result.IsSuccess.Should().BeTrue();
+
+        var persisted = await Db.BranchTimeSlots
+            .AsNoTracking()
+            .FirstAsync(t => t.TimeSlotId == slotId);
+        persisted.IsActive.Should().BeTrue();
+        persisted.IsDeleted.Should().BeFalse();
+
+        // §9.7's audit scope is deactivation and soft delete; reactivation
+        // writes no row.
+        var auditAfter = await Db.ConfigurationAuditLogs.CountAsync();
+        auditAfter.Should().Be(auditBefore);
+    }
+
+    [Fact]
+    public async Task Reactivate_SoftDeletedTimeSlot_Fails()
+    {
+        var (slotId, adminId, _) = await SeedAsync();
+        var service = MakeService();
+
+        await service.SoftDeleteAsync(slotId, adminId, adminId, true, "test");
+
+        var result = await service.ReactivateAsync(slotId, adminId);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error!.Code.Should().Be(ConfigurationErrorCodes.LifecycleViolation);
+
+        var persisted = await Db.BranchTimeSlots
+            .AsNoTracking()
+            .FirstAsync(t => t.TimeSlotId == slotId);
+        persisted.IsDeleted.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Reactivate_AlreadyActiveTimeSlot_Fails()
+    {
+        var (slotId, adminId, _) = await SeedAsync();
+        var service = MakeService();
+
+        var result = await service.ReactivateAsync(slotId, adminId);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error!.Code.Should().Be(ConfigurationErrorCodes.AlreadyActive);
+    }
 }

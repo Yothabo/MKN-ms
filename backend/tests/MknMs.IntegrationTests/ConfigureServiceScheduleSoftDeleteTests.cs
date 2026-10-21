@@ -242,4 +242,63 @@ public class ConfigureServiceScheduleSoftDeleteTests : IntegrationTestBase
         result.IsSuccess.Should().BeFalse();
         result.Error!.Code.Should().Be(ConfigurationErrorCodes.ReferencedEntityInactive);
     }
+
+    [Fact]
+    public async Task Reactivate_DeactivatedSchedule_Succeeds()
+    {
+        // §9.7: deactivation is reversible.
+        var (scheduleId, adminId) = await SeedAsync();
+        var service = MakeService();
+
+        var deactivated = await service.DeactivateScheduleAsync(
+            scheduleId, adminId, adminId, true, "test");
+        deactivated.IsSuccess.Should().BeTrue();
+
+        var auditBefore = await Db.ConfigurationAuditLogs.CountAsync();
+
+        var result = await service.ReactivateScheduleAsync(scheduleId, adminId);
+
+        result.IsSuccess.Should().BeTrue();
+
+        var persisted = await Db.ServiceSchedules
+            .AsNoTracking()
+            .FirstAsync(s => s.ScheduleId == scheduleId);
+        persisted.IsActive.Should().BeTrue();
+        persisted.IsDeleted.Should().BeFalse();
+
+        var auditAfter = await Db.ConfigurationAuditLogs.CountAsync();
+        auditAfter.Should().Be(auditBefore);
+    }
+
+    [Fact]
+    public async Task Reactivate_SoftDeletedSchedule_Fails()
+    {
+        var (scheduleId, adminId) = await SeedAsync();
+        var service = MakeService();
+
+        await service.SoftDeleteScheduleAsync(
+            scheduleId, adminId, adminId, true, "test");
+
+        var result = await service.ReactivateScheduleAsync(scheduleId, adminId);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error!.Code.Should().Be(ConfigurationErrorCodes.LifecycleViolation);
+
+        var persisted = await Db.ServiceSchedules
+            .AsNoTracking()
+            .FirstAsync(s => s.ScheduleId == scheduleId);
+        persisted.IsDeleted.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Reactivate_AlreadyActiveSchedule_Fails()
+    {
+        var (scheduleId, adminId) = await SeedAsync();
+        var service = MakeService();
+
+        var result = await service.ReactivateScheduleAsync(scheduleId, adminId);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error!.Code.Should().Be(ConfigurationErrorCodes.AlreadyActive);
+    }
 }
