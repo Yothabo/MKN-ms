@@ -138,7 +138,9 @@ public class ManageEventServiceTests : IntegrationTestBase
             new ConfigurationLifecycleService(Db, _clock),
             new ConfigurationCascadeService(Db));
 
+    // Matrix row 8.0: An Event with a Program and Program Item rows | A soft delete is requested
     [Fact]
+    [Trait("MatrixRow", "8.0:79c73511b275")]
     public async Task SoftDelete_RemovesProgramItemEventDutyCascade()
     {
         var f = await SeedAsync();
