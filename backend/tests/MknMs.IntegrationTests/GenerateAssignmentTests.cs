@@ -45,7 +45,9 @@ public class GenerateAssignmentTests : IntegrationTestBase
         await TestSeed.EnsureRequiredSettingsAsync(Db);
     }
 
+    // Matrix row 5.0: An occurrence with two required slots | 5.0 runs
     [Fact]
+    [Trait("MatrixRow", "5.0:e6a7eec736e5")]
     public async Task Run_WithMixedEligibilityAndTier_ProducesExpectedOutcome()
     {
         var fixture = await SeedFixtureAsync();
@@ -82,7 +84,9 @@ public class GenerateAssignmentTests : IntegrationTestBase
         reading.ApprovedBy.Should().BeNull();
     }
 
+    // Matrix row 5.0: Two 5.0 runs executing sequentially on the same occurrence | The second run completes
     [Fact]
+    [Trait("MatrixRow", "5.0:530442ba2a39")]
     public async Task Run_Twice_IsIdempotent()
     {
         var fixture = await SeedFixtureAsync();
@@ -107,7 +111,9 @@ public class GenerateAssignmentTests : IntegrationTestBase
         countAfterSecond.Should().Be(countAfterFirst);
     }
 
+    // Matrix row 5.0: A duty with no eligible members | 5.0 runs
     [Fact]
+    [Trait("MatrixRow", "5.0:9107c30cb4e3")]
     public async Task Run_WithNoEligibility_ProducesNoAssignments()
     {
         var fixture = await SeedFixtureAsync(includeEligibility: false);
@@ -405,7 +411,9 @@ public class GenerateAssignmentTests : IntegrationTestBase
         result.DutiesFullyFilled.Should().Be(1);
     }
 
+    // Matrix row 5.0: A duty with no eligible members | 5.0 runs
     [Fact]
+    [Trait("MatrixRow", "5.0:9107c30cb4e3")]
     public async Task Run_WithAgeRangeCriterion_NonMatchingRange_SlotUnfilled()
     {
         var fixture = await SeedFixtureAsync();
@@ -449,7 +457,9 @@ public class GenerateAssignmentTests : IntegrationTestBase
         result.DutiesFullyFilled.Should().Be(1);
     }
 
+    // Matrix row 5.0: A duty with a tier-1 criterion that no eligible member matches, and a tier-2 criterion that two do | 5.0 runs
     [Fact]
+    [Trait("MatrixRow", "5.0:310408ed0c2c")]
     public async Task Run_WithTwoTiers_FallsThroughToSecondTier()
     {
         var fixture = await SeedFixtureAsync();
@@ -528,7 +538,9 @@ public class GenerateAssignmentTests : IntegrationTestBase
         result.DutiesFullyFilled.Should().Be(1);
     }
 
+    // Matrix row 5.0: A duty with a tier-1 criterion that no eligible member matches, and a tier-2 criterion that two do | 5.0 runs
     [Fact]
+    [Trait("MatrixRow", "5.0:310408ed0c2c")]
     public async Task Run_WithSameTierTwoRules_AndFails_NoCandidate()
     {
         var fixture = await SeedFixtureAsync();
@@ -567,7 +579,9 @@ public class GenerateAssignmentTests : IntegrationTestBase
         result.DutiesUnfilled.Should().Be(2);
     }
 
+    // Matrix row 5.0: A duty whose only rules are reserved criteria types | 5.0 runs
     [Fact]
+    [Trait("MatrixRow", "5.0:6cbc4373e67d")]
     public async Task Run_WithReservedCriterion_ProducesNoCandidates()
     {
         var fixture = await SeedFixtureAsync();
@@ -588,7 +602,9 @@ public class GenerateAssignmentTests : IntegrationTestBase
         result.DutiesUnfilled.Should().Be(2);
     }
 
+    // Matrix row 5.0: A Branch-Attendance Recency rule on a duty, with the effective register scope off | 5.0 runs
     [Fact]
+    [Trait("MatrixRow", "5.0:940f8b01f01d")]
     public async Task Run_BranchAttendanceRecency_RegisterOffAtBranch_CriterionSkipped()
     {
         // §10.1.5: Branch-Attendance Recency is skipped when the
@@ -670,7 +686,9 @@ public class GenerateAssignmentTests : IntegrationTestBase
     // G3-5.0 — acceptance-matrix coverage
     // -----------------------------------------------------------------
 
+    // Matrix row 5.0: A duty with three eligible members and one slot | 5.0 runs
     [Fact]
+    [Trait("MatrixRow", "5.0:19c01deb46e7")]
     public async Task Run_WithThreeEligibleOneSlot_AssignsLowestMemberId()
     {
         var fixture = await SeedFixtureAsync();
@@ -763,7 +781,9 @@ public class GenerateAssignmentTests : IntegrationTestBase
         extraOne.MemberId.Should().BeLessThan(extraTwo.MemberId);
     }
 
+    // Matrix row 5.0: A duty with five eligible members and three slots | 5.0 runs
     [Fact]
+    [Trait("MatrixRow", "5.0:d84300024590")]
     public async Task Run_WithFiveEligibleThreeSlots_AssignsLowestThree()
     {
         var fixture = await SeedFixtureAsync();
@@ -842,7 +862,9 @@ public class GenerateAssignmentTests : IntegrationTestBase
         readingAssignments.Select(a => a.MemberId).Should().Equal(expected);
     }
 
+    // Matrix row 5.0: A member already holding a non-terminal assignment on the occurrence | 5.0 runs
     [Fact]
+    [Trait("MatrixRow", "5.0:093226d80096")]
     public async Task Run_WithNonTerminalAssignmentOnOccurrence_ExcludesMemberFromOtherDuties()
     {
         var fixture = await SeedFixtureAsync();
@@ -895,7 +917,9 @@ public class GenerateAssignmentTests : IntegrationTestBase
         readingAssignments.Should().BeEmpty();
     }
 
+    // Matrix row 5.0: A duty whose ServiceOccurrenceDuty row has `Action = Removed` | 5.0 runs
     [Fact]
+    [Trait("MatrixRow", "5.0:13f60d3da962")]
     public async Task Run_WithServiceOccurrenceDutyRemoved_SkipsTheDuty()
     {
         var fixture = await SeedFixtureAsync();
@@ -925,7 +949,9 @@ public class GenerateAssignmentTests : IntegrationTestBase
         readingAssignments.Should().BeEmpty();
     }
 
+    // Matrix row 5.0: A duty whose ServiceOccurrenceDuty row has `Action = Added` with a `RequiredSlotCount` | 5.0 runs
     [Fact]
+    [Trait("MatrixRow", "5.0:542e1a759874")]
     public async Task Run_WithServiceOccurrenceDutyAddedOverride_UsesOverrideCount()
     {
         var fixture = await SeedFixtureAsync();
@@ -988,7 +1014,9 @@ public class GenerateAssignmentTests : IntegrationTestBase
         readingAssignments.Should().HaveCount(2);
     }
 
+    // Matrix row 5.0: A Branch-Attendance Recency rule on a duty, with the effective register scope on and a matching AttendanceRecord | 5.0 runs
     [Fact]
+    [Trait("MatrixRow", "5.0:6553f36fc96a")]
     public async Task Run_BranchAttendanceRecency_RegisterOnAtBranch_MatchingAttendance_CriterionMatches()
     {
         var fixture = await SeedFixtureAsync();
@@ -1041,7 +1069,9 @@ public class GenerateAssignmentTests : IntegrationTestBase
         readingAssignments.Single().MemberId.Should().Be(fixture.BeatriceMemberId);
     }
 
+    // Matrix row 5.0: An interrupted 5.0 run | 5.0 runs again
     [Fact]
+    [Trait("MatrixRow", "5.0:6af33e4c13bc")]
     public async Task Run_AfterPartialRun_ResumesAndFillsRemainingSlots()
     {
         var fixture = await SeedFixtureAsync();
@@ -1084,7 +1114,9 @@ public class GenerateAssignmentTests : IntegrationTestBase
         result.AssignmentsCreated.Should().Be(0);
     }
 
+    // Matrix row 5.0: An occurrence with three duties, two slots each | 5.0 runs
     [Fact]
+    [Trait("MatrixRow", "5.0:2211fec33090")]
     public async Task Run_WithThreeDutiesTwoSlotsEach_AssignsPerDutyIndependently()
     {
         var fixture = await SeedFixtureAsync();
@@ -1169,7 +1201,9 @@ public class GenerateAssignmentTests : IntegrationTestBase
         welcomeAssignments.Should().BeEmpty();
     }
 
+    // Matrix row 5.0: A 9.0 invocation failing during the run | 5.0 completes
     [Fact]
+    [Trait("MatrixRow", "5.0:6aad22e05e4e")]
     public async Task Run_WithFailingNotification_AssignmentStillCommitted()
     {
         var fixture = await SeedFixtureAsync();
@@ -1192,7 +1226,9 @@ public class GenerateAssignmentTests : IntegrationTestBase
         assignments.Single().MemberId.Should().Be(fixture.BeatriceMemberId);
     }
 
+    // Matrix row 5.0: An event-sourced occurrence | 5.0 runs
     [Fact]
+    [Trait("MatrixRow", "5.0:74265c828297")]
     public async Task Run_OnEventSourcedOccurrence_FillsOnlyAddedDuties()
     {
         var fixture = await SeedFixtureAsync();
@@ -1268,7 +1304,9 @@ public class GenerateAssignmentTests : IntegrationTestBase
         welcomeAssignments.Should().BeEmpty();
     }
 
+    // Matrix row 5.0: A member whose only assignment on the occurrence is terminal | 5.0 runs
     [Fact]
+    [Trait("MatrixRow", "5.0:29943a7ddaa6")]
     public async Task Run_WithTerminalAssignmentOnOccurrence_DoesNotBlockAvailability()
     {
         var fixture = await SeedFixtureAsync();
