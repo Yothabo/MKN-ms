@@ -29,6 +29,15 @@ The matrix does not prescribe the mechanism. Concurrency rows state the property
 | 1.0 | A ServiceDefinition with a non-null OwningBranchID | A ServiceSchedule is created whose TimeSlot.BranchID differs | The operation is rejected with `ValidationFailed`, per B19 |
 | 1.0 | A ServiceDefinition whose OwningBranchID is changed to a branch at which one or more of its existing schedules' time slots do not reside | The OwningBranchID is updated | The update is rejected with `InvalidValue`; the existing schedules are not touched. The check is enforced at update time, per B19, so that no stored row can reach a state where its OwningBranchID and a schedule's BranchID disagree |
 | 1.0 | An active ServiceSchedule whose definition is deactivated | The materializer runs | The schedule is not picked up; existing occurrences remain unchanged |
+| 1.0 | A Duty referenced by a Service Definition Duty or an Event Duty row | A soft delete is requested | The operation is blocked; existing Roster Assignment rows are preserved |
+| 1.0 | A Duty not referenced by any Service Definition Duty or Event Duty row | A soft delete is requested | The Duty row exists with `IsDeleted = true`, `IsActive = false` |
+| 1.0 | A Branch with a Member assigned to it | A soft delete is requested | The operation is blocked |
+| 1.0 | A Branch with no Member assigned to it | A soft delete is requested | `IsDeleted = true`, `IsActive = false`; every Branch Time Slot row at the branch is removed |
+| 1.0 | A Branch Time Slot referenced by an active Service Schedule | A soft delete is requested | The operation is blocked |
+| 1.0 | A Branch Time Slot referenced only by inactive Service Schedule rows | A soft delete is requested | The slot is soft-deleted; the inactive Service Schedule rows are removed |
+| 1.0 | A Service Definition referenced by a Service Schedule, Program Item, Event Duty, or Duty Rule row | A soft delete is requested | The operation is blocked |
+| 1.0 | A Service Definition with no dependent rows | A soft delete is requested | The Service Definition row exists with `IsDeleted = true`, `IsActive = false` |
+| 1.0 | A Service Schedule whose Service Occurrence rows exist | A soft delete is requested | The schedule is soft-deleted; existing Service Occurrence rows are preserved; the schedule stops being eligible for future materialization |
 
 ### 2.0 Configure Duty Rules
 
@@ -76,6 +85,7 @@ The matrix does not prescribe the mechanism. Concurrency rows state the property
 | 8.0 | A second Program for the same Event | The Program is created | The operation is rejected with `Conflict`; one Program per Event |
 | 8.0 | An EventDuty referencing a Duty | The EventDuty is created | The duty's Eligibility and DutyRule are consulted for candidate resolution on the event |
 | 8.0 | A Member whose `MemberStatusID` is a non-rosterable status, referenced by an EventDuty | The EventDuty is retained | The reference remains; no cascade; the EventDuty.AssignedMemberID continues to point at the Member |
+| 8.0 | An Event with a Program and Program Item rows | A soft delete is requested | The Program and Program Item rows are removed; existing event-sourced Service Occurrence rows are preserved; the Event row exists with `IsDeleted = true`, `IsActive = false` |
 
 ## Operations layer
 
