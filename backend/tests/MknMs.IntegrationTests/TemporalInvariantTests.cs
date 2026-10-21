@@ -135,7 +135,9 @@ public class TemporalInvariantTests : IntegrationTestBase
         return (member.MemberId, admin.AdminId);
     }
 
+    // Matrix row Temporal:e097d1992f24: A timestamp column written by any process | The row is persisted
     [Fact]
+    [Trait("MatrixRow", "Temporal:e097d1992f24")]
     public async Task AttendanceRecord_Timestamp_IsUtc()
     {
         var occurrenceId = await SeedOccurrenceAsync();
@@ -159,7 +161,9 @@ public class TemporalInvariantTests : IntegrationTestBase
         row.Timestamp.Offset.Should().Be(TimeSpan.Zero);
     }
 
+    // Matrix row Temporal:e097d1992f24: A timestamp column written by any process | The row is persisted
     [Fact]
+    [Trait("MatrixRow", "Temporal:e097d1992f24")]
     public async Task RosterAssignment_CreatedAt_IsUtc()
     {
         var occurrenceId = await SeedOccurrenceAsync();
