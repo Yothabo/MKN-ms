@@ -27,7 +27,7 @@ The matrix does not prescribe the mechanism. Concurrency rows state the property
 | 1.0 | An active ServiceSchedule and a second active schedule for the same (ServiceDefID, TimeSlotID) | The second schedule is created | The operation is rejected with `Conflict`; the uniqueness constraint applies only to active, not-deleted rows |
 | 1.0 | A ServiceSchedule with `IsActive = false` | A new schedule is created for the same (ServiceDefID, TimeSlotID) | The new schedule is created |
 | 1.0 | A ServiceDefinition with a non-null OwningBranchID | A ServiceSchedule is created whose TimeSlot.BranchID differs | The operation is rejected with `ValidationFailed`, per B19 |
-| 1.0 | A ServiceDefinition whose OwningBranchID is changed after a schedule exists | The OwningBranchID is updated | The existing schedule remains; a re-validation of the invariant is implementation-dependent; the resulting row is treated as an integrity violation, per B19 |
+| 1.0 | A ServiceDefinition whose OwningBranchID is changed to a branch at which one or more of its existing schedules' time slots do not reside | The OwningBranchID is updated | The update is rejected with `InvalidValue`; the existing schedules are not touched. The check is enforced at update time, per B19, so that no stored row can reach a state where its OwningBranchID and a schedule's BranchID disagree |
 | 1.0 | An active ServiceSchedule whose definition is deactivated | The materializer runs | The schedule is not picked up; existing occurrences remain unchanged |
 
 ### 2.0 Configure Duty Rules
@@ -266,7 +266,7 @@ The matrix does not prescribe the mechanism. Concurrency rows state the property
 | Invocation | 9.0 | An invocation arrives | 9.0 is the sole process any other process is permitted to invoke |
 | Invocation | 9.0's authority-notification sweep | The scheduler triggers it | It is a trigger, not an invocation; no process calls 9.0 for it |
 | Deletion | A configuration entity with references | A soft delete is applied | The reference fallback and cascade stated in §9.7 is applied atomically |
-| Deletion | A member | A soft delete is applied | The member is hidden from views; all operational records naming the member remain |
+| Deletion | A member | A soft delete is requested | No soft-delete operation exists for a member (§9.7). A member's state is `MemberStatusID` only; setting a status whose `IsRosterable = false` excludes the member from new roster generation without touching any operational record |
 | Deletion | A Role that is the default Role | A soft delete is requested | The operation is blocked |
 
 ## Boundary conditions
