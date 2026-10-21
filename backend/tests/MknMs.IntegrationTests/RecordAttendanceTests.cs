@@ -129,7 +129,9 @@ public class RecordAttendanceTests : IntegrationTestBase
     // Tests
     // -----------------------------------------------------------------
 
+    // Matrix row 6.0:cae53822d731: A member and an occurrence with no existing attendance record | Attendance is recorded
     [Fact]
+    [Trait("MatrixRow", "6.0:cae53822d731")]
     public async Task Record_NewPair_WritesRowAndReturnsRecorded()
     {
         var f = await SeedFixtureAsync();
@@ -154,7 +156,9 @@ public class RecordAttendanceTests : IntegrationTestBase
         row.Timestamp.Should().Be(_clock.GetUtcNow());
     }
 
+    // Matrix row 6.0:d19968af5847: A member and an occurrence with an existing attendance record | Attendance is recorded again
     [Fact]
+    [Trait("MatrixRow", "6.0:d19968af5847")]
     public async Task Record_RepeatPair_IsIdempotent()
     {
         var f = await SeedFixtureAsync();
@@ -180,7 +184,9 @@ public class RecordAttendanceTests : IntegrationTestBase
         count.Should().Be(1);
     }
 
+    // Matrix row 6.0:239739aa8f8a: A member with no RosterAssignment for the occurrence | Attendance is recorded
     [Fact]
+    [Trait("MatrixRow", "6.0:239739aa8f8a")]
     public async Task Record_WithoutAnyAssignment_Succeeds()
     {
         var f = await SeedFixtureAsync();
@@ -201,7 +207,9 @@ public class RecordAttendanceTests : IntegrationTestBase
         assignmentCount.Should().Be(0);
     }
 
+    // Matrix row 6.0:cb41d9e29755: An occurrence dated in the future | Attendance is recorded
     [Fact]
+    [Trait("MatrixRow", "6.0:cb41d9e29755")]
     public async Task Record_ForFutureOccurrence_Succeeds()
     {
         // A date far in the future. No attendance-window enforcement
@@ -220,7 +228,9 @@ public class RecordAttendanceTests : IntegrationTestBase
         result.Recorded.Should().BeTrue();
     }
 
+    // Matrix row 6.0:24694d6ae73a: A missing member or occurrence | Attendance is recorded
     [Fact]
+    [Trait("MatrixRow", "6.0:24694d6ae73a")]
     public async Task Record_WithMissingMember_Fails()
     {
         var f = await SeedFixtureAsync();
@@ -240,7 +250,9 @@ public class RecordAttendanceTests : IntegrationTestBase
         count.Should().Be(0);
     }
 
+    // Matrix row 6.0:24694d6ae73a: A missing member or occurrence | Attendance is recorded
     [Fact]
+    [Trait("MatrixRow", "6.0:24694d6ae73a")]
     public async Task Record_WithMissingOccurrence_Fails()
     {
         var f = await SeedFixtureAsync();
@@ -260,7 +272,9 @@ public class RecordAttendanceTests : IntegrationTestBase
         count.Should().Be(0);
     }
 
+    // Matrix row 6.0:766946085973: A member with neither ReceiptNumber nor CardNumber | Attendance is recorded
     [Fact]
+    [Trait("MatrixRow", "6.0:766946085973")]
     public async Task Record_WithMemberLackingIdentifier_Fails()
     {
         var f = await SeedFixtureAsync();
@@ -285,7 +299,9 @@ public class RecordAttendanceTests : IntegrationTestBase
         count.Should().Be(0);
     }
 
+    // Matrix row 6.0:032c4b2d2a18: An occurrence at a branch whose effective register scope is off | Attendance is recorded
     [Fact]
+    [Trait("MatrixRow", "6.0:032c4b2d2a18")]
     public async Task Record_WithRegisterOffAtEffectiveScope_Fails()
     {
         var f = await SeedFixtureAsync();
@@ -310,7 +326,9 @@ public class RecordAttendanceTests : IntegrationTestBase
         count.Should().Be(0);
     }
 
+    // Matrix row 6.0:c250931c9094: A member attending at a branch other than their home branch | Attendance is recorded
     [Fact]
+    [Trait("MatrixRow", "6.0:c250931c9094")]
     public async Task Record_AtNonHomeBranch_WritesAgainstOccurrence()
     {
         // §13.1.3: attendance is recorded against the occurrence, not
@@ -347,7 +365,9 @@ public class RecordAttendanceTests : IntegrationTestBase
         row.OccurrenceId.Should().Be(f.OccurrenceId);
     }
 
+    // Matrix row 6.0:ef252e6bcee5: An occurrence at a branch whose effective register scope is on | Attendance is recorded
     [Fact]
+    [Trait("MatrixRow", "6.0:ef252e6bcee5")]
     public async Task Record_WithBranchOverrideOn_GlobalOff_WritesRow()
     {
         var f = await SeedFixtureAsync();
