@@ -46,6 +46,11 @@ public interface IConfigureDutyRulesService
         int actingAdminId,
         CancellationToken cancellationToken = default);
 
+    Task<ConfigurationResult<DutyRule>> ReactivateAsync(
+        int ruleId,
+        int actingAdminId,
+        CancellationToken cancellationToken = default);
+
     Task<ConfigurationResult<DutyRule>> DeactivateAsync(
         int ruleId,
         int actingAdminId,
@@ -217,6 +222,51 @@ public sealed class ConfigureDutyRulesService : IConfigureDutyRulesService
         entity.TierOrder = tierOrder;
         entity.CriteriaType = criteriaType;
         entity.CriteriaValue = criteriaValue.Trim();
+        await _db.SaveChangesAsync(cancellationToken);
+        return ConfigurationResult<DutyRule>.Success(entity);
+    }
+
+    public async Task<ConfigurationResult<DutyRule>> ReactivateAsync(
+        int ruleId,
+        int actingAdminId,
+        CancellationToken cancellationToken = default)
+    {
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
+        {
+            return ConfigurationResult<DutyRule>.Failure(adminError);
+        }
+
+        var entity = await _db.DutyRules.FirstOrDefaultAsync(r => r.RuleId == ruleId, cancellationToken);
+        if (entity is null)
+        {
+            throw new EntityNotFoundException(nameof(DutyRule), ruleId);
+        }
+
+        // A DutyRule can reach IsDeleted = true through the Role or
+        // AttributeType cascade even though this service exposes no
+        // direct soft delete. A soft-deleted rule is not restorable via
+        // this operation; it can only be re-created.
+        if (entity.IsDeleted)
+        {
+            return ConfigurationResult<DutyRule>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.LifecycleViolation,
+                    "A soft-deleted DutyRule cannot be reactivated."));
+        }
+
+        if (entity.IsActive)
+        {
+            return ConfigurationResult<DutyRule>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.AlreadyActive,
+                    "DutyRule is already active."));
+        }
+
+        // §9.7 scopes the audit-write requirement to deactivation and
+        // soft delete. Reactivation writes no audit row.
+        entity.IsActive = true;
         await _db.SaveChangesAsync(cancellationToken);
         return ConfigurationResult<DutyRule>.Success(entity);
     }

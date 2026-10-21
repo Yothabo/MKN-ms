@@ -526,6 +526,13 @@ public static class ConfigurationEndpoints
                 id, request.TierOrder, request.CriteriaType, request.CriteriaValue,
                 request.ActingAdminId, cancellationToken)));
 
+        routes.MapPost("/api/config/2.0/rules/{id:int}/reactivate", async (
+            int id,
+            [FromBody] ActingAdminRequest request,
+            IConfigureDutyRulesService service,
+            CancellationToken cancellationToken) =>
+            ToHttpResult(await service.ReactivateAsync(id, request.ActingAdminId, cancellationToken)));
+
         routes.MapDelete("/api/config/2.0/rules/{id:int}", async (
             int id,
             [FromBody] LifecycleActionRequest request,
@@ -943,6 +950,13 @@ public static class ConfigurationEndpoints
                 request.ActingAdminId,
                 cancellationToken)));
 
+        routes.MapPost("/api/config/3.0/notification-subscriptions/{id:int}/reactivate", async (
+            int id,
+            [FromBody] ActingAdminRequest request,
+            IManageNotificationSubscriptionService service,
+            CancellationToken cancellationToken) =>
+            ToHttpResult(await service.ReactivateAsync(id, request.ActingAdminId, cancellationToken)));
+
         routes.MapDelete("/api/config/3.0/notification-subscriptions/{id:int}", async (
             int id,
             [FromBody] LifecycleActionRequest request,
@@ -1079,6 +1093,13 @@ public static class ConfigurationEndpoints
             IManageAttendanceRuleService service,
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.EnableAsync(id, cancellationToken)));
+
+        routes.MapPost("/api/config/3.3/attendance-rules/{id:int}/reactivate", async (
+            int id,
+            [FromBody] ActingAdminRequest request,
+            IManageAttendanceRuleService service,
+            CancellationToken cancellationToken) =>
+            ToHttpResult(await service.ReactivateAsync(id, request.ActingAdminId, cancellationToken)));
 
         routes.MapPost("/api/config/3.3/attendance-rules/{id:int}/deactivate", async (
             int id,

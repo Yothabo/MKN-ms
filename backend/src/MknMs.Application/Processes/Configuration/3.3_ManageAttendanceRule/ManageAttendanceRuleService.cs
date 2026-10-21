@@ -55,6 +55,11 @@ public interface IManageAttendanceRuleService
         int ruleId,
         CancellationToken cancellationToken = default);
 
+    Task<ConfigurationResult<AttendanceRule>> ReactivateAsync(
+        int ruleId,
+        int actingAdminId,
+        CancellationToken cancellationToken = default);
+
     Task<ConfigurationResult<AttendanceRule>> DeactivateAsync(
         int ruleId,
         int actingAdminId,
@@ -304,6 +309,51 @@ public sealed class ManageAttendanceRuleService : IManageAttendanceRuleService
         }
 
         entity.Enabled = true;
+        await _db.SaveChangesAsync(cancellationToken);
+        return ConfigurationResult<AttendanceRule>.Success(entity);
+    }
+
+    public async Task<ConfigurationResult<AttendanceRule>> ReactivateAsync(
+        int ruleId,
+        int actingAdminId,
+        CancellationToken cancellationToken = default)
+    {
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
+        {
+            return ConfigurationResult<AttendanceRule>.Failure(adminError);
+        }
+
+        var entity = await _db.AttendanceRules
+            .FirstOrDefaultAsync(r => r.AttendanceRuleId == ruleId, cancellationToken);
+        if (entity is null)
+        {
+            throw new EntityNotFoundException(nameof(AttendanceRule), ruleId);
+        }
+
+        if (entity.IsDeleted)
+        {
+            return ConfigurationResult<AttendanceRule>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.LifecycleViolation,
+                    "A soft-deleted AttendanceRule cannot be reactivated."));
+        }
+
+        if (entity.IsActive)
+        {
+            return ConfigurationResult<AttendanceRule>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.AlreadyActive,
+                    "AttendanceRule is already active."));
+        }
+
+        // §9.7 scopes the audit-write requirement to deactivation and
+        // soft delete. Reactivation writes no audit row. Reactivation
+        // does not touch the Enabled flag or the scope rows; those are
+        // governed by Disable/Enable and by the soft delete cascade
+        // respectively.
+        entity.IsActive = true;
         await _db.SaveChangesAsync(cancellationToken);
         return ConfigurationResult<AttendanceRule>.Success(entity);
     }

@@ -268,4 +268,71 @@ public class ManageAttendanceRuleServiceTests : IntegrationTestBase
         result.IsSuccess.Should().BeFalse();
         result.Error!.Code.Should().Be(ConfigurationErrorCodes.ReferencedEntityInactive);
     }
+
+    [Fact]
+    public async Task Reactivate_DeactivatedRule_Succeeds()
+    {
+        // §9.7: deactivation is reversible.
+        var adminId = await SeedAdminAsync();
+        var ruleId = await SeedRuleWithScopeAsync(adminId);
+        var service = MakeService();
+
+        var deactivated = await service.DeactivateAsync(
+            ruleId, adminId, adminId, true, "paused");
+        deactivated.IsSuccess.Should().BeTrue();
+
+        var auditBefore = await Db.ConfigurationAuditLogs.CountAsync();
+
+        var result = await service.ReactivateAsync(ruleId, adminId);
+
+        result.IsSuccess.Should().BeTrue();
+
+        var persisted = await Db.AttendanceRules
+            .AsNoTracking()
+            .FirstAsync(r => r.AttendanceRuleId == ruleId);
+        persisted.IsActive.Should().BeTrue();
+        persisted.IsDeleted.Should().BeFalse();
+
+        // Reactivation does not touch the Enabled flag or the scope rows.
+        var scopes = await Db.AttendanceRuleScopes
+            .CountAsync(s => s.AttendanceRuleId == ruleId);
+        scopes.Should().Be(1);
+
+        var auditAfter = await Db.ConfigurationAuditLogs.CountAsync();
+        auditAfter.Should().Be(auditBefore);
+    }
+
+    [Fact]
+    public async Task Reactivate_SoftDeletedRule_Fails()
+    {
+        var adminId = await SeedAdminAsync();
+        var ruleId = await SeedRuleWithScopeAsync(adminId);
+        var service = MakeService();
+
+        await service.SoftDeleteAsync(
+            ruleId, adminId, adminId, true, "test");
+
+        var result = await service.ReactivateAsync(ruleId, adminId);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error!.Code.Should().Be(ConfigurationErrorCodes.LifecycleViolation);
+
+        var persisted = await Db.AttendanceRules
+            .AsNoTracking()
+            .FirstAsync(r => r.AttendanceRuleId == ruleId);
+        persisted.IsDeleted.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Reactivate_AlreadyActiveRule_Fails()
+    {
+        var adminId = await SeedAdminAsync();
+        var ruleId = await SeedRuleWithScopeAsync(adminId);
+        var service = MakeService();
+
+        var result = await service.ReactivateAsync(ruleId, adminId);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error!.Code.Should().Be(ConfigurationErrorCodes.AlreadyActive);
+    }
 }

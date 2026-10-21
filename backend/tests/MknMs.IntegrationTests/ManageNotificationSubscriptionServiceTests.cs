@@ -243,4 +243,72 @@ public class ManageNotificationSubscriptionServiceTests : IntegrationTestBase
         result.IsSuccess.Should().BeFalse();
         result.Error!.Code.Should().Be(ConfigurationErrorCodes.ValidationFailed);
     }
+
+    [Fact]
+    public async Task Reactivate_DeactivatedSubscription_Succeeds()
+    {
+        // §9.7: deactivation is reversible.
+        var f = await SeedAsync();
+        var service = MakeService();
+
+        var created = await service.CreateAsync("Deactivate", f.TierId, null, f.AdminId);
+        var subscriptionId = created.Value!.SubscriptionId;
+
+        var deactivated = await service.DeactivateAsync(
+            subscriptionId, f.AdminId, f.AdminId, true, null);
+        deactivated.IsSuccess.Should().BeTrue();
+
+        var auditBefore = await Db.ConfigurationAuditLogs.CountAsync();
+
+        var result = await service.ReactivateAsync(subscriptionId, f.AdminId);
+
+        result.IsSuccess.Should().BeTrue();
+
+        var persisted = await Db.NotificationSubscriptions
+            .AsNoTracking()
+            .FirstAsync(s => s.SubscriptionId == subscriptionId);
+        persisted.IsActive.Should().BeTrue();
+        persisted.IsDeleted.Should().BeFalse();
+
+        var auditAfter = await Db.ConfigurationAuditLogs.CountAsync();
+        auditAfter.Should().Be(auditBefore);
+    }
+
+    [Fact]
+    public async Task Reactivate_SoftDeletedSubscription_Fails()
+    {
+        var f = await SeedAsync();
+        var service = MakeService();
+
+        var created = await service.CreateAsync("Deactivate", f.TierId, null, f.AdminId);
+        var subscriptionId = created.Value!.SubscriptionId;
+
+        await service.SoftDeleteAsync(
+            subscriptionId, f.AdminId, f.AdminId, true, "retired");
+
+        var result = await service.ReactivateAsync(subscriptionId, f.AdminId);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error!.Code.Should().Be(ConfigurationErrorCodes.LifecycleViolation);
+
+        var persisted = await Db.NotificationSubscriptions
+            .AsNoTracking()
+            .FirstAsync(s => s.SubscriptionId == subscriptionId);
+        persisted.IsDeleted.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Reactivate_AlreadyActiveSubscription_Fails()
+    {
+        var f = await SeedAsync();
+        var service = MakeService();
+
+        var created = await service.CreateAsync("Deactivate", f.TierId, null, f.AdminId);
+        var subscriptionId = created.Value!.SubscriptionId;
+
+        var result = await service.ReactivateAsync(subscriptionId, f.AdminId);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error!.Code.Should().Be(ConfigurationErrorCodes.AlreadyActive);
+    }
 }

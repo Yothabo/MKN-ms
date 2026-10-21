@@ -47,6 +47,11 @@ public interface IManageNotificationSubscriptionService
         int actingAdminId,
         CancellationToken cancellationToken = default);
 
+    Task<ConfigurationResult<NotificationSubscription>> ReactivateAsync(
+        int subscriptionId,
+        int actingAdminId,
+        CancellationToken cancellationToken = default);
+
     Task<ConfigurationResult<NotificationSubscription>> DeactivateAsync(
         int subscriptionId,
         int actingAdminId,
@@ -187,6 +192,48 @@ public sealed class ManageNotificationSubscriptionService : IManageNotificationS
         };
 
         _db.NotificationSubscriptions.Add(entity);
+        await _db.SaveChangesAsync(cancellationToken);
+        return ConfigurationResult<NotificationSubscription>.Success(entity);
+    }
+
+    public async Task<ConfigurationResult<NotificationSubscription>> ReactivateAsync(
+        int subscriptionId,
+        int actingAdminId,
+        CancellationToken cancellationToken = default)
+    {
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
+        {
+            return ConfigurationResult<NotificationSubscription>.Failure(adminError);
+        }
+
+        var entity = await _db.NotificationSubscriptions
+            .FirstOrDefaultAsync(s => s.SubscriptionId == subscriptionId, cancellationToken);
+        if (entity is null)
+        {
+            throw new EntityNotFoundException(nameof(NotificationSubscription), subscriptionId);
+        }
+
+        if (entity.IsDeleted)
+        {
+            return ConfigurationResult<NotificationSubscription>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.LifecycleViolation,
+                    "A soft-deleted NotificationSubscription cannot be reactivated."));
+        }
+
+        if (entity.IsActive)
+        {
+            return ConfigurationResult<NotificationSubscription>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.AlreadyActive,
+                    "NotificationSubscription is already active."));
+        }
+
+        // §9.7 scopes the audit-write requirement to deactivation and
+        // soft delete. Reactivation writes no audit row.
+        entity.IsActive = true;
         await _db.SaveChangesAsync(cancellationToken);
         return ConfigurationResult<NotificationSubscription>.Success(entity);
     }
