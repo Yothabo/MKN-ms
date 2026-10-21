@@ -230,7 +230,9 @@ public class DispatchNotificationTests : IntegrationTestBase
         logger.Entries[0].Message.Should().Contain("unknown date");
     }
 
+    // Matrix row 9.0:63893ab2ecd9: NotificationChannel absent and Required = false | Dispatch is attempted
     [Fact]
+    [Trait("MatrixRow", "9.0:63893ab2ecd9")]
     public async Task Dispatch_WithChannelSettingAbsentAndNotRequired_DoesNotLog()
     {
         // §14.1.2: absent and Required = false → no notification.
@@ -244,7 +246,9 @@ public class DispatchNotificationTests : IntegrationTestBase
             "an absent optional NotificationChannel must not log (§14.1.2)");
     }
 
+    // Matrix row 9.0:99deb4ded8ce: NotificationChannel absent and Required = true | Dispatch is attempted
     [Fact]
+    [Trait("MatrixRow", "9.0:99deb4ded8ce")]
     public async Task Dispatch_WithRequiredChannelAbsent_Throws()
     {
         // §14.1.2: absent and Required = true → the invocation refuses
@@ -273,7 +277,9 @@ public class DispatchNotificationTests : IntegrationTestBase
             .WithMessage("*NotificationChannel*");
     }
 
+    // Matrix row 9.0:a52c7271998d: NotificationChannel set to an unrecognised value | Dispatch is attempted
     [Fact]
+    [Trait("MatrixRow", "9.0:a52c7271998d")]
     public async Task Dispatch_WithUnimplementedChannel_DoesNotLog()
     {
         // §14.1.2: an unrecognised channel value produces no send and no
