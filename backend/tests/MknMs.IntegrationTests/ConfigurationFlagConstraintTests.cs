@@ -44,7 +44,9 @@ public class ConfigurationFlagConstraintTests : IntegrationTestBase
         await Db.SaveChangesAsync();
     }
 
+    // Matrix row Configuration:5d25e03f1919: A configuration entity | Both flags are inspected | the forbidden combination does not occur
     [Fact]
+    [Trait("MatrixRow", "Configuration:5d25e03f1919")]
     public async Task Role_BothFlagsTrue_DatabaseRejects()
     {
         var role = new Role

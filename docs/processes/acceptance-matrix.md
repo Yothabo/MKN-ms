@@ -271,7 +271,7 @@ The matrix does not prescribe the mechanism. Concurrency rows state the property
 | Configuration | A configuration entity | Both flags are inspected | `IsActive` and `IsDeleted` reflect one of the four reachable states; the forbidden combination does not occur |
 | Configuration | A configuration deactivation or soft delete | The operation executes | A ConfigurationAuditLog row is written with reason, initiated-by, approved-by, and timestamps |
 | Configuration | A configuration soft delete whose consequences the admin has not acknowledged | The operation executes | The operation is refused; the consequences preview must be acknowledged |
-| Configuration | Deletion | A configuration entity with references | A soft delete is applied | The reference fallback and cascade stated in §9.7 is applied atomically |
+| Deletion | A configuration entity with references | A soft delete is applied | The reference fallback and cascade stated in §9.7 is applied atomically |
 | Deletion | A Role that is the default Role | A soft delete is requested | The operation is blocked |
 
 ## Boundary conditions

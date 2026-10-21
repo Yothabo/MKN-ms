@@ -103,7 +103,9 @@ public class ConfigurationLifecycleServiceTests : IntegrationTestBase
             ConsequencesAcknowledged = acknowledged,
         };
 
+    // Matrix row Configuration:f427df30f064: A configuration deactivation or soft delete | A ConfigurationAuditLog row is written
     [Fact]
+    [Trait("MatrixRow", "Configuration:f427df30f064")]
     public async Task Record_WithValidDeactivate_WritesRow()
     {
         var (initiated, approved) = await SeedAdminsAsync();
@@ -583,7 +585,9 @@ public class ConfigurationLifecycleServiceTests : IntegrationTestBase
         result.IsSuccess.Should().BeFalse();
         result.Error!.Code.Should().Be(ConfigurationErrorCodes.ConfigurationMissing);
     }
+    // Matrix row Configuration:c2a3988dbf3b: A configuration soft delete whose consequences the admin has not acknowledged | The operation is refused
     [Fact]
+    [Trait("MatrixRow", "Configuration:c2a3988dbf3b")]
     public async Task Record_WithoutAcknowledgement_Fails()
     {
         var (initiated, approved) = await SeedAdminsAsync();

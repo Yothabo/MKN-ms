@@ -143,6 +143,7 @@ public class ConfigureBranchServiceTests : IntegrationTestBase
     // Matrix row 1.0: A Branch with no Member assigned to it | A soft delete is requested
     [Fact]
     [Trait("MatrixRow", "1.0:88abaee2a361")]
+    [Trait("MatrixRow", "Deletion:59e1838037b4")]
     public async Task SoftDelete_NoMembers_RemovesTimeSlots()
     {
         var (branch, admin) = await SeedAsync(withMember: false);
@@ -291,5 +292,129 @@ public class ConfigureBranchServiceTests : IntegrationTestBase
 
         result.IsSuccess.Should().BeFalse();
         result.Error!.Code.Should().Be(ConfigurationErrorCodes.AlreadyActive);
+    }
+
+    // -----------------------------------------------------------------
+    // Matrix row Configuration (consolidated): a configuration change does
+    // not rewrite any operational record. Trait identity TBD — computed
+    // by matrix_tool.py after this fact lands.
+    // -----------------------------------------------------------------
+
+    [Fact]
+    [Trait("MatrixRow", "Configuration:3e943ba952e6")]
+    public async Task SoftDelete_OperationalRecordsUnaffected()
+    {
+        var (branchId, adminId) = await SeedAsync(withMember: false);
+
+        // The branch being soft-deleted has an empty roster. A second
+        // branch hosts a full schedule + occurrence + assignment. The
+        // cascade on the deleted branch must not touch the assignment.
+        var otherBranch = await Db.Branches
+            .Where(b => b.Name == "B2")
+            .FirstAsync();
+
+        var timeOfDay = await Db.TimeOfDays.FirstAsync();
+        var otherSlot = new MknMs.Domain.D3_BranchTimeSlotService.BranchTimeSlot
+        {
+            BranchId = otherBranch.BranchId,
+            DayOfWeek = "Saturday",
+            TimeOfDayId = timeOfDay.TimeOfDayId,
+            IsActive = true, IsDeleted = false,
+        };
+        Db.BranchTimeSlots.Add(otherSlot);
+        await Db.SaveChangesAsync();
+
+        var serviceType = new MknMs.Domain.D10_ConfigLookups.ServiceType
+        {
+            Name = "ConfigTestServiceType", IsActive = true, IsDeleted = false,
+        };
+        Db.ServiceTypes.Add(serviceType);
+        await Db.SaveChangesAsync();
+
+        var definition = new MknMs.Domain.D3_BranchTimeSlotService.ServiceDefinition
+        {
+            Name = "ConfigTestService",
+            ServiceTypeId = serviceType.ServiceTypeId,
+            OwningBranchId = null,
+            IsActive = true, IsDeleted = false,
+        };
+        Db.ServiceDefinitions.Add(definition);
+        await Db.SaveChangesAsync();
+
+        var schedule = new MknMs.Domain.D3_BranchTimeSlotService.ServiceSchedule
+        {
+            ServiceDefId = definition.ServiceDefId,
+            TimeSlotId = otherSlot.TimeSlotId,
+            StartTime = new TimeOnly(9, 0),
+            IsActive = true, IsDeleted = false,
+        };
+        Db.ServiceSchedules.Add(schedule);
+        await Db.SaveChangesAsync();
+
+        var occurrence = new MknMs.Domain.D3_BranchTimeSlotService.ServiceOccurrence
+        {
+            ScheduleId = schedule.ScheduleId,
+            EventId = null,
+            Date = new DateOnly(2026, 12, 1),
+            ServiceTypeId = null,
+            StartTime = null,
+            FillStatusId = null,
+            GeneratedBy = "System",
+            CreatedBy = null,
+            ChangedBy = null,
+        };
+        Db.ServiceOccurrences.Add(occurrence);
+        await Db.SaveChangesAsync();
+
+        var duty = new MknMs.Domain.D1_RoleDuty.Duty
+        {
+            Name = "ConfigTestDuty", IsActive = true, IsDeleted = false,
+        };
+        Db.Duties.Add(duty);
+        await Db.SaveChangesAsync();
+
+        var member = await Db.Members
+            .Where(m => m.Name == "Admin")
+            .FirstAsync();
+
+        var assignment = new MknMs.Domain.D7_RosterAssignment.RosterAssignment
+        {
+            MemberId = member.MemberId,
+            DutyId = duty.DutyId,
+            OccurrenceId = occurrence.OccurrenceId,
+            AssignmentStatusId = null,
+            ApprovedBy = null,
+            AssignmentSource = "Automatic",
+            AssignedBy = null,
+            CreatedAt = Now,
+        };
+        Db.RosterAssignments.Add(assignment);
+        await Db.SaveChangesAsync();
+
+        var assignmentSnapshot = await Db.RosterAssignments
+            .AsNoTracking()
+            .FirstAsync(a => a.AssignmentId == assignment.AssignmentId);
+
+        // Soft-delete the empty branch. Its two time slots are removed;
+        // the roster assignment (at the other branch's occurrence) must
+        // be untouched.
+        var service = MakeService();
+        var result = await service.SoftDeleteAsync(
+            branchId, adminId, adminId, true, "test cleanup");
+        result.IsSuccess.Should().BeTrue(
+            $"branch soft delete must succeed; error: {result.Error?.Message}");
+
+        Db.ChangeTracker.Clear();
+
+        var assignmentAfter = await Db.RosterAssignments
+            .AsNoTracking()
+            .FirstAsync(a => a.AssignmentId == assignment.AssignmentId);
+
+        assignmentAfter.MemberId.Should().Be(assignmentSnapshot.MemberId);
+        assignmentAfter.DutyId.Should().Be(assignmentSnapshot.DutyId);
+        assignmentAfter.OccurrenceId.Should().Be(assignmentSnapshot.OccurrenceId);
+        assignmentAfter.AssignmentStatusId.Should().Be(assignmentSnapshot.AssignmentStatusId);
+        assignmentAfter.AssignmentSource.Should().Be(assignmentSnapshot.AssignmentSource);
+        assignmentAfter.CreatedAt.Should().Be(assignmentSnapshot.CreatedAt);
     }
 }
