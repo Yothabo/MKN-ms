@@ -1,12 +1,12 @@
 # Conformance Declaration
 
-*At HEAD `36aa19b`. Supersedes any earlier unversioned copy of this declaration.*
+*At HEAD `9c2accb`. Supersedes any earlier unversioned copy of this declaration.*
 
 ---
 
 ## Statement
 
-The implementation at commit `36aa19b` conforms to the frozen specification at `5601ed5` (tag `spec-v1.0-freeze`) as amended by the specification's §15.8 register, subject to the deferred items listed below.
+The implementation at commit `9c2accb` conforms to the frozen specification at `5601ed5` (tag `spec-v1.0-freeze`) as amended by the specification's §15.8 register, subject to the deferred items listed below.
 
 Every process defined by the specification is implemented. Every required setting and its consumer behaves as the specification states. Every schema amendment listed in §15.1–§15.4 and §15.8 is present. No behaviour is present in the implementation that the specification does not define.
 
@@ -36,7 +36,7 @@ Conformance is not the same as completeness:
 
 - **Build**: 0 errors.
 - **Unit tests**: 36 of 36 pass.
-- **Integration tests**: 365 of 365 pass, on the developer environment. The CI workflow runs the same suite against a postgres service on the Ubuntu runner.
+- **Integration tests**: 395 of 395 pass, on the developer environment. The CI workflow runs the same suite against a postgres service on the Ubuntu runner.
 - **Consistency check**: green. No stale references in the `docs/` tree; no undefined decision labels; no removed columns outside a removal context.
 - **CI**: build, unit, and integration jobs green on the PR that merged this commit. Required checks are enforced on `main` via a repository ruleset.
 
@@ -58,6 +58,36 @@ Each of the following is a specification-stated deferral or a documented decisio
 
 ---
 
+## Residual coverage
+
+Not every specification-stated invariant is exercised by a dedicated
+fact. The matrix at `docs/processes/acceptance-matrix.md` is the test
+plan; the test tree covers the majority of it, but the following
+residual gaps are declared rather than claimed as covered.
+
+- **Soft-delete List/Get visibility.** Eight of approximately twenty
+  soft-deletable configuration services have a sample-based fact
+  asserting that a soft-deleted row is excluded from `ListAsync` and
+  returned as `null` from `GetAsync`. The remaining ~twelve are not
+  individually exercised. The pattern is uniform and the shape is
+  shared; the coverage is not.
+- **Acceptance-matrix row-to-fact map.** A systematic audit of every
+  matrix row to the fact that exercises it has not been completed. The
+  matrix is the plan; the code is the execution; the map is not
+  produced. Where a row has no corresponding fact, that is a known
+  coverage gap, not a defect in the implementation.
+- **Manual assignment of a non-rosterable member.** The known risk
+  (item 9 in the deferred list) that a member whose current
+  `MemberStatus` has `IsRosterable = false` can still be assigned
+  manually is documented in the runbook but not pinned by a fact. A
+  future "hardening" of the manual path that silently rejected such
+  assignments would not fail the test suite.
+
+None of the residual gaps is an undeclared behaviour; each is a stated
+scope of the tests as they exist at this commit.
+
+---
+
 ## What a future amendment would close
 
 An amendment to the frozen specification could close any of the deferred items. Each would require:
@@ -71,4 +101,4 @@ The amendment ritual is recorded in `FREEZE.md`. No deferred item in this declar
 
 ---
 
-*Source: the frozen specification, the implementation at `36aa19b`, the acceptance matrix, and the runbook. Subordinate to the specification.*
+*Source: the frozen specification, the implementation at `9c2accb`, the acceptance matrix, and the runbook. Subordinate to the specification.*
