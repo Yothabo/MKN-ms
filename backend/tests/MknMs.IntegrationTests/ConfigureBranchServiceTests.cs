@@ -118,7 +118,9 @@ public class ConfigureBranchServiceTests : IntegrationTestBase
             new ConfigurationLifecycleService(Db, _clock),
             new ConfigurationCascadeService(Db));
 
+    // Matrix row 1.0: A Branch with a Member assigned to it | A soft delete is requested
     [Fact]
+    [Trait("MatrixRow", "1.0:286671fb9e11")]
     public async Task SoftDelete_WithMembers_IsBlocked()
     {
         var (branch, admin) = await SeedAsync(withMember: true);
@@ -138,7 +140,9 @@ public class ConfigureBranchServiceTests : IntegrationTestBase
         slots.Should().Be(2, "a blocked soft delete must not remove slots");
     }
 
+    // Matrix row 1.0: A Branch with no Member assigned to it | A soft delete is requested
     [Fact]
+    [Trait("MatrixRow", "1.0:88abaee2a361")]
     public async Task SoftDelete_NoMembers_RemovesTimeSlots()
     {
         var (branch, admin) = await SeedAsync(withMember: false);
