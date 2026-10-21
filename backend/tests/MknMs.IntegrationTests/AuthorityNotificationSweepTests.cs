@@ -124,8 +124,9 @@ public class AuthorityNotificationSweepTests : IntegrationTestBase
         return row.AuditId;
     }
 
-    private AuthorityNotificationSweepService MakeService() =>
-        new(Db, _clock, new CapturingLogger<AuthorityNotificationSweepService>());
+    private AuthorityNotificationSweepService MakeService(
+        ILogger<AuthorityNotificationSweepService>? logger = null) =>
+        new(Db, _clock, logger ?? new CapturingLogger<AuthorityNotificationSweepService>());
 
     [Fact]
     public async Task WithNoPendingRows_Succeeds()
@@ -390,6 +391,35 @@ public class AuthorityNotificationSweepTests : IntegrationTestBase
         result.NotificationsDispatched.Should().Be(2);
 
         var row = await Db.ConfigurationAuditLogs.SingleAsync();
+        row.NotifiedAt.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task ZeroRecipients_LogsWarning()
+    {
+        // Zero recipients is not a failure (B16) — the row is marked
+        // notified — but it is worth surfacing. Operators must be able
+        // to see that a configuration event dispatched to no one.
+        await SeedAsync();
+        var auditId = await SeedAuditAsync();
+
+        var logger = new CapturingLogger<AuthorityNotificationSweepService>();
+        var service = MakeService(logger);
+
+        var result = await service.RunAsync();
+
+        result.Status.Should().Be("Success");
+        result.AuditRowsProcessed.Should().Be(1);
+        result.NotificationsDispatched.Should().Be(0);
+
+        logger.Entries.Should().Contain(
+            e => e.Level == LogLevel.Warning
+                && e.Message.Contains("zero recipients")
+                && e.Message.Contains($"audit {auditId}"));
+
+        var row = await Db.ConfigurationAuditLogs
+            .AsNoTracking()
+            .FirstAsync(a => a.AuditId == auditId);
         row.NotifiedAt.Should().NotBeNull();
     }
 }

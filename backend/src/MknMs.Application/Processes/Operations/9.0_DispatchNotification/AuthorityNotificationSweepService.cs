@@ -96,6 +96,20 @@ public sealed class AuthorityNotificationSweepService : IAuthorityNotificationSw
             var recipientIds = await ResolveRecipientsAsync(
                 audit.Action, cancellationToken);
 
+            // Zero recipients is a valid outcome (B16): the row is
+            // marked notified and no message is dispatched. It is not a
+            // failure, but it is operationally significant — a
+            // subscription was misconfigured, or none matched, and no
+            // admin will hear about the configuration event. Surface it
+            // at Warning so the operator sees it without the sweep
+            // having to fail.
+            if (recipientIds.Count == 0)
+            {
+                _logger.LogWarning(
+                    "Authority notification sweep found zero recipients for audit {AuditId} ({EntityType} {EntityId}, action {Action}). The row is marked notified; no message was dispatched.",
+                    audit.AuditId, audit.EntityType, audit.EntityId, audit.Action);
+            }
+
             var rowFailed = false;
 
             foreach (var adminId in recipientIds)
