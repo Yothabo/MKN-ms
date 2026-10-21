@@ -211,7 +211,9 @@ public class ConfigureServiceDefinitionServiceTests : IntegrationTestBase
         result.IsSuccess.Should().BeFalse();
         result.Error!.Code.Should().Be(ConfigurationErrorCodes.ReferencedEntityInactive);
     }
+    // Matrix row 1.0:e614859b3705: A ServiceDefinition whose OwningBranchID is changed to a branch at which existing schedules' time slots do not reside | The update is rejected
     [Fact]
+    [Trait("MatrixRow", "1.0:e614859b3705")]
     public async Task Update_OwningBranchChange_WithMismatchedSchedule_Fails()
     {
         var (defId, actingAdminId, stId) = await SeedAsync();
@@ -254,7 +256,9 @@ public class ConfigureServiceDefinitionServiceTests : IntegrationTestBase
         result.Error!.Code.Should().Be(ConfigurationErrorCodes.InvalidValue);
     }
 
+    // Matrix row 1.0:e614859b3705: A ServiceDefinition whose OwningBranchID is changed to a branch at which existing schedules' time slots do not reside | The update is rejected
     [Fact]
+    [Trait("MatrixRow", "1.0:e614859b3705")]
     public async Task Update_OwningBranchChange_NoSchedules_Succeeds()
     {
         var (defId, actingAdminId, stId) = await SeedAsync();
