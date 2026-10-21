@@ -85,6 +85,8 @@ public class GenerateAssignmentTests : IntegrationTestBase
     }
 
     // Matrix row 5.0: Two 5.0 runs executing sequentially on the same occurrence | The second run completes
+    // Matrix row 5.0:f19aaea9f72b: An occurrence with two required slots and both filled | 5.0 runs
+    [Trait("MatrixRow", "5.0:f19aaea9f72b")]
     [Fact]
     [Trait("MatrixRow", "5.0:530442ba2a39")]
     public async Task Run_Twice_IsIdempotent()
@@ -687,6 +689,8 @@ public class GenerateAssignmentTests : IntegrationTestBase
     // -----------------------------------------------------------------
 
     // Matrix row 5.0: A duty with three eligible members and one slot | 5.0 runs
+    // Matrix row 5.0:69f332eb9a36: A (MemberID, DutyID, OccurrenceID) triple already exists | 5.0 attempts to insert a second row
+    [Trait("MatrixRow", "5.0:69f332eb9a36")]
     [Fact]
     [Trait("MatrixRow", "5.0:19c01deb46e7")]
     public async Task Run_WithThreeEligibleOneSlot_AssignsLowestMemberId()
