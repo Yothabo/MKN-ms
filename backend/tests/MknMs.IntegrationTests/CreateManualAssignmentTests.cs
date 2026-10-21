@@ -193,7 +193,9 @@ public class CreateManualAssignmentTests : IntegrationTestBase
             status.AssignmentStatusId);
     }
 
+    // Matrix row 12.0:745cb99dc6e6: A member, duty, occurrence, and acting admin | A manual assignment is created with no target status
     [Fact]
+    [Trait("MatrixRow", "12.0:745cb99dc6e6")]
     public async Task Create_WithNullStatus_WritesRowAndDispatchesNotification()
     {
         var f = await SeedFixtureAsync();
@@ -221,7 +223,9 @@ public class CreateManualAssignmentTests : IntegrationTestBase
         row.ApprovedBy.Should().BeNull();
     }
 
+    // Matrix row 12.0:0c7c87706569: A member, duty, occurrence, and acting admin | A manual assignment is created with a target status
     [Fact]
+    [Trait("MatrixRow", "12.0:0c7c87706569")]
     public async Task Create_WithNonNullStatus_DoesNotDispatchNotification()
     {
         var f = await SeedFixtureAsync();
@@ -244,7 +248,9 @@ public class CreateManualAssignmentTests : IntegrationTestBase
         row.AssignmentStatusId.Should().Be(f.NonTerminalStatusId);
     }
 
+    // Matrix row 12.0:70062de9b741: The same (MemberID, DutyID, OccurrenceID) triple already exists | A manual assignment is created again
     [Fact]
+    [Trait("MatrixRow", "12.0:70062de9b741")]
     public async Task Create_Duplicate_Fails()
     {
         var f = await SeedFixtureAsync();
@@ -272,7 +278,9 @@ public class CreateManualAssignmentTests : IntegrationTestBase
         second.ErrorDetail.Should().Contain("already exists");
     }
 
+    // Matrix row 12.0:e62b21ccfc6a: A manual assignment whose member does not satisfy an Eligibility Flag rule | The assignment is created
     [Fact]
+    [Trait("MatrixRow", "12.0:e62b21ccfc6a")]
     public async Task Create_WithEligibilityFlagRule_AndNoGrant_Fails()
     {
         var f = await SeedFixtureAsync(withEligibilityFlagRule: true);
@@ -295,7 +303,9 @@ public class CreateManualAssignmentTests : IntegrationTestBase
         count.Should().Be(0);
     }
 
+    // Matrix row 12.0:e62b21ccfc6a: A manual assignment whose member does not satisfy an Eligibility Flag rule | The assignment is created
     [Fact]
+    [Trait("MatrixRow", "12.0:e62b21ccfc6a")]
     public async Task Create_WithEligibilityFlagRule_AndGrant_Succeeds()
     {
         var f = await SeedFixtureAsync(withEligibilityFlagRule: true);
@@ -313,7 +323,9 @@ public class CreateManualAssignmentTests : IntegrationTestBase
         result.Status.Should().Be("Success");
     }
 
+    // Matrix row 12.0:07ea4873cf24: A manual assignment whose member does not satisfy a Role Duty Rule | The assignment is created
     [Fact]
+    [Trait("MatrixRow", "12.0:07ea4873cf24")]
     public async Task Create_WithNonEligibilityCriteria_BypassesThem()
     {
         var f = await SeedFixtureAsync(withEligibilityFlagRule: false);
@@ -333,7 +345,9 @@ public class CreateManualAssignmentTests : IntegrationTestBase
         result.Status.Should().Be("Success");
     }
 
+    // Matrix row 12.0:5daf2fa75fe7: A referenced member, duty, occurrence, admin, or target status that does not exist | A manual assignment is created
     [Fact]
+    [Trait("MatrixRow", "12.0:5daf2fa75fe7")]
     public async Task Create_WithMissingReferents_Fails()
     {
         var f = await SeedFixtureAsync();
@@ -362,7 +376,9 @@ public class CreateManualAssignmentTests : IntegrationTestBase
         missingAdmin.ErrorDetail.Should().Contain("Admin 9999");
     }
 
+    // Matrix row 12.0:5daf2fa75fe7: A referenced member, duty, occurrence, admin, or target status that does not exist | A manual assignment is created
     [Fact]
+    [Trait("MatrixRow", "12.0:5daf2fa75fe7")]
     public async Task Create_WithMissingDutyOccurrenceAndTargetStatus_Fails()
     {
         var f = await SeedFixtureAsync();
@@ -405,7 +421,9 @@ public class CreateManualAssignmentTests : IntegrationTestBase
         missingStatus.ErrorDetail.Should().Contain("AssignmentStatus 9999");
     }
 
+    // Matrix row 12.0:6d51cf83e05b: A manual assignment when the member already holds a non-terminal assignment on the occurrence | The assignment is created
     [Fact]
+    [Trait("MatrixRow", "12.0:6d51cf83e05b")]
     public async Task Create_WithNonTerminalAssignmentOnOccurrence_Succeeds()
     {
         // §17.1 B4: manual assignment does not enforce the
@@ -454,7 +472,9 @@ public class CreateManualAssignmentTests : IntegrationTestBase
         total.Should().Be(2);
     }
 
+    // Matrix row 12.0:06b262e3b6a8: A manual assignment when the duty is already at its configured slot count | The assignment is created
     [Fact]
+    [Trait("MatrixRow", "12.0:06b262e3b6a8")]
     public async Task Create_DoesNotEnforceSlotCapacity()
     {
         var f = await SeedFixtureAsync();
