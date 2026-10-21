@@ -311,4 +311,51 @@ public class ConfigureRoleServiceTests : IntegrationTestBase
         result.IsSuccess.Should().BeFalse();
         result.Error!.Code.Should().Be(ConfigurationErrorCodes.AlreadyActive);
     }
+
+    // Matrix row 1.0:cf169958b67c: A new Role with a unique name | The Role row exists with `IsActive = true`, `IsDeleted = false`
+    [Fact]
+    [Trait("MatrixRow", "1.0:cf169958b67c")]
+    public async Task Create_WithUniqueName_PersistsActiveNotDeleted()
+    {
+        var (_, _, actingAdminId) = await SeedAsync();
+        var service = MakeService();
+
+        var result = await service.CreateAsync("TestRole_Unique", actingAdminId);
+
+        result.IsSuccess.Should().BeTrue(
+            $"creating a role with a unique name succeeds; error: {result.Error?.Message}");
+
+        Db.ChangeTracker.Clear();
+        var role = await Db.Roles.AsNoTracking()
+            .FirstAsync(r => r.Name == "TestRole_Unique");
+        role.IsActive.Should().BeTrue();
+        role.IsDeleted.Should().BeFalse();
+    }
+
+    // Matrix row 1.0:2f164879193d: An existing active Role | `IsActive = false`, `IsDeleted = false`; a ConfigurationAuditLog row records the deactivation
+    [Fact]
+    [Trait("MatrixRow", "1.0:2f164879193d")]
+    public async Task Deactivate_ActiveRole_WritesAuditRow()
+    {
+        var (_, otherRoleId, actingAdminId) = await SeedAsync();
+        var service = MakeService();
+
+        var result = await service.DeactivateAsync(
+            otherRoleId, actingAdminId, actingAdminId, true, "test");
+
+        result.IsSuccess.Should().BeTrue(
+            $"deactivation of a non-default role succeeds; error: {result.Error?.Message}");
+
+        Db.ChangeTracker.Clear();
+        var role = await Db.Roles.AsNoTracking()
+            .FirstAsync(r => r.RoleId == otherRoleId);
+        role.IsActive.Should().BeFalse();
+        role.IsDeleted.Should().BeFalse();
+
+        var audit = await Db.ConfigurationAuditLogs.AsNoTracking()
+            .Where(a => a.EntityType == "Role" && a.EntityId == otherRoleId)
+            .FirstOrDefaultAsync();
+        audit.Should().NotBeNull("a ConfigurationAuditLog row is written on deactivation");
+        audit!.Action.Should().Be(ConfigurationLifecycleActions.Deactivate);
+    }
 }

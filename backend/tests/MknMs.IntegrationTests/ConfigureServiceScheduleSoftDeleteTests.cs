@@ -303,4 +303,50 @@ public class ConfigureServiceScheduleSoftDeleteTests : IntegrationTestBase
         result.IsSuccess.Should().BeFalse();
         result.Error!.Code.Should().Be(ConfigurationErrorCodes.AlreadyActive);
     }
+
+    // Matrix row 1.0:73f5b7976615: An active ServiceSchedule whose definition is deactivated | The schedule is not picked up; existing occurrences remain unchanged
+    [Fact]
+    [Trait("MatrixRow", "1.0:73f5b7976615")]
+    public async Task Materializer_DoesNotPickUpScheduleWithInactiveDefinition()
+    {
+        var (scheduleId, _) = await SeedAsync();
+
+        // Materialize once while everything is active.
+        var materializer = new MknMs.Application.Processes.Operations.MaterializeOccurrences.MaterializeOccurrencesService(Db, _clock);
+        var first = await materializer.RunAsync(new MknMs.Application.Processes.Operations.MaterializeOccurrences.MaterializeOccurrencesCommand
+        {
+            TriggerType = "Scheduled",
+        });
+        first.Status.Should().Be("Success");
+        first.OccurrencesCreated.Should().BeGreaterThan(0);
+
+        // Now deactivate the schedule's ServiceDefinition. Existing
+        // occurrences remain; the schedule stops being picked up.
+        var schedule = await Db.ServiceSchedules.FirstAsync(s => s.ScheduleId == scheduleId);
+        var definition = await Db.ServiceDefinitions.FirstAsync(d => d.ServiceDefId == schedule.ServiceDefId);
+        definition.IsActive = false;
+        await Db.SaveChangesAsync();
+
+        var occurrencesBefore = await Db.ServiceOccurrences
+            .CountAsync(o => o.ScheduleId == scheduleId);
+
+        // Wipe future occurrences so the materializer has room to create
+        // again if it does not respect the deactivated definition.
+        var all = await Db.ServiceOccurrences
+            .Where(o => o.ScheduleId == scheduleId)
+            .ToListAsync();
+        Db.ServiceOccurrences.RemoveRange(all);
+        await Db.SaveChangesAsync();
+
+        var second = await materializer.RunAsync(new MknMs.Application.Processes.Operations.MaterializeOccurrences.MaterializeOccurrencesCommand
+        {
+            TriggerType = "Scheduled",
+        });
+
+        second.Status.Should().Be("Success");
+        second.OccurrencesCreated.Should().Be(0,
+            "an inactive ServiceDefinition stops the schedule being picked up");
+
+        occurrencesBefore.Should().BeGreaterThan(0);
+    }
 }
