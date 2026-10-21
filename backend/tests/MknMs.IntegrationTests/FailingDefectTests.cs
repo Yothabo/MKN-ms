@@ -236,7 +236,9 @@ public class FailingDefectTests : IntegrationTestBase
     // that would overfill the slot
     // -----------------------------------------------------------------
 
+    // Matrix row 7.0:3bcacfb8d775: A terminal assignment | A non-terminal transition is requested, and the slot is full
     [Fact]
+    [Trait("MatrixRow", "7.0:3bcacfb8d775")]
     public async Task Defect_7_0_MustRejectConfirmAfterDeclineThatWouldOverfill()
     {
         var f = await SeedAsync(new DateOnly(2026, 10, 11), danaEligible: true);
@@ -278,7 +280,9 @@ public class FailingDefectTests : IntegrationTestBase
     // Defect 3 — 7.0 sweep must not refill a past-dated occurrence
     // -----------------------------------------------------------------
 
+    // Matrix row 7.0:39a65b478430: An occurrence dated before today, with a NULL assignment past the timeout | The sweep runs
     [Fact]
+    [Trait("MatrixRow", "7.0:39a65b478430")]
     public async Task Defect_7_0_MustNotRefillPastDatedOccurrence()
     {
         // Occurrence is the day before the fixed clock's "today".
