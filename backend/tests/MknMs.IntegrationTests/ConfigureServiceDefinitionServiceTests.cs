@@ -89,7 +89,9 @@ public class ConfigureServiceDefinitionServiceTests : IntegrationTestBase
             new ConfigurationLifecycleService(Db, _clock),
             new ConfigurationCascadeService(Db));
 
+    // Matrix row 1.0: A Service Definition with no dependent rows | A soft delete is requested
     [Fact]
+    [Trait("MatrixRow", "1.0:3232070cacb6")]
     public async Task SoftDelete_Unreferenced_Succeeds()
     {
         var (def, admin, _) = await SeedAsync();
@@ -106,7 +108,9 @@ public class ConfigureServiceDefinitionServiceTests : IntegrationTestBase
         persisted.IsDeleted.Should().BeTrue();
     }
 
+    // Matrix row 1.0: A Service Definition referenced by a Service Schedule, Program Item, Event Duty, or Duty Rule row | A soft delete is requested
     [Fact]
+    [Trait("MatrixRow", "1.0:78512b655bb1")]
     public async Task SoftDelete_ReferencedBySchedule_IsBlocked()
     {
         var (def, admin, _) = await SeedAsync();
