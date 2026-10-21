@@ -140,7 +140,9 @@ public class AuthorityNotificationSweepTests : IntegrationTestBase
         result.AuditRowsProcessed.Should().Be(0);
     }
 
+    // Matrix row 9.0:7968c00538bc: A by-tier subscription whose tier has no non-deleted admins | The sweep runs
     [Fact]
+    [Trait("MatrixRow", "9.0:7968c00538bc")]
     public async Task ZeroRecipients_ProcessesRowAndSetsNotifiedAt()
     {
         await SeedAsync();
@@ -159,7 +161,9 @@ public class AuthorityNotificationSweepTests : IntegrationTestBase
         row.NotifiedAt.Should().NotBeNull();
     }
 
+    // Matrix row 9.0:a4a5683b90d7: A ConfigurationAuditLog row with NotifiedAt = NULL | The authority sweep runs
     [Fact]
+    [Trait("MatrixRow", "9.0:a4a5683b90d7")]
     public async Task SubscriptionByTier_DispatchesToAllActiveAdmins()
     {
         var f = await SeedAsync();
@@ -184,7 +188,9 @@ public class AuthorityNotificationSweepTests : IntegrationTestBase
         row.NotifiedAt.Should().NotBeNull();
     }
 
+    // Matrix row 9.0:a4a5683b90d7: A ConfigurationAuditLog row with NotifiedAt = NULL | The authority sweep runs
     [Fact]
+    [Trait("MatrixRow", "9.0:a4a5683b90d7")]
     public async Task SubscriptionByAdmin_DispatchesToThatAdminOnly()
     {
         var f = await SeedAsync();
@@ -205,7 +211,9 @@ public class AuthorityNotificationSweepTests : IntegrationTestBase
         result.NotificationsDispatched.Should().Be(1);
     }
 
+    // Matrix row 9.0:ebd22dd21c4d: A NotificationSubscription with IsActive = false | The sweep runs
     [Fact]
+    [Trait("MatrixRow", "9.0:ebd22dd21c4d")]
     public async Task InactiveSubscription_IsNotConsulted()
     {
         var f = await SeedAsync();
@@ -257,7 +265,9 @@ public class AuthorityNotificationSweepTests : IntegrationTestBase
         row.NotifiedAt.Should().NotBeNull();
     }
 
+    // Matrix row 9.0:99deb4ded8ce: NotificationChannel absent and Required = true | Dispatch is attempted
     [Fact]
+    [Trait("MatrixRow", "9.0:99deb4ded8ce")]
     public async Task MissingChannel_FailsWithoutProcessing()
     {
         await SeedAsync(channel: null);
@@ -273,7 +283,9 @@ public class AuthorityNotificationSweepTests : IntegrationTestBase
         row.NotifiedAt.Should().BeNull();
     }
 
+    // Matrix row 9.0:a52c7271998d: NotificationChannel set to an unrecognised value | Dispatch is attempted
     [Fact]
+    [Trait("MatrixRow", "9.0:a52c7271998d")]
     public async Task UnrecognisedChannel_FailsWithoutProcessing()
     {
         await SeedAsync(channel: "Email");
@@ -286,7 +298,9 @@ public class AuthorityNotificationSweepTests : IntegrationTestBase
         result.ErrorCode.Should().Be("configuration_invalid");
     }
 
+    // Matrix row 9.0:ebd22dd21c4d: A NotificationSubscription with IsActive = false | The sweep runs
     [Fact]
+    [Trait("MatrixRow", "9.0:ebd22dd21c4d")]
     public async Task SoftDeletedSubscription_IsNotConsulted()
     {
         var f = await SeedAsync();
@@ -307,7 +321,9 @@ public class AuthorityNotificationSweepTests : IntegrationTestBase
         result.NotificationsDispatched.Should().Be(0);
     }
 
+    // Matrix row 9.0:260e0b48334d: A by-admin subscription whose admin is soft-deleted | The sweep runs
     [Fact]
+    [Trait("MatrixRow", "9.0:260e0b48334d")]
     public async Task SoftDeletedAdmin_IsNotResolvedAsRecipient()
     {
         var f = await SeedAsync();
@@ -333,7 +349,9 @@ public class AuthorityNotificationSweepTests : IntegrationTestBase
         result.AuditRowsProcessed.Should().Be(1);
     }
 
+    // Matrix row 9.0:90a54187d8d2: A ConfigurationAuditLog row with NotifiedAt set | The authority sweep runs
     [Fact]
+    [Trait("MatrixRow", "9.0:90a54187d8d2")]
     public async Task Sweep_SkipsRowWithNotifiedAtSet()
     {
         await SeedAsync();
@@ -358,7 +376,9 @@ public class AuthorityNotificationSweepTests : IntegrationTestBase
         after.NotifiedAt.Should().Be(alreadyNotified);
     }
 
+    // Matrix row 9.0:df967279de6a: Multiple subscriptions match the same audit row | The sweep runs
     [Fact]
+    [Trait("MatrixRow", "9.0:df967279de6a")]
     public async Task TwoSubscriptionsMatchSameAuditRow_BothDispatch()
     {
         var f = await SeedAsync();
