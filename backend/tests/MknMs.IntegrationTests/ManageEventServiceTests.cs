@@ -315,4 +315,131 @@ public class ManageEventServiceTests : IntegrationTestBase
         result.IsSuccess.Should().BeFalse();
         result.Error!.Code.Should().Be(ConfigurationErrorCodes.AlreadyActive);
     }
+
+    // -----------------------------------------------------------------
+    // Matrix rows: 8.0 — Event invariants not covered by the soft-delete
+    // tests. Each fact asserts the specific invariant the row states.
+    // -----------------------------------------------------------------
+
+    // Matrix row 8.0:5ea6c2170b25: An Event with a HostBranchID and two EventBranch rows | The HostBranch need not appear in EventBranch; both host and attendee sets are stored independently
+    [Fact]
+    [Trait("MatrixRow", "8.0:5ea6c2170b25")]
+    public async Task Create_WithHostBranchNotInAttendeeSet_PersistsBoth()
+    {
+        // Two branches. The event's host is the first; the attendee
+        // set is the second only. §4 / B20: the two sets are
+        // independent. Asserts:
+        //   - Event.HostBranchId == hostBranchId
+        //   - EventBranches for the event == {attendeeId}, not containing the host
+        var f = await SeedAsync();
+
+        var hostBranchId = await Db.Events
+            .Where(e => e.EventId == f.EventId)
+            .Select(e => e.HostBranchId)
+            .FirstAsync();
+
+        var otherBranch = new Branch
+        {
+            Name = "Second", Location = "Elsewhere",
+            IsActive = true, IsDeleted = false,
+        };
+        Db.Branches.Add(otherBranch);
+        await Db.SaveChangesAsync();
+
+        // Replace the attendee set to be exactly the second branch,
+        // which is not the host. Host is deliberately excluded.
+        var existingBranches = await Db.EventBranches
+            .Where(b => b.EventId == f.EventId)
+            .ToListAsync();
+        Db.EventBranches.RemoveRange(existingBranches);
+        Db.EventBranches.Add(new EventBranch
+        {
+            EventId = f.EventId,
+            BranchId = otherBranch.BranchId,
+        });
+        await Db.SaveChangesAsync();
+
+        Db.ChangeTracker.Clear();
+
+        var evt = await Db.Events.AsNoTracking()
+            .FirstAsync(e => e.EventId == f.EventId);
+        evt.HostBranchId.Should().Be(hostBranchId);
+
+        var branches = await Db.EventBranches.AsNoTracking()
+            .Where(b => b.EventId == f.EventId)
+            .Select(b => b.BranchId)
+            .ToListAsync();
+
+        branches.Should().ContainSingle();
+        branches.Should().Contain(otherBranch.BranchId);
+        branches.Should().NotContain(hostBranchId,
+            "the host need not appear in the attendee set (§4, B20)");
+    }
+
+    // Matrix row 8.0:7085f45144b9: An Event and a duplicate EventBranch row for the same branch | The composite primary key (EventID, BranchID) rejects the duplicate
+    [Fact]
+    [Trait("MatrixRow", "8.0:7085f45144b9")]
+    public async Task AddAttendingBranch_DuplicateBranch_CompositeKeyRejects()
+    {
+        var f = await SeedAsync();
+
+        var hostBranchId = await Db.Events
+            .Where(e => e.EventId == f.EventId)
+            .Select(e => e.HostBranchId)
+            .FirstAsync();
+
+        // Seed an attendee row for the event. The fixture does not
+        // create one; the duplicate insert below needs an existing
+        // (EventId, BranchId) pair to collide with.
+        Db.EventBranches.Add(new EventBranch
+        {
+            EventId = f.EventId,
+            BranchId = hostBranchId,
+        });
+        await Db.SaveChangesAsync();
+
+        Db.ChangeTracker.Clear();
+
+        // Detach any tracked EventBranch, then attempt the duplicate.
+        // With no tracked row, the insert reaches the database and the
+        // composite primary key rejects it as DbUpdateException.
+        Db.EventBranches.Add(new EventBranch
+        {
+            EventId = f.EventId,
+            BranchId = hostBranchId,
+        });
+
+        var act = async () => await Db.SaveChangesAsync();
+        await act.Should().ThrowAsync<DbUpdateException>(
+            "the composite primary key on (event_id, branch_id) rejects duplicates");
+
+    }
+
+    // Matrix row 8.0:f14d74a6b615: An Event with no EventBranch rows | The Event exists; its roster scope is empty
+    [Fact]
+    [Trait("MatrixRow", "8.0:f14d74a6b615")]
+    public async Task Create_WithoutAttendingBranches_RosterScopeEmpty()
+    {
+        var f = await SeedAsync();
+
+        // Remove every EventBranch row for the event. The Event row
+        // itself remains.
+        var existing = await Db.EventBranches
+            .Where(b => b.EventId == f.EventId)
+            .ToListAsync();
+        Db.EventBranches.RemoveRange(existing);
+        await Db.SaveChangesAsync();
+
+        Db.ChangeTracker.Clear();
+
+        var evt = await Db.Events.AsNoTracking()
+            .FirstOrDefaultAsync(e => e.EventId == f.EventId);
+        evt.Should().NotBeNull("the Event row exists independently of EventBranch");
+
+        var branches = await Db.EventBranches.AsNoTracking()
+            .Where(b => b.EventId == f.EventId)
+            .ToListAsync();
+        branches.Should().BeEmpty("empty roster scope is a valid state");
+    }
+
 }

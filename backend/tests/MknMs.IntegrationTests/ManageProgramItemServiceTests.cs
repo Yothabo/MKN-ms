@@ -232,4 +232,131 @@ public class ManageProgramItemServiceTests : IntegrationTestBase
         var item = await service.GetAsync(f.ItemId);
         item.Should().BeNull();
     }
+
+    // -----------------------------------------------------------------
+    // Matrix rows: 8.0 — ProgramItem-to-ServiceDefinition linkage
+    // creates and preserves the event-sourced ServiceOccurrence.
+    // -----------------------------------------------------------------
+
+    private async Task<int> SeedServiceDefinitionAsync()
+    {
+        var serviceType = new ServiceType
+        {
+            Name = "Test ServiceType",
+            IsActive = true, IsDeleted = false,
+        };
+        Db.ServiceTypes.Add(serviceType);
+        await Db.SaveChangesAsync();
+
+        var definition = new ServiceDefinition
+        {
+            Name = "Test Service",
+            ServiceTypeId = serviceType.ServiceTypeId,
+            OwningBranchId = null,
+            IsActive = true, IsDeleted = false,
+        };
+        Db.ServiceDefinitions.Add(definition);
+        await Db.SaveChangesAsync();
+
+        return definition.ServiceDefId;
+    }
+
+    // Matrix row 8.0:895806bf18d8: A ProgramItem with a ServiceDefID | An event-sourced ServiceOccurrence is created with `GeneratedBy = Administrator`
+    [Fact]
+    [Trait("MatrixRow", "8.0:895806bf18d8")]
+    public async Task Create_WithServiceDef_CreatesEventSourcedOccurrence()
+    {
+        var f = await SeedAsync();
+        var definitionId = await SeedServiceDefinitionAsync();
+        var service = MakeService();
+
+        var programId = await Db.ProgramItems
+            .Where(i => i.ItemId == f.ItemId)
+            .Select(i => i.ProgramId)
+            .FirstAsync();
+
+        var created = await service.CreateAsync(
+            programId,
+            sequenceOrder: 2,
+            title: "Occurrence-creating item",
+            scheduledStart: Now.AddDays(20),
+            scheduledEnd: Now.AddDays(20).AddHours(1),
+            serviceDefId: definitionId,
+            actingAdminId: f.AdminId);
+
+        created.IsSuccess.Should().BeTrue(
+            $"creating a ProgramItem with a ServiceDefID must succeed; error: {created.Error?.Message}");
+
+        Db.ChangeTracker.Clear();
+
+        var occurrence = await Db.ServiceOccurrences.AsNoTracking()
+            .FirstOrDefaultAsync(o => o.EventId != null
+                && o.ScheduleId == null
+                && o.GeneratedBy == "Administrator");
+
+        occurrence.Should().NotBeNull(
+            "the ProgramItem with ServiceDefID creates an event-sourced ServiceOccurrence");
+        occurrence!.GeneratedBy.Should().Be("Administrator");
+        occurrence.ScheduleId.Should().BeNull();
+        occurrence.CreatedBy.Should().Be(f.AdminId);
+    }
+
+    // Matrix row 8.0:7ca957958322: A ProgramItem whose ServiceDefID is removed after an occurrence was created | The event-sourced ServiceOccurrence is not removed
+    [Fact]
+    [Trait("MatrixRow", "8.0:7ca957958322")]
+    public async Task Update_ClearServiceDef_DoesNotRemoveExistingOccurrence()
+    {
+        var f = await SeedAsync();
+        var definitionId = await SeedServiceDefinitionAsync();
+        var service = MakeService();
+
+        var programId = await Db.ProgramItems
+            .Where(i => i.ItemId == f.ItemId)
+            .Select(i => i.ProgramId)
+            .FirstAsync();
+
+        // Create with ServiceDef -> occurrence is created.
+        var created = await service.CreateAsync(
+            programId,
+            sequenceOrder: 3,
+            title: "Occurrence-creating item",
+            scheduledStart: Now.AddDays(25),
+            scheduledEnd: Now.AddDays(25).AddHours(1),
+            serviceDefId: definitionId,
+            actingAdminId: f.AdminId);
+        created.IsSuccess.Should().BeTrue();
+        var newItemId = created.Value!.ItemId;
+
+        Db.ChangeTracker.Clear();
+
+        var occurrencesBefore = await Db.ServiceOccurrences.AsNoTracking()
+            .CountAsync(o => o.EventId != null
+                && o.ScheduleId == null
+                && o.GeneratedBy == "Administrator");
+        occurrencesBefore.Should().Be(1);
+
+        // Update the item with ServiceDefId = null.
+        var updated = await service.UpdateAsync(
+            newItemId,
+            sequenceOrder: 3,
+            title: "Occurrence-creating item (unlinked)",
+            scheduledStart: Now.AddDays(25),
+            scheduledEnd: Now.AddDays(25).AddHours(1),
+            serviceDefId: null,
+            actingAdminId: f.AdminId);
+        updated.IsSuccess.Should().BeTrue(
+            $"clearing the ServiceDefID must succeed; error: {updated.Error?.Message}");
+
+        Db.ChangeTracker.Clear();
+
+        // The occurrence is NOT removed. §9.1.11: cleanup of a
+        // removed ServiceDefID is an administrator action, not a system
+        // behaviour. The occurrence survives the update.
+        var occurrencesAfter = await Db.ServiceOccurrences.AsNoTracking()
+            .CountAsync(o => o.EventId != null
+                && o.ScheduleId == null
+                && o.GeneratedBy == "Administrator");
+        occurrencesAfter.Should().Be(1,
+            "removing the ServiceDefID does not remove the event-sourced occurrence");
+    }
 }

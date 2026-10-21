@@ -180,4 +180,28 @@ public class ManageProgramServiceTests : IntegrationTestBase
         second.IsSuccess.Should().BeFalse();
         second.Error!.Code.Should().Be(ConfigurationErrorCodes.AlreadyInactive);
     }
+
+    // Matrix row 8.0:75ebf75fea80: A second Program for the same Event | The operation is rejected with `Conflict`; one Program per Event
+    [Fact]
+    [Trait("MatrixRow", "8.0:75ebf75fea80")]
+    public async Task Create_SecondProgramForSameEvent_Conflict()
+    {
+        var f = await SeedAsync();
+        var service = MakeService();
+
+        // The fixture already created a Program for this Event.
+        var eventId = await Db.Programs
+            .Where(pr => pr.ProgramId == f.ProgramId)
+            .Select(pr => pr.EventId)
+            .FirstAsync();
+
+        var second = await service.CreateAsync(eventId, "Second");
+
+        second.IsSuccess.Should().BeFalse(
+            "one Program per Event is a schema-level invariant");
+        second.Error!.Code.Should().Be(ConfigurationErrorCodes.DuplicateName);
+
+        var count = await Db.Programs.CountAsync(pr => pr.EventId == eventId);
+        count.Should().Be(1);
+    }
 }
