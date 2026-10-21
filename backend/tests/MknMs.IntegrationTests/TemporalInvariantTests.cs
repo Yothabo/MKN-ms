@@ -194,4 +194,84 @@ public class TemporalInvariantTests : IntegrationTestBase
 
         row.CreatedAt.Offset.Should().Be(TimeSpan.Zero);
     }
+
+    // -----------------------------------------------------------------
+    // Matrix rows: Temporal — date and time columns preserve the values
+    // the caller supplied; no conversion through UTC.
+    // -----------------------------------------------------------------
+
+    // Matrix row Temporal:e00d30ab261b: A date column written by any process | The row is persisted
+    [Fact]
+    [Trait("MatrixRow", "Temporal:e00d30ab261b")]
+    public async Task ServiceOccurrence_Date_IsCalendarDate()
+    {
+        // The date column is a calendar date. A date written as
+        // 2026-10-11 must read back as 2026-10-11 regardless of the
+        // process's configured ApplicationTimeZone. §4 Temporal types.
+        var occurrenceId = await SeedOccurrenceAsync();
+
+        Db.ChangeTracker.Clear();
+        var occurrence = await Db.ServiceOccurrences
+            .AsNoTracking()
+            .FirstAsync(o => o.OccurrenceId == occurrenceId);
+
+        occurrence.Date.Should().Be(new DateOnly(2026, 10, 11));
+    }
+
+    // Matrix row Temporal:2cabdc22c06b: A time column written by any process | The row is persisted
+    [Fact]
+    [Trait("MatrixRow", "Temporal:2cabdc22c06b")]
+    public async Task ServiceSchedule_StartTime_IsWallClock()
+    {
+        // The time column is a wall-clock time. A schedule written with
+        // StartTime = 09:00 reads back as 09:00. §4 Temporal types.
+        var scheduleId = await SeedScheduleWithStartTimeAsync(new TimeOnly(9, 0));
+
+        Db.ChangeTracker.Clear();
+        var schedule = await Db.ServiceSchedules
+            .AsNoTracking()
+            .FirstAsync(s => s.ScheduleId == scheduleId);
+
+        schedule.StartTime.Should().Be(new TimeOnly(9, 0));
+    }
+
+    private async Task<int> SeedScheduleWithStartTimeAsync(TimeOnly startTime)
+    {
+        var serviceType = new ServiceType { Name = "TemporalRegular" };
+        var timeOfDay = new TimeOfDay { Name = "TemporalMorning" };
+        var branch = new Branch { Name = "TemporalMain", Location = "Temporal Street" };
+
+        Db.ServiceTypes.Add(serviceType);
+        Db.TimeOfDays.Add(timeOfDay);
+        Db.Branches.Add(branch);
+        await Db.SaveChangesAsync();
+
+        var slot = new BranchTimeSlot
+        {
+            BranchId = branch.BranchId,
+            DayOfWeek = "Sunday",
+            TimeOfDayId = timeOfDay.TimeOfDayId,
+        };
+        Db.BranchTimeSlots.Add(slot);
+        await Db.SaveChangesAsync();
+
+        var definition = new ServiceDefinition
+        {
+            Name = "TemporalService",
+            ServiceTypeId = serviceType.ServiceTypeId,
+        };
+        Db.ServiceDefinitions.Add(definition);
+        await Db.SaveChangesAsync();
+
+        var schedule = new ServiceSchedule
+        {
+            ServiceDefId = definition.ServiceDefId,
+            TimeSlotId = slot.TimeSlotId,
+            StartTime = startTime,
+        };
+        Db.ServiceSchedules.Add(schedule);
+        await Db.SaveChangesAsync();
+
+        return schedule.ScheduleId;
+    }
 }
