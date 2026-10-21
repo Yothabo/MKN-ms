@@ -135,7 +135,9 @@ public class ConfigureServiceScheduleSoftDeleteTests : IntegrationTestBase
             new ConfigurationLifecycleService(Db, _clock),
             new ConfigurationCascadeService(Db));
 
+    // Matrix row 1.0: A Service Schedule whose Service Occurrence rows exist | A soft delete is requested
     [Fact]
+    [Trait("MatrixRow", "1.0:6390e2131508")]
     public async Task SoftDelete_SucceedsAndWritesAudit()
     {
         var (scheduleId, admin) = await SeedAsync();
