@@ -225,7 +225,9 @@ public class EvaluateFillStatusTests : IntegrationTestBase
     // Tests
     // -----------------------------------------------------------------
 
+    // Matrix row 10.0:d83acc9018b7: An occurrence with a required count of 2 and 0 active assignments | 10.0 runs
     [Fact]
+    [Trait("MatrixRow", "10.0:d83acc9018b7")]
     public async Task Evaluate_WithZeroActiveAssignments_WritesUnfilled()
     {
         var f = await SeedFixtureAsync();
@@ -244,7 +246,9 @@ public class EvaluateFillStatusTests : IntegrationTestBase
         occ.FillStatusId.Should().Be(f.UnfilledStateId);
     }
 
+    // Matrix row 10.0:8427b5f05879: An occurrence with a required count of 2 and 1 active assignment | 10.0 runs
     [Fact]
+    [Trait("MatrixRow", "10.0:8427b5f05879")]
     public async Task Evaluate_WithFewerActiveThanRequired_WritesPartiallyFilled()
     {
         var f = await SeedFixtureAsync();
@@ -264,7 +268,9 @@ public class EvaluateFillStatusTests : IntegrationTestBase
         occ.FillStatusId.Should().Be(f.PartiallyFilledStateId);
     }
 
+    // Matrix row 10.0:cea53becdc37: An occurrence with a required count of 2 and 2 active assignments | 10.0 runs
     [Fact]
+    [Trait("MatrixRow", "10.0:cea53becdc37")]
     public async Task Evaluate_WithActiveMeetRequired_WritesFilled()
     {
         var f = await SeedFixtureAsync();
@@ -285,7 +291,9 @@ public class EvaluateFillStatusTests : IntegrationTestBase
         occ.FillStatusId.Should().Be(f.FilledStateId);
     }
 
+    // Matrix row 10.0:695829c8295f: An occurrence with all terminal assignments and a required count > 0 | 10.0 runs
     [Fact]
+    [Trait("MatrixRow", "10.0:695829c8295f")]
     public async Task Evaluate_WithTerminalAssignments_DoesNotCountThem()
     {
         var f = await SeedFixtureAsync();
@@ -305,7 +313,9 @@ public class EvaluateFillStatusTests : IntegrationTestBase
         occ.FillStatusId.Should().Be(f.UnfilledStateId);
     }
 
+    // Matrix row 10.0:a0f479392fba: An occurrence with a required count of 0 | 10.0 runs
     [Fact]
+    [Trait("MatrixRow", "10.0:a0f479392fba")]
     public async Task Evaluate_WithZeroRequiredDuties_ClassifiesAsFilled()
     {
         // Zero required duties. The effective required count is zero.
@@ -326,7 +336,9 @@ public class EvaluateFillStatusTests : IntegrationTestBase
         occ.FillStatusId.Should().Be(f.FilledStateId);
     }
 
+    // Matrix row 10.0:0bed694007ba: An occurrence whose current FillStatusID equals OutcomeStateCancelledID | 10.0 runs
     [Fact]
+    [Trait("MatrixRow", "10.0:0bed694007ba")]
     public async Task Evaluate_WithCancelledCurrentStatus_Skips()
     {
         var f = await SeedFixtureAsync(includeCancelledSetting: true);
@@ -350,7 +362,9 @@ public class EvaluateFillStatusTests : IntegrationTestBase
         after.FillStatusId.Should().Be(f.CancelledStateId);
     }
 
+    // Matrix row 10.0:9b65bcb2ab48: OutcomeStateCancelledID is absent | 10.0 runs
     [Fact]
+    [Trait("MatrixRow", "10.0:9b65bcb2ab48")]
     public async Task Evaluate_WithCancelledSettingAbsent_NoExclusion()
     {
         // No OutcomeStateCancelledID setting. The cancelled state is
@@ -378,7 +392,9 @@ public class EvaluateFillStatusTests : IntegrationTestBase
         after.FillStatusId.Should().Be(f.UnfilledStateId);
     }
 
+    // Matrix row 10.0:3620770fc1e4: Any of the three required mapping settings absent | 10.0 runs
     [Fact]
+    [Trait("MatrixRow", "10.0:3620770fc1e4")]
     public async Task Evaluate_WithoutRequiredSetting_Fails()
     {
         var f = await SeedFixtureAsync(includeRequiredSettings: false);
@@ -474,7 +490,9 @@ public class EvaluateFillStatusTests : IntegrationTestBase
         occ.FillStatusId.Should().BeNull();
     }
 
+    // Matrix row 10.0:527bea74d24f: An occurrence already evaluated with no state change | 10.0 runs again
     [Fact]
+    [Trait("MatrixRow", "10.0:527bea74d24f")]
     public async Task Evaluate_IsIdempotent()
     {
         var f = await SeedFixtureAsync();
@@ -491,7 +509,9 @@ public class EvaluateFillStatusTests : IntegrationTestBase
         second.FillStatusId.Should().Be(first.FillStatusId);
     }
 
+    // Matrix row 10.0:62e0362c9a71: A single-occurrence invocation | 10.0 runs
     [Fact]
+    [Trait("MatrixRow", "10.0:62e0362c9a71")]
     public async Task Evaluate_SingleOccurrence_DoesNotTouchOtherOccurrences()
     {
         // A single-occurrence invocation must evaluate only that
@@ -533,7 +553,9 @@ public class EvaluateFillStatusTests : IntegrationTestBase
         untouched.FillStatusId.Should().BeNull();
     }
 
+    // Matrix row 10.0:2d96f46193cb: Neither occurrence nor range supplied | 10.0 runs
     [Fact]
+    [Trait("MatrixRow", "10.0:2d96f46193cb")]
     public async Task Run_WithInvalidCommand_Fails()
     {
         await SeedFixtureAsync();
@@ -545,7 +567,9 @@ public class EvaluateFillStatusTests : IntegrationTestBase
         result.ErrorDetail.Should().Contain("Exactly one");
     }
 
+    // Matrix row 10.0:e56a0e982ec5: Both a single occurrence and a range supplied | 10.0 runs
     [Fact]
+    [Trait("MatrixRow", "10.0:e56a0e982ec5")]
     public async Task Run_WithBothOccurrenceAndRange_Fails()
     {
         var f = await SeedFixtureAsync();
