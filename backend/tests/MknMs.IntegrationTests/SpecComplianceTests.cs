@@ -130,7 +130,9 @@ public class SpecComplianceTests : IntegrationTestBase
     // Item 1 — future grant must not win eligibility
     // -----------------------------------------------------------------
 
+    // Matrix row 5.0:9107c30cb4e3: A duty with no eligible members | 5.0 runs
     [Fact]
+    [Trait("MatrixRow", "5.0:9107c30cb4e3")]
     public async Task Eligibility_FutureGrant_DoesNotMakeMemberEligible()
     {
         var (occurrenceId, dutyId, memberId, adminId, _) = await SeedBasicAsync();
@@ -172,7 +174,9 @@ public class SpecComplianceTests : IntegrationTestBase
             "a future GrantedDate must not make a member eligible (§10.1.4)");
     }
 
+    // Matrix row 5.0:9107c30cb4e3: A duty with no eligible members | 5.0 runs
     [Fact]
+    [Trait("MatrixRow", "5.0:9107c30cb4e3")]
     public async Task Eligibility_FutureRevoke_DoesNotRevoke()
     {
         var (occurrenceId, dutyId, memberId, adminId, _) = await SeedBasicAsync();
@@ -306,7 +310,9 @@ public class SpecComplianceTests : IntegrationTestBase
             "attendance at a different branch must not satisfy the criterion (5.0 doc line 97)");
     }
 
+    // Matrix row 5.0:6553f36fc96a: A Branch-Attendance Recency rule on a duty, with the effective register scope on and a matching AttendanceRecord | 5.0 runs
     [Fact]
+    [Trait("MatrixRow", "5.0:6553f36fc96a")]
     public async Task BranchAttendanceRecency_MatchesAttendanceAtRightBranch()
     {
         var (occurrenceId, dutyId, memberId, adminId, _) = await SeedBasicAsync(branchName: "Target");
@@ -359,7 +365,9 @@ public class SpecComplianceTests : IntegrationTestBase
     // Item 3 — NotificationChannel fallback
     // -----------------------------------------------------------------
 
+    // Matrix row 9.0:99deb4ded8ce: NotificationChannel absent and Required = true | Dispatch is attempted
     [Fact]
+    [Trait("MatrixRow", "9.0:99deb4ded8ce")]
     public async Task Notification_WithRequiredChannelAbsent_MustNotDispatch()
     {
         var (occurrenceId, dutyId, memberId, adminId, _) = await SeedBasicAsync();
@@ -398,7 +406,9 @@ public class SpecComplianceTests : IntegrationTestBase
             "a required NotificationChannel that is absent must surface a configuration error (9.0 doc line 70)");
     }
 
+    // Matrix row 9.0:63893ab2ecd9: NotificationChannel absent and Required = false | Dispatch is attempted
     [Fact]
+    [Trait("MatrixRow", "9.0:63893ab2ecd9")]
     public async Task Notification_WithOptionalChannelAbsent_MustNotLog()
     {
         var (occurrenceId, dutyId, memberId, adminId, _) = await SeedBasicAsync();
@@ -437,7 +447,9 @@ public class SpecComplianceTests : IntegrationTestBase
             "an optional NotificationChannel that is absent must not send and must not log a notification (9.0 doc line 70)");
     }
 
+    // Matrix row 9.0:a52c7271998d: NotificationChannel set to an unrecognised value | Dispatch is attempted
     [Fact]
+    [Trait("MatrixRow", "9.0:a52c7271998d")]
     public async Task Notification_WithInvalidChannel_MustNotLog()
     {
         var (occurrenceId, dutyId, memberId, adminId, _) = await SeedBasicAsync();
