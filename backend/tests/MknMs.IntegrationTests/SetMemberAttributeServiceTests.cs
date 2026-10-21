@@ -88,7 +88,9 @@ public class SetMemberAttributeServiceTests : IntegrationTestBase
         count.Should().Be(1);
     }
 
+    // Matrix row 3.0:5d52300b1bae: A Member with a MemberAttributeValue | The existing value is replaced; uniqueness preserved
     [Fact]
+    [Trait("MatrixRow", "3.0:5d52300b1bae")]
     public async Task Set_ExistingPair_ReplacesValue()
     {
         var f = await SeedAsync();
