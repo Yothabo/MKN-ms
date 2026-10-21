@@ -41,7 +41,9 @@ public class MaterializeOccurrencesTests : IntegrationTestBase
         await TestSeed.EnsureRequiredSettingsAsync(Db);
     }
 
+    // Matrix row 11.0:8956bca71e61: One active weekly schedule, a 30-day horizon, and a fixed today of 2026-10-06 | 11.0 runs
     [Fact]
+    [Trait("MatrixRow", "11.0:8956bca71e61")]
     public async Task Run_WithValidConfiguration_CreatesOccurrencesForAllCandidateDates()
     {
         await SeedMinimalConfigurationAsync();
@@ -79,7 +81,9 @@ public class MaterializeOccurrencesTests : IntegrationTestBase
         }
     }
 
+    // Matrix row 11.0:6e10beff1cdd: A prior run of 11.0 that created four occurrences | 11.0 runs again
     [Fact]
+    [Trait("MatrixRow", "11.0:6e10beff1cdd")]
     public async Task Run_Twice_IsIdempotent()
     {
         await SeedMinimalConfigurationAsync();
@@ -110,7 +114,9 @@ public class MaterializeOccurrencesTests : IntegrationTestBase
         runs.Should().AllSatisfy(r => r.Status.Should().Be("Success"));
     }
 
+    // Matrix row 11.0:50321a8a0fb8: OccurrenceHorizonDays absent | 11.0 runs
     [Fact]
+    [Trait("MatrixRow", "11.0:50321a8a0fb8")]
     public async Task Run_WithoutRequiredSetting_RecordsFailure()
     {
         // Seed everything except the required setting.
@@ -136,7 +142,9 @@ public class MaterializeOccurrencesTests : IntegrationTestBase
         run.ErrorDetail.Should().Contain("OccurrenceHorizonDays");
     }
 
+    // Matrix row 11.0:085329001058: A Manual trigger with TriggeredByAdminId = null | 11.0 runs
     [Fact]
+    [Trait("MatrixRow", "11.0:085329001058")]
     public async Task Run_WithManualTriggerAndNoAdmin_Throws()
     {
         await SeedMinimalConfigurationAsync();
@@ -248,7 +256,9 @@ public class MaterializeOccurrencesTests : IntegrationTestBase
         return admin.AdminId;
     }
 
+    // Matrix row 11.0:59a5667c79c2: A prior run and a concurrent run contending for the advisory lock | Both complete
     [Fact]
+    [Trait("MatrixRow", "11.0:59a5667c79c2")]
     public async Task Run_WhenLockHeldExternally_FailsWithOverlapMessage()
     {
         await SeedMinimalConfigurationAsync();
@@ -288,7 +298,9 @@ public class MaterializeOccurrencesTests : IntegrationTestBase
         }
     }
 
+    // Matrix row 11.0:59a5667c79c2: A prior run and a concurrent run contending for the advisory lock | Both complete
     [Fact]
+    [Trait("MatrixRow", "11.0:59a5667c79c2")]
     public async Task Run_AfterExternalLockReleased_Succeeds()
     {
         await SeedMinimalConfigurationAsync();
@@ -324,7 +336,9 @@ public class MaterializeOccurrencesTests : IntegrationTestBase
     // Acceptance-matrix coverage
     // -----------------------------------------------------------------
 
+    // Matrix row 11.0:3d4f59cfd447: An active schedule whose definition is inactive | 11.0 runs
     [Fact]
+    [Trait("MatrixRow", "11.0:3d4f59cfd447")]
     public async Task Run_WithInactiveDefinition_DoesNotPickUpSchedule()
     {
         await SeedMinimalConfigurationAsync(definitionActive: false);
@@ -345,7 +359,9 @@ public class MaterializeOccurrencesTests : IntegrationTestBase
         count.Should().Be(0);
     }
 
+    // Matrix row 11.0:ffe380eb2a8a: An active schedule whose time slot is inactive | 11.0 runs
     [Fact]
+    [Trait("MatrixRow", "11.0:ffe380eb2a8a")]
     public async Task Run_WithInactiveTimeSlot_DoesNotPickUpSchedule()
     {
         await SeedMinimalConfigurationAsync(slotActive: false);
@@ -366,7 +382,9 @@ public class MaterializeOccurrencesTests : IntegrationTestBase
         count.Should().Be(0);
     }
 
+    // Matrix row 11.0:343443820458: A schedule whose ServiceDefinition has zero duties | 11.0 runs
     [Fact]
+    [Trait("MatrixRow", "11.0:343443820458")]
     public async Task Run_WithZeroDutyDefinition_StillCreatesOccurrences()
     {
         // The fixture seeds no ServiceDefinitionDuty rows, so this is
@@ -388,7 +406,9 @@ public class MaterializeOccurrencesTests : IntegrationTestBase
         result.OccurrencesCreated.Should().Be(4);
     }
 
+    // Matrix row 11.0:b4da0b867eb1: OccurrenceHorizonDays = 0 | 11.0 runs
     [Fact]
+    [Trait("MatrixRow", "11.0:b4da0b867eb1")]
     public async Task Run_WithHorizonZero_CreatesOnlyTodaysCandidateDate()
     {
         // The clock is set to Sunday, 2026-10-11. With a zero-day
@@ -412,7 +432,9 @@ public class MaterializeOccurrencesTests : IntegrationTestBase
         occurrences.Single().Date.Should().Be(new DateOnly(2026, 10, 11));
     }
 
+    // Matrix row 11.0:f8ff5eed3e50: A Scheduled trigger with a non-null TriggeredByAdminId | 11.0 runs
     [Fact]
+    [Trait("MatrixRow", "11.0:f8ff5eed3e50")]
     public async Task Run_WithScheduledTriggerAndAdmin_Throws()
     {
         await SeedMinimalConfigurationAsync();
@@ -430,7 +452,9 @@ public class MaterializeOccurrencesTests : IntegrationTestBase
             .WithMessage("*Scheduled*TriggeredByAdminId*");
     }
 
+    // Matrix row 11.0:d34683b09f32: A manual horizon override smaller than the existing coverage | 11.0 runs
     [Fact]
+    [Trait("MatrixRow", "11.0:d34683b09f32")]
     public async Task Run_WithManualHorizonOverrideSmallerThanCoverage_CreatesNoNew()
     {
         await SeedMinimalConfigurationAsync(horizonDays: 30);
@@ -459,7 +483,9 @@ public class MaterializeOccurrencesTests : IntegrationTestBase
         count.Should().Be(4);
     }
 
+    // Matrix row 11.0:a455ece91571: A manual horizon override larger than the standing setting | 11.0 runs
     [Fact]
+    [Trait("MatrixRow", "11.0:a455ece91571")]
     public async Task Run_WithManualHorizonOverrideLargerThanCoverage_CreatesAdditionalOccurrences()
     {
         await SeedMinimalConfigurationAsync(horizonDays: 7);
@@ -488,7 +514,9 @@ public class MaterializeOccurrencesTests : IntegrationTestBase
         count.Should().Be(4);
     }
 
+    // Matrix row 11.0:e38857d853c8: An existing schedule-sourced occurrence for a candidate (ScheduleID, Date) | 11.0 runs
     [Fact]
+    [Trait("MatrixRow", "11.0:e38857d853c8")]
     public async Task Run_WithExistingOccurrence_DoesNotTouchIt()
     {
         await SeedMinimalConfigurationAsync();
@@ -536,7 +564,9 @@ public class MaterializeOccurrencesTests : IntegrationTestBase
         after.Date.Should().Be(new DateOnly(2026, 10, 11));
     }
 
+    // Matrix row 11.0:99d002107f2e: An existing occurrence created as event-sourced | 11.0 runs
     [Fact]
+    [Trait("MatrixRow", "11.0:99d002107f2e")]
     public async Task Run_WithEventSourcedOccurrence_DoesNotTouchIt()
     {
         await SeedMinimalConfigurationAsync();
@@ -599,7 +629,9 @@ public class MaterializeOccurrencesTests : IntegrationTestBase
         otherEventRows.Should().Be(1);
     }
 
+    // Matrix row 11.0:1941b4368c71: An existing ServiceOccurrenceDuty override on a materialized occurrence | 11.0 runs
     [Fact]
+    [Trait("MatrixRow", "11.0:1941b4368c71")]
     public async Task Run_WithServiceOccurrenceDutyOverride_DoesNotModifyIt()
     {
         await SeedMinimalConfigurationAsync();
@@ -655,7 +687,9 @@ public class MaterializeOccurrencesTests : IntegrationTestBase
         overrideCount.Should().Be(1);
     }
 
+    // Matrix row 11.0:8bba9710f016: A failed run partway through | 11.0 runs again
     [Fact]
+    [Trait("MatrixRow", "11.0:8bba9710f016")]
     public async Task Run_AfterPartialRun_FillsRemainingWithoutDuplicating()
     {
         // This simulates a prior run that created only part of the
@@ -731,7 +765,9 @@ public class MaterializeOccurrencesTests : IntegrationTestBase
     // Timezone behaviour
     // -----------------------------------------------------------------
 
+    // Matrix row 11.0:165c4ee05067: An instant near midnight UTC and a configured non-UTC ApplicationTimeZone | 11.0 derives today
     [Fact]
+    [Trait("MatrixRow", "11.0:165c4ee05067")]
     public async Task Run_WithNonUtcTimeZone_ResolvesTodayInConfiguredZone()
     {
         // 2026-10-11T22:30:00Z is Sunday in UTC, but 2026-10-12 (Monday)
@@ -763,7 +799,9 @@ public class MaterializeOccurrencesTests : IntegrationTestBase
         run.OccurrencesCreated.Should().Be(1);
     }
 
+    // Matrix row 11.0:248d1a2ae7ce: ApplicationTimeZone set to an unrecognised value | 11.0 derives today
     [Fact]
+    [Trait("MatrixRow", "11.0:248d1a2ae7ce")]
     public async Task Run_WithUnrecognisedTimeZone_RecordsFailure()
     {
         await SeedMinimalConfigurationAsync();
@@ -793,7 +831,9 @@ public class MaterializeOccurrencesTests : IntegrationTestBase
         run.ErrorDetail.Should().NotBeNull();
     }
 
+    // Matrix row 11.0:2ac1faf5c37b: ApplicationTimeZone absent | 11.0 derives today
     [Fact]
+    [Trait("MatrixRow", "11.0:2ac1faf5c37b")]
     public async Task Run_WithTimeZoneSettingAbsent_RecordsFailure()
     {
         await SeedMinimalConfigurationAsync();
