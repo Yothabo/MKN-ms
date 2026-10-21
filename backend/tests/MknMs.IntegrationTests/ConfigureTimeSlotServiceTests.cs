@@ -101,7 +101,9 @@ public class ConfigureTimeSlotServiceTests : IntegrationTestBase
             new ConfigurationLifecycleService(Db, _clock),
             new ConfigurationCascadeService(Db));
 
+    // Matrix row 1.0: A Branch Time Slot referenced by an active Service Schedule | A soft delete is requested
     [Fact]
+    [Trait("MatrixRow", "1.0:6cdc31555063")]
     public async Task SoftDelete_WithActiveSchedule_IsBlocked()
     {
         var (slot, admin, def) = await SeedAsync();
@@ -135,7 +137,9 @@ public class ConfigureTimeSlotServiceTests : IntegrationTestBase
         audit.Should().Be(0);
     }
 
+    // Matrix row 1.0: A Branch Time Slot referenced only by inactive Service Schedule rows | A soft delete is requested
     [Fact]
+    [Trait("MatrixRow", "1.0:f6bbfd7b0edd")]
     public async Task SoftDelete_WithInactiveSchedule_RemovesIt()
     {
         var (slot, admin, def) = await SeedAsync();
