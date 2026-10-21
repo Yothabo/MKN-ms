@@ -82,7 +82,9 @@ public class ConfigureDutyServiceTests : IntegrationTestBase
             new ConfigurationLifecycleService(Db, _clock),
             new ConfigurationCascadeService(Db));
 
+    // Matrix row 1.0: A Duty not referenced by any Service Definition Duty or Event Duty row | A soft delete is requested
     [Fact]
+    [Trait("MatrixRow", "1.0:9280a0490aba")]
     public async Task SoftDelete_Unreferenced_Succeeds()
     {
         var (duty, admin) = await SeedAsync();
@@ -103,7 +105,9 @@ public class ConfigureDutyServiceTests : IntegrationTestBase
         audit.Reason.Should().Be("no longer required");
     }
 
+    // Matrix row 1.0: A Duty referenced by a Service Definition Duty or an Event Duty row | A soft delete is requested
     [Fact]
+    [Trait("MatrixRow", "1.0:93cb7fbfd218")]
     public async Task SoftDelete_Referenced_IsBlocked()
     {
         var (duty, admin) = await SeedAsync();
