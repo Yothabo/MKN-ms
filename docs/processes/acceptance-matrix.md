@@ -83,7 +83,7 @@ The matrix does not prescribe the mechanism. Concurrency rows state the property
 | 8.0 | A ProgramItem with a ServiceDefID | The ProgramItem is created | An event-sourced ServiceOccurrence is created with `GeneratedBy = Administrator`, `EventID` set, `ScheduleID` null |
 | 8.0 | A ProgramItem whose ServiceDefID is removed after an occurrence was created | The ProgramItem is updated | The event-sourced ServiceOccurrence is not removed |
 | 8.0 | A second Program for the same Event | The Program is created | The operation is rejected with `Conflict`; one Program per Event |
-| 8.0 | An EventDuty referencing a Duty | The EventDuty is created | The duty's Eligibility and DutyRule are consulted for candidate resolution on the event |
+| 8.0 | (deferred) An EventDuty referencing a Duty | The EventDuty is created | The duty's Eligibility and DutyRule are consulted for candidate resolution on the event |
 | 8.0 | A Member whose `MemberStatusID` is a non-rosterable status, referenced by an EventDuty | The EventDuty is retained | The reference remains; no cascade; the EventDuty.AssignedMemberID continues to point at the Member |
 | 8.0 | An Event with a Program and Program Item rows | A soft delete is requested | The Program and Program Item rows are removed; existing event-sourced Service Occurrence rows are preserved; the Event row exists with `IsDeleted = true`, `IsActive = false` |
 
@@ -267,16 +267,11 @@ The matrix does not prescribe the mechanism. Concurrency rows state the property
 | Temporal | A date column written by any process | The row is persisted | The value is the calendar date the caller supplied; no conversion through UTC |
 | Temporal | A time column written by any process | The row is persisted | The value is the wall-clock time the caller supplied |
 | Temporal | `ApplicationTimeZone = Africa/Johannesburg` and an instant at 22:30 UTC | The date is derived | The result is the next calendar day in Johannesburg |
-| Configuration | A configuration change (create, update, deactivate, soft delete) | Any process runs afterward | The change takes effect on that run; historical records are not rewritten |
+| Configuration | A configuration change | Any operational record exists | The change takes effect on the next run and does not rewrite the record |
 | Configuration | A configuration entity | Both flags are inspected | `IsActive` and `IsDeleted` reflect one of the four reachable states; the forbidden combination does not occur |
 | Configuration | A configuration deactivation or soft delete | The operation executes | A ConfigurationAuditLog row is written with reason, initiated-by, approved-by, and timestamps |
 | Configuration | A configuration soft delete whose consequences the admin has not acknowledged | The operation executes | The operation is refused; the consequences preview must be acknowledged |
-| Configuration | Any configuration change | Any operational record exists | The operational record is unchanged |
-| Invocation | Any process other than 5.0, 7.0, 12.0, or 13.0 | Another process invokes it | The invocation is not permitted; the invocation graph is acyclic and terminates at 9.0 |
-| Invocation | 9.0 | An invocation arrives | 9.0 is the sole process any other process is permitted to invoke |
-| Invocation | 9.0's authority-notification sweep | The scheduler triggers it | It is a trigger, not an invocation; no process calls 9.0 for it |
-| Deletion | A configuration entity with references | A soft delete is applied | The reference fallback and cascade stated in §9.7 is applied atomically |
-| Deletion | A member | A soft delete is requested | No soft-delete operation exists for a member (§9.7). A member's state is `MemberStatusID` only; setting a status whose `IsRosterable = false` excludes the member from new roster generation without touching any operational record |
+| Configuration | Deletion | A configuration entity with references | A soft delete is applied | The reference fallback and cascade stated in §9.7 is applied atomically |
 | Deletion | A Role that is the default Role | A soft delete is requested | The operation is blocked |
 
 ## Boundary conditions
