@@ -255,4 +255,62 @@ public class ManageEventServiceTests : IntegrationTestBase
         var evt = await service.GetAsync(f.EventId);
         evt.Should().BeNull();
     }
+
+    [Fact]
+    public async Task Reactivate_DeactivatedEvent_Succeeds()
+    {
+        // §9.7: deactivation is reversible.
+        var f = await SeedAsync();
+        var service = MakeService();
+
+        var deactivated = await service.DeactivateAsync(
+            f.EventId, f.AdminId, f.AdminId, true, "test");
+        deactivated.IsSuccess.Should().BeTrue();
+
+        var auditBefore = await Db.ConfigurationAuditLogs.CountAsync();
+
+        var result = await service.ReactivateAsync(f.EventId, f.AdminId);
+
+        result.IsSuccess.Should().BeTrue();
+
+        var persisted = await Db.Events
+            .AsNoTracking()
+            .FirstAsync(e => e.EventId == f.EventId);
+        persisted.IsActive.Should().BeTrue();
+        persisted.IsDeleted.Should().BeFalse();
+
+        var auditAfter = await Db.ConfigurationAuditLogs.CountAsync();
+        auditAfter.Should().Be(auditBefore);
+    }
+
+    [Fact]
+    public async Task Reactivate_SoftDeletedEvent_Fails()
+    {
+        var f = await SeedAsync();
+        var service = MakeService();
+
+        await service.SoftDeleteAsync(f.EventId, f.AdminId, f.AdminId, true, "test");
+
+        var result = await service.ReactivateAsync(f.EventId, f.AdminId);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error!.Code.Should().Be(ConfigurationErrorCodes.LifecycleViolation);
+
+        var persisted = await Db.Events
+            .AsNoTracking()
+            .FirstAsync(e => e.EventId == f.EventId);
+        persisted.IsDeleted.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Reactivate_AlreadyActiveEvent_Fails()
+    {
+        var f = await SeedAsync();
+        var service = MakeService();
+
+        var result = await service.ReactivateAsync(f.EventId, f.AdminId);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error!.Code.Should().Be(ConfigurationErrorCodes.AlreadyActive);
+    }
 }

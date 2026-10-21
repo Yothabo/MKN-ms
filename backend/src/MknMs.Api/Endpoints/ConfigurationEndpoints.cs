@@ -722,6 +722,13 @@ public static class ConfigurationEndpoints
                 cancellationToken));
         });
 
+        routes.MapPost("/api/config/8.0/events/{id:int}/reactivate", async (
+            int id,
+            [FromBody] ActingAdminRequest request,
+            IManageEventService service,
+            CancellationToken cancellationToken) =>
+            ToHttpResult(await service.ReactivateAsync(id, request.ActingAdminId, cancellationToken)));
+
         routes.MapDelete("/api/config/8.0/events/{id:int}", async (
             int id,
             [FromBody] LifecycleActionRequest request,

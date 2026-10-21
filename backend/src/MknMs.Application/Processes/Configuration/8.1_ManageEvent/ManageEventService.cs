@@ -55,6 +55,11 @@ public interface IManageEventService
         bool? usesAttendanceRegister,
         CancellationToken cancellationToken = default);
 
+    Task<ConfigurationResult<Event>> ReactivateAsync(
+        int eventId,
+        int actingAdminId,
+        CancellationToken cancellationToken = default);
+
     Task<ConfigurationResult<Event>> DeactivateAsync(
         int eventId,
         int actingAdminId,
@@ -189,6 +194,47 @@ public sealed class ManageEventService : IManageEventService
         await ReplaceAttendingBranchesAsync(
             eventId, attendingBranchIds, cancellationToken);
 
+        return ConfigurationResult<Event>.Success(entity);
+    }
+
+    public async Task<ConfigurationResult<Event>> ReactivateAsync(
+        int eventId,
+        int actingAdminId,
+        CancellationToken cancellationToken = default)
+    {
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
+        {
+            return ConfigurationResult<Event>.Failure(adminError);
+        }
+
+        var entity = await _db.Events.FirstOrDefaultAsync(e => e.EventId == eventId, cancellationToken);
+        if (entity is null)
+        {
+            throw new EntityNotFoundException(nameof(Event), eventId);
+        }
+
+        if (entity.IsDeleted)
+        {
+            return ConfigurationResult<Event>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.LifecycleViolation,
+                    "A soft-deleted Event cannot be reactivated."));
+        }
+
+        if (entity.IsActive)
+        {
+            return ConfigurationResult<Event>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.AlreadyActive,
+                    "Event is already active."));
+        }
+
+        // §9.7 scopes the audit-write requirement to deactivation and
+        // soft delete. Reactivation writes no audit row.
+        entity.IsActive = true;
+        await _db.SaveChangesAsync(cancellationToken);
         return ConfigurationResult<Event>.Success(entity);
     }
 
