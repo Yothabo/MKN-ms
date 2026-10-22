@@ -1,12 +1,12 @@
 # Conformance Declaration
 
-*At HEAD `9c2accb`. Supersedes any earlier unversioned copy of this declaration.*
+*At HEAD `f2a7fda`. Supersedes any earlier unversioned copy of this declaration.*
 
 ---
 
 ## Statement
 
-The implementation at commit `9c2accb` conforms to the frozen specification at `5601ed5` (tag `spec-v1.0-freeze`) as amended by the specification's §15.8 register, subject to the deferred items listed below.
+The implementation at commit `f2a7fda` conforms to the frozen specification at `5601ed5` (tag `spec-v1.0-freeze`) as amended by the specification's §15.8 register, subject to the deferred items listed below.
 
 Every process defined by the specification is implemented. Every required setting and its consumer behaves as the specification states. Every schema amendment listed in §15.1–§15.4 and §15.8 is present. No behaviour is present in the implementation that the specification does not define.
 
@@ -17,6 +17,42 @@ Every process defined by the specification is implemented. Every required settin
 This declaration covers the backend. It does not cover a web frontend; none is part of the current specification's scope, and none is in this repository's `web/` directory that is connected to the backend.
 
 Authentication, authorization, tap ingestion, notification templates as entities, per-member channel preferences, the capability matrix, and the permission model's enforcement are out of scope and deferred. Each is stated in the specification as deferred or out of scope, and each is listed in the runbook.
+
+---
+
+## Traceability
+
+The four-artifact drift-detection loop is now wired and enforced:
+
+  1. `docs/spec/system-design-spec.md` — authority.
+  2. `docs/processes/acceptance-matrix.md` — 186 testable rows.
+  3. `backend/tests/MknMs.IntegrationTests/` — facts.
+  4. `scripts/matrix_tool.py` and `scripts/consistency_check.py` — checks.
+
+The loop closes as follows:
+
+- Every matrix row is either covered by an explicit `[Trait("MatrixRow", "<id>")]`
+  on at least one fact, or is marked `(deferred)` in the matrix itself
+  with a stated reason. 180 of 186 rows are covered by trait; 6 are
+  marked deferred.
+- `scripts/matrix_tool.py --strict` fails CI on any new orphaned row
+  or any new trait naming a row that does not exist. The six deferred
+  identities are whitelisted in `DEFERRED_ORPHANS` — they do not
+  silently disappear from the coverage counts, and they do not fail
+  CI.
+- `scripts/consistency_check.py` fails CI on stale cross-document
+  references and on any amendment-register term that has drifted from
+  the specification.
+
+Both checks run as steps in `.github/workflows/consistency.yml`, in
+the same job, on every push and pull request to `main`. Green CI
+means the specification, the matrix, the tests, and the derived
+documents are in agreement.
+
+The traceability work closes the review's finding 3.4 ("the
+four-artifact loop is 3/4 closed") by making the matrix-to-facts
+link explicit and enforced, and by recording the residual as
+deferred rows with stated reasons rather than as silent gaps.
 
 ---
 
