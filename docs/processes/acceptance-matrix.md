@@ -56,11 +56,11 @@ The matrix does not prescribe the mechanism. Concurrency rows state the property
 | --- | --- | --- | --- |
 | 3.0 | A new Member with all required fields | The Member is created | The row exists; `MemberStatusID` references the configured default status |
 | 3.0 | A Member with a ReceiptNumber and no CardNumber, and the configured duration has elapsed | A card is issued | A CardNumber is set on the Member; the receipt's IdentifierHistory row is retired with `UnassignedDate` and a reason; the card's IdentifierHistory row is created |
-| 3.0 | A Member with a CardNumber | The Member's status is set to Deceased | The CardNumber remains; it is not reassigned |
+| 3.0 | (deferred) A Member with a CardNumber | The Member's status is set to Deceased | The CardNumber remains; it is not reassigned |
 | 3.0 | A Member with a MemberAttributeValue | The same attribute is set again | The existing value is replaced; the (MemberID, AttributeTypeID) uniqueness constraint is preserved |
 | 3.0 | A readmission recorded for a member | The readmission is recorded | A Readmission row exists; the Member's MemberStatusID is not modified |
 | 3.0 | A member with two Readmission rows | The readmission count is requested | The count is 2; no stored field carries the count |
-| 3.0 | A Readmission row | A soft delete is requested | No soft-delete operation exists; Readmission carries no lifecycle flags, per B14 |
+| 3.0 | (deferred) A Readmission row | A soft delete is requested | No soft-delete operation exists; Readmission carries no lifecycle flags, per B14 |
 
 ### 4.0 Manage Eligibility
 
@@ -166,7 +166,7 @@ The matrix does not prescribe the mechanism. Concurrency rows state the property
 | 9.0 | A ConfigurationAuditLog row with `NotifiedAt = NULL` | The authority sweep runs | The row is processed; recipients are resolved; notifications are dispatched; `NotifiedAt` is set |
 | 9.0 | A ConfigurationAuditLog row with `NotifiedAt` set | The authority sweep runs | The row is skipped |
 | 9.0 | A dispatch failure on the authority sweep | The sweep continues | `NotifiedAt` remains NULL; the row is eligible for a later sweep, per B15 |
-| 9.0 | A dispatch that succeeds but the process fails before `NotifiedAt` is persisted | A later sweep runs | The same audit row may be dispatched again; duplicate dispatch is a permitted outcome, per B15 |
+| 9.0 | (deferred) A dispatch that succeeds but the process fails before `NotifiedAt` is persisted | A later sweep runs | The same audit row may be dispatched again; duplicate dispatch is a permitted outcome, per B15 |
 | 9.0 | A NotificationSubscription with `IsActive = false` | The sweep runs | The subscription is not consulted |
 | 9.0 | A by-tier subscription whose tier has no non-deleted admins | The sweep runs | Zero recipients; `NotifiedAt` is set; no error, per B16 |
 | 9.0 | A by-admin subscription whose admin is soft-deleted | The sweep runs | Zero recipients; `NotifiedAt` is set; no error |
