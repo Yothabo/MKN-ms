@@ -295,6 +295,7 @@ public class DispatchNotificationTests : IntegrationTestBase
     }
 
     [Fact]
+    [Trait("MatrixRow", "9.0:187d8470073a")]
     public async Task Dispatch_WritesNothing()
     {
         var f = await SeedFixtureAsync();

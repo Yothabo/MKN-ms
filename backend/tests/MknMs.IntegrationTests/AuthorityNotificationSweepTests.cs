@@ -164,6 +164,7 @@ public class AuthorityNotificationSweepTests : IntegrationTestBase
     // Matrix row 9.0:a4a5683b90d7: A ConfigurationAuditLog row with NotifiedAt = NULL | The authority sweep runs
     [Fact]
     [Trait("MatrixRow", "9.0:a4a5683b90d7")]
+    [Trait("MatrixRow", "9.0:fe20885acc9b")]
     public async Task SubscriptionByTier_DispatchesToAllActiveAdmins()
     {
         var f = await SeedAsync();
@@ -236,6 +237,7 @@ public class AuthorityNotificationSweepTests : IntegrationTestBase
     }
 
     [Fact]
+    [Trait("MatrixRow", "9.0:afa1f92fe3e6")]
     public async Task SubscriptionByEventTypeMismatch_DoesNotDispatch_SetsNotifiedAt()
     {
         var f = await SeedAsync();
@@ -442,4 +444,58 @@ public class AuthorityNotificationSweepTests : IntegrationTestBase
             .FirstAsync(a => a.AuditId == auditId);
         row.NotifiedAt.Should().NotBeNull();
     }
+
+    // Matrix row 9.0:279b9904ea80: A dispatch failure on the authority sweep | The sweep continues | `NotifiedAt` remains NULL; the row is eligible for a later sweep, per B15
+    [Fact]
+    [Trait("MatrixRow", "9.0:279b9904ea80")]
+    public async Task DispatchFailure_NotifiedAtRemainsNull_RowEligibleForRetry()
+    {
+        var f = await SeedAsync();
+        var auditId = await SeedAuditAsync();
+
+        Db.NotificationSubscriptions.Add(new NotificationSubscription
+        {
+            EventType = "Deactivate",
+            RecipientAdminId = f.AdminIdA,
+            IsActive = true, IsDeleted = false,
+        });
+        await Db.SaveChangesAsync();
+
+        // Throwing logger forces DispatchToAdminAsync to throw inside
+        // the per-recipient try block, which marks the row as failed.
+        var logger = new ThrowingLogger<AuthorityNotificationSweepService>();
+        var service = MakeService(logger);
+
+        var result = await service.RunAsync();
+
+        result.Status.Should().Be("Success",
+            "a per-recipient dispatch failure must not fail the whole sweep");
+        result.RowsLeftForRetry.Should().Be(1);
+
+        var row = await Db.ConfigurationAuditLogs
+            .AsNoTracking()
+            .FirstAsync(a => a.AuditId == auditId);
+        row.NotifiedAt.Should().BeNull(
+            "the row remains eligible for a later sweep (B15 at-least-once)");
+    }
 }
+
+internal sealed class ThrowingLogger<T> : ILogger<T>
+{
+    public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+    public bool IsEnabled(LogLevel logLevel) => true;
+
+    // Throws only on Information — the transport log. LogError is the
+    // failure-handling log; throwing on it would make the catch block
+    // throw, defeating the purpose. Emulates a transport that fails
+    // while delivering, but whose error reporting works.
+    public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+    {
+        if (logLevel == LogLevel.Information)
+        {
+            throw new InvalidOperationException(
+                "Simulated transport failure (test-only).");
+        }
+    }
+}
+

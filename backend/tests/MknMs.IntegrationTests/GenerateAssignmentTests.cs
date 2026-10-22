@@ -1555,4 +1555,53 @@ public class GenerateAssignmentTests : IntegrationTestBase
         existing.MemberId.Should().Be(fixture.BeatriceMemberId);
         existing.AssignmentStatusId.Should().BeNull();
     }
+
+    // Matrix row 9.0:3687da6c9621: A new automatic assignment created by 5.0 | 5.0 completes the assignment insert | 9.0 is invoked fire-and-forget; the assignment is not dependent on the notification's success
+    [Fact]
+    [Trait("MatrixRow", "9.0:3687da6c9621")]
+    public async Task Run_WithNotification_AssignmentCommittedIndependently()
+    {
+        var fixture = await SeedFixtureAsync();
+
+        var fake = new FakeDispatchNotificationService();
+        var service = new GenerateAssignmentService(Db, fake, _clock,
+            new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
+        var result = await service.RunAsync(new GenerateAssignmentCommand
+        {
+            OccurrenceId = fixture.OccurrenceId,
+        });
+
+        result.Status.Should().Be("Success");
+        result.AssignmentsCreated.Should().Be(1);
+        fake.DispatchedAssignmentIds.Should().HaveCount(1,
+            "9.0 is invoked once per created automatic assignment");
+    }
+
+    // Matrix row 9.0:6127b1436f8f: A 9.0 invocation that throws | The throw propagates to the caller | 5.0 catches it, logs it, continues; the assignment stands
+    [Fact]
+    [Trait("MatrixRow", "9.0:6127b1436f8f")]
+    public async Task Run_WithThrowingNotification_AssignmentStillCommitted()
+    {
+        var fixture = await SeedFixtureAsync();
+
+        var throwing = new ThrowingDispatchNotificationService();
+        var service = new GenerateAssignmentService(Db, throwing, _clock,
+            new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
+
+        var result = await service.RunAsync(new GenerateAssignmentCommand
+        {
+            OccurrenceId = fixture.OccurrenceId,
+        });
+
+        result.Status.Should().Be("Success",
+            "a 9.0 invocation that throws must not fail the run");
+        result.AssignmentsCreated.Should().Be(1);
+
+        var persisted = await Db.RosterAssignments
+            .AsNoTracking()
+            .Where(a => a.OccurrenceId == fixture.OccurrenceId)
+            .CountAsync();
+        persisted.Should().BeGreaterThan(0,
+            "the assignment is committed independently of the notification's success");
+    }
 }
