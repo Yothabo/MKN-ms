@@ -107,11 +107,16 @@ residual gaps are declared rather than claimed as covered.
   returned as `null` from `GetAsync`. The remaining ~twelve are not
   individually exercised. The pattern is uniform and the shape is
   shared; the coverage is not.
-- **Acceptance-matrix row-to-fact map.** A systematic audit of every
-  matrix row to the fact that exercises it has not been completed. The
-  matrix is the plan; the code is the execution; the map is not
-  produced. Where a row has no corresponding fact, that is a known
-  coverage gap, not a defect in the implementation.
+- **Acceptance-matrix row-to-fact map — enforced.** The map is
+  produced: every matrix row is either covered by an explicit
+  `[Trait("MatrixRow", "<id>")]` on at least one fact, or is marked
+  `(deferred)` in the matrix itself with a stated reason. 180 of 186
+  rows are covered by trait; 6 are marked deferred. `scripts/
+  matrix_tool.py --strict` fails CI on any new orphaned row or any
+  new trait naming a row that does not exist. The six deferred
+  identities are whitelisted in the tool; they remain visible in
+  every tool run but do not fail the check. This is the traceability
+  loop described in the "Traceability" section above.
 - **Manual assignment of a non-rosterable member.** The known risk
   (item 9 in the deferred list) that a member whose current
   `MemberStatus` has `IsRosterable = false` can still be assigned
