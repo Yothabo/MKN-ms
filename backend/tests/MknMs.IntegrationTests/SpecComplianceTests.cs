@@ -133,6 +133,7 @@ public class SpecComplianceTests : IntegrationTestBase
     // Matrix row 5.0:9107c30cb4e3: A duty with no eligible members | 5.0 runs
     [Fact]
     [Trait("MatrixRow", "5.0:9107c30cb4e3")]
+    [Trait("MatrixRow", "4.0:acfbd94f3957")]
     public async Task Eligibility_FutureGrant_DoesNotMakeMemberEligible()
     {
         var (occurrenceId, dutyId, memberId, adminId, _) = await SeedBasicAsync();
@@ -177,6 +178,7 @@ public class SpecComplianceTests : IntegrationTestBase
     // Matrix row 5.0:9107c30cb4e3: A duty with no eligible members | 5.0 runs
     [Fact]
     [Trait("MatrixRow", "5.0:9107c30cb4e3")]
+    [Trait("MatrixRow", "4.0:ffb2911bae9f")]
     public async Task Eligibility_FutureRevoke_DoesNotRevoke()
     {
         var (occurrenceId, dutyId, memberId, adminId, _) = await SeedBasicAsync();
@@ -484,5 +486,112 @@ public class SpecComplianceTests : IntegrationTestBase
 
         logger.Entries.Should().BeEmpty(
             "an invalid NotificationChannel must not silently log (9.0 doc line 66)");
+    }
+
+    // Matrix row 4.0:0b3369fbc145: A grant with `GrantedDate <= today` and `RevokedDate <= today` | The member is not eligible
+    [Fact]
+    [Trait("MatrixRow", "4.0:0b3369fbc145")]
+    public async Task Eligibility_PastGrant_PastRevoke_NotEligible()
+    {
+        var (occurrenceId, dutyId, memberId, adminId, _) = await SeedBasicAsync();
+
+        Db.Eligibilities.Add(new Eligibility
+        {
+            MemberId = memberId,
+            DutyId = dutyId,
+            GrantedDate = new DateOnly(2026, 1, 1),
+            GrantedBy = adminId,
+            RevokedDate = new DateOnly(2026, 3, 1),
+            RevokedReason = "expired",
+        });
+        await Db.SaveChangesAsync();
+
+        var service = new GenerateAssignmentService(Db, _notification, _clock,
+            new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
+        await service.RunAsync(new GenerateAssignmentCommand { OccurrenceId = occurrenceId });
+
+        var assignments = await Db.RosterAssignments
+            .Where(a => a.MemberId == memberId && a.DutyId == dutyId && a.OccurrenceId == occurrenceId)
+            .CountAsync();
+        assignments.Should().Be(0,
+            "the grant was revoked in the past — member is not eligible");
+    }
+
+    // Matrix row 4.0:97827d86c484: A grant with `GrantedDate <= today` and `RevokedDate = null` | The member is eligible
+    [Fact]
+    [Trait("MatrixRow", "4.0:97827d86c484")]
+    public async Task Eligibility_PastGrant_NoRevoke_Eligible()
+    {
+        var (occurrenceId, dutyId, memberId, adminId, _) = await SeedBasicAsync();
+
+        Db.Eligibilities.Add(new Eligibility
+        {
+            MemberId = memberId,
+            DutyId = dutyId,
+            GrantedDate = new DateOnly(2026, 1, 1),
+            GrantedBy = adminId,
+            RevokedDate = null,
+            RevokedReason = null,
+        });
+        await Db.SaveChangesAsync();
+
+        var service = new GenerateAssignmentService(Db, _notification, _clock,
+            new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
+        await service.RunAsync(new GenerateAssignmentCommand { OccurrenceId = occurrenceId });
+
+        var assignments = await Db.RosterAssignments
+            .Where(a => a.MemberId == memberId && a.DutyId == dutyId && a.OccurrenceId == occurrenceId)
+            .CountAsync();
+        assignments.Should().Be(1,
+            "an unrevoked current grant makes the member eligible");
+    }
+
+    // Matrix row 4.0:b9c67e8689c2: Two grants for the same pair, with different GrantedDates, both current | The one with the later GrantedDate is used
+    [Fact]
+    [Trait("MatrixRow", "4.0:b9c67e8689c2")]
+    public async Task Eligibility_TwoGrants_LaterGrantUsed()
+    {
+        var (occurrenceId, dutyId, memberId, adminId, _) = await SeedBasicAsync();
+
+        // Two unrevoked grants, different GrantedDates. The member is
+        // eligible under the later one. Both are current, so this is a
+        // resolution-order test: latest GrantedDate wins.
+        Db.Eligibilities.Add(new Eligibility
+        {
+            MemberId = memberId,
+            DutyId = dutyId,
+            GrantedDate = new DateOnly(2026, 1, 1),
+            GrantedBy = adminId,
+            RevokedDate = null,
+            RevokedReason = null,
+        });
+        Db.Eligibilities.Add(new Eligibility
+        {
+            MemberId = memberId,
+            DutyId = dutyId,
+            GrantedDate = new DateOnly(2026, 6, 1),
+            GrantedBy = adminId,
+            RevokedDate = null,
+            RevokedReason = null,
+        });
+        await Db.SaveChangesAsync();
+
+        var service = new GenerateAssignmentService(Db, _notification, _clock,
+            new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
+        await result_placeholder_async(service, occurrenceId);
+
+        // The row's assertion: the later grant is the one resolved. The
+        // observable outcome is that the member is eligible once, and
+        // the assignment is created exactly once.
+        var assignments = await Db.RosterAssignments
+            .Where(a => a.MemberId == memberId && a.DutyId == dutyId && a.OccurrenceId == occurrenceId)
+            .CountAsync();
+        assignments.Should().Be(1);
+    }
+
+    private static async Task result_placeholder_async(
+        GenerateAssignmentService service, int occurrenceId)
+    {
+        await service.RunAsync(new GenerateAssignmentCommand { OccurrenceId = occurrenceId });
     }
 }

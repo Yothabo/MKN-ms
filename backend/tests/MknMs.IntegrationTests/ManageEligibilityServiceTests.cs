@@ -79,4 +79,27 @@ public class ManageEligibilityServiceTests : IntegrationTestBase
         result.IsSuccess.Should().BeFalse();
         result.Error!.Code.Should().Be(ConfigurationErrorCodes.ReferencedEntityInactive);
     }
+
+    // Matrix row 4.0:1acbc0dd2798: A revoked grant | The operation is rejected with `Conflict`
+    [Fact]
+    [Trait("MatrixRow", "4.0:1acbc0dd2798")]
+    public async Task Revoke_AlreadyRevoked_Conflict()
+    {
+        var (memberId, dutyId, adminId) = await SeedAsync();
+        var service = new ManageEligibilityService(Db);
+
+        var granted = await service.GrantAsync(
+            memberId, dutyId, new DateOnly(2026, 1, 1), adminId);
+        granted.IsSuccess.Should().BeTrue();
+
+        var revoked = await service.RevokeAsync(
+            granted.Value!.EligibilityId, new DateOnly(2026, 4, 1), "first revoke");
+        revoked.IsSuccess.Should().BeTrue();
+
+        var second = await service.RevokeAsync(
+            granted.Value.EligibilityId, new DateOnly(2026, 5, 1), "second revoke");
+
+        second.IsSuccess.Should().BeFalse();
+        second.Error!.Code.Should().Be(ConfigurationErrorCodes.AlreadyInactive);
+    }
 }
