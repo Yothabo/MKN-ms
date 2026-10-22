@@ -520,13 +520,45 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
             return new List<int>();
         }
 
-        // Step 4 — Duty Rule ranking. If no rules exist, every eligible
-        // member is an equal candidate (§5, §10.1.5).
-        var rules = await _db.DutyRules
+        // Step 4 — Duty Rule ranking. §10.1.5: per-service rules
+        // override duty-global rules entirely for that (Service, Duty)
+        // pair. So: if any per-service rule exists for this occurrence's
+        // service and this duty, only those apply; otherwise only the
+        // duty-global (ServiceDefId = null) rules apply. A per-service
+        // rule attached to a *different* service must not leak into
+        // this fill.
+        int? occurrenceServiceDefId = null;
+        if (occurrence.ScheduleId is int sid)
+        {
+            occurrenceServiceDefId = await _db.ServiceSchedules
+                .Where(s => s.ScheduleId == sid)
+                .Select(s => (int?)s.ServiceDefId)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+
+        var allRules = await _db.DutyRules
             .Where(r => r.DutyId == dutyId && r.IsActive)
             .OrderBy(r => r.TierOrder)
             .ThenBy(r => r.RuleId)
             .ToListAsync(cancellationToken);
+
+        List<DutyRule> rules;
+        if (occurrenceServiceDefId is int svcDefId)
+        {
+            var scoped = allRules
+                .Where(r => r.ServiceDefId == svcDefId)
+                .ToList();
+
+            rules = scoped.Count > 0
+                ? scoped
+                : allRules.Where(r => r.ServiceDefId == null).ToList();
+        }
+        else
+        {
+            // Event-sourced occurrence: no ServiceDefinition context, so
+            // only duty-global rules apply.
+            rules = allRules.Where(r => r.ServiceDefId == null).ToList();
+        }
 
         if (rules.Count == 0)
         {

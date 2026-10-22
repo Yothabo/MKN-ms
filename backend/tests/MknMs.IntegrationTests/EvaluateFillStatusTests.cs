@@ -585,4 +585,52 @@ public class EvaluateFillStatusTests : IntegrationTestBase
         result.Status.Should().Be("Failure");
         result.ErrorDetail.Should().Contain("Exactly one");
     }
+
+    // Matrix row 10.0:d7feb422781a: A range invocation from `FromDate` to `ToDate` | 10.0 runs | Every occurrence with `Date` in the range is evaluated
+    [Fact]
+    [Trait("MatrixRow", "10.0:d7feb422781a")]
+    public async Task Evaluate_RangeInvocation_EvaluatesEveryOccurrenceInRange()
+    {
+        var f = await SeedFixtureAsync();
+
+        // Add a second occurrence dated within the same range.
+        var existing = await Db.ServiceOccurrences
+            .FirstAsync(o => o.OccurrenceId == f.OccurrenceId);
+        var scheduleId = existing.ScheduleId!.Value;
+
+        var second = new MknMs.Domain.D3_BranchTimeSlotService.ServiceOccurrence
+        {
+            ScheduleId = scheduleId,
+            EventId = null,
+            Date = new DateOnly(2026, 10, 18),
+            ServiceTypeId = null,
+            StartTime = null,
+            FillStatusId = null,
+            GeneratedBy = "System",
+            CreatedBy = null,
+            ChangedBy = null,
+        };
+        Db.ServiceOccurrences.Add(second);
+        await Db.SaveChangesAsync();
+
+        var service = new EvaluateFillStatusService(Db);
+        var result = await service.RunAsync(new EvaluateFillStatusCommand
+        {
+            FromDate = new DateOnly(2026, 10, 1),
+            ToDate = new DateOnly(2026, 10, 31),
+        });
+
+        result.Status.Should().Be("Success");
+        result.OccurrencesEvaluated.Should().Be(2,
+            "both occurrences are in the requested range");
+
+        // Both carry a FillStatusId after the sweep.
+        Db.ChangeTracker.Clear();
+        var filled = await Db.ServiceOccurrences
+            .Where(o => o.Date >= new DateOnly(2026, 10, 1)
+                && o.Date <= new DateOnly(2026, 10, 31))
+            .Where(o => o.FillStatusId != null)
+            .CountAsync();
+        filled.Should().Be(2);
+    }
 }

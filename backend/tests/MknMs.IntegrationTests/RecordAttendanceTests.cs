@@ -132,6 +132,7 @@ public class RecordAttendanceTests : IntegrationTestBase
     // Matrix row 6.0:cae53822d731: A member and an occurrence with no existing attendance record | Attendance is recorded
     [Fact]
     [Trait("MatrixRow", "6.0:cae53822d731")]
+    [Trait("MatrixRow", "6.0:1e59cc45d2a2")]
     public async Task Record_NewPair_WritesRowAndReturnsRecorded()
     {
         var f = await SeedFixtureAsync();

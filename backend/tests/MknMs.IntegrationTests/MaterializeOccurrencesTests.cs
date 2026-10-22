@@ -44,6 +44,7 @@ public class MaterializeOccurrencesTests : IntegrationTestBase
     // Matrix row 11.0:8956bca71e61: One active weekly schedule, a 30-day horizon, and a fixed today of 2026-10-06 | 11.0 runs
     [Fact]
     [Trait("MatrixRow", "11.0:8956bca71e61")]
+    [Trait("MatrixRow", "11.0:5dd8ac473887")]
     public async Task Run_WithValidConfiguration_CreatesOccurrencesForAllCandidateDates()
     {
         await SeedMinimalConfigurationAsync();
@@ -84,6 +85,7 @@ public class MaterializeOccurrencesTests : IntegrationTestBase
     // Matrix row 11.0:6e10beff1cdd: A prior run of 11.0 that created four occurrences | 11.0 runs again
     [Fact]
     [Trait("MatrixRow", "11.0:6e10beff1cdd")]
+    [Trait("MatrixRow", "11.0:794e68708837")]
     public async Task Run_Twice_IsIdempotent()
     {
         await SeedMinimalConfigurationAsync();
@@ -259,6 +261,7 @@ public class MaterializeOccurrencesTests : IntegrationTestBase
     // Matrix row 11.0:59a5667c79c2: A prior run and a concurrent run contending for the advisory lock | Both complete
     [Fact]
     [Trait("MatrixRow", "11.0:59a5667c79c2")]
+    [Trait("MatrixRow", "11.0:d9e58793867c")]
     public async Task Run_WhenLockHeldExternally_FailsWithOverlapMessage()
     {
         await SeedMinimalConfigurationAsync();

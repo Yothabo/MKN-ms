@@ -316,6 +316,7 @@ public class ManageConfirmationTests : IntegrationTestBase
     // Matrix row 7.0:38e640cd73bd: A decline with a terminal status and one candidate available | Decline is processed
     [Fact]
     [Trait("MatrixRow", "7.0:38e640cd73bd")]
+    [Trait("MatrixRow", "7.0:31a44cddfd48")]
     public async Task Decline_WithTerminalStatus_AndCandidateAvailable_CreatesReplacement()
     {
         var fixture = await SeedFixtureAsync();

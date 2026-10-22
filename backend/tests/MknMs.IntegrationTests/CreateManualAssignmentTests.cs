@@ -196,6 +196,7 @@ public class CreateManualAssignmentTests : IntegrationTestBase
     // Matrix row 12.0:745cb99dc6e6: A member, duty, occurrence, and acting admin | A manual assignment is created with no target status
     [Fact]
     [Trait("MatrixRow", "12.0:745cb99dc6e6")]
+    [Trait("MatrixRow", "12.0:9fc37e557b36")]
     public async Task Create_WithNullStatus_WritesRowAndDispatchesNotification()
     {
         var f = await SeedFixtureAsync();

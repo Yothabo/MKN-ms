@@ -1473,4 +1473,86 @@ public class GenerateAssignmentTests : IntegrationTestBase
         readingAssignments.Should().BeEmpty(
             "the per-service rule overrides the duty-global rule for the same pair");
     }
+
+    // Matrix row 5.0:61777dbb1a1c: An occurrence with two required slots and one already assigned | 5.0 runs | One additional assignment is created; the existing one is not modified
+    [Fact]
+    [Trait("MatrixRow", "5.0:61777dbb1a1c")]
+    public async Task Run_WithOneOfTwoSlotsFilled_AddsOnlyTheRemaining()
+    {
+        var fixture = await SeedFixtureAsync();
+
+        // Raise Reading's slot count to 2.
+        var readingSdd = await Db.ServiceDefinitionDuties
+            .FirstAsync(sd => sd.DutyId == fixture.ReadingDutyId);
+        readingSdd.RequiredSlotCount = 2;
+        await Db.SaveChangesAsync();
+
+        // Add a second eligible Steward so both slots can fill.
+        var stewardRoleId = await Db.Roles
+            .Where(r => r.Name == "Steward").Select(r => r.RoleId).FirstAsync();
+        var statusId = await Db.Members.Select(m => m.MemberStatusId).FirstAsync();
+        var branchId = await Db.Members.Select(m => m.BranchId).FirstAsync();
+
+        var second = new MknMs.Domain.D4_Member.Member
+        {
+            Name = "Second", Surname = "Steward",
+            JoinDate = new DateOnly(2024, 1, 1),
+            DateOfBirth = new DateOnly(1990, 1, 1),
+            MembershipStage = "Full", Gender = "Other",
+            Phone = "+27-900-0000", Email = null,
+            BranchId = branchId, RoleId = stewardRoleId,
+            MemberStatusId = statusId,
+        };
+        Db.Members.Add(second);
+        await Db.SaveChangesAsync();
+
+        var adminId = await Db.Admins.Select(a => a.AdminId).FirstAsync();
+        Db.Eligibilities.Add(new MknMs.Domain.D6_Eligibility.Eligibility
+        {
+            MemberId = second.MemberId,
+            DutyId = fixture.ReadingDutyId,
+            GrantedDate = new DateOnly(2025, 1, 1),
+            GrantedBy = adminId,
+            RevokedDate = null,
+            RevokedReason = null,
+        });
+        await Db.SaveChangesAsync();
+
+        // Pre-seed one Reading slot with Beatrice.
+        var preSeed = new MknMs.Domain.D7_RosterAssignment.RosterAssignment
+        {
+            MemberId = fixture.BeatriceMemberId,
+            DutyId = fixture.ReadingDutyId,
+            OccurrenceId = fixture.OccurrenceId,
+            AssignmentStatusId = null,
+            ApprovedBy = null,
+            AssignmentSource = "Automatic",
+            AssignedBy = null,
+            CreatedAt = _clock.GetUtcNow(),
+        };
+        Db.RosterAssignments.Add(preSeed);
+        await Db.SaveChangesAsync();
+
+        var preSeedId = preSeed.AssignmentId;
+
+        var service = new GenerateAssignmentService(Db, _notification, _clock,
+            new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
+        var result = await service.RunAsync(new GenerateAssignmentCommand
+        {
+            OccurrenceId = fixture.OccurrenceId,
+        });
+
+        result.Status.Should().Be("Success");
+        // Reading has 2 slots; 1 was pre-filled; 5.0 adds 1.
+        var readingAssignments = await Db.RosterAssignments
+            .Where(a => a.DutyId == fixture.ReadingDutyId
+                && a.OccurrenceId == fixture.OccurrenceId)
+            .OrderBy(a => a.AssignmentId)
+            .ToListAsync();
+        readingAssignments.Should().HaveCount(2);
+        // Existing row untouched.
+        var existing = readingAssignments.First(a => a.AssignmentId == preSeedId);
+        existing.MemberId.Should().Be(fixture.BeatriceMemberId);
+        existing.AssignmentStatusId.Should().BeNull();
+    }
 }

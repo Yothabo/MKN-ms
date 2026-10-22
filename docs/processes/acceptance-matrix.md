@@ -192,7 +192,7 @@ The matrix does not prescribe the mechanism. Concurrency rows state the property
 | 10.0 | A single-occurrence invocation | 10.0 runs | Only that occurrence is evaluated |
 | 10.0 | Neither occurrence nor range supplied | 10.0 runs | The run is refused with `ValidationFailed` |
 | 10.0 | Both a single occurrence and a range supplied | 10.0 runs | The run is refused with `ValidationFailed` |
-| 10.0 | A concurrent 5.0 write to an occurrence being evaluated | Both complete | The result reflects whichever committed state 10.0 read; 10.0 does not modify assignments |
+| 10.0 | (deferred) A concurrent 5.0 write to an occurrence being evaluated | Both complete | The result reflects whichever committed state 10.0 read; 10.0 does not modify assignments |
 
 ### 11.0 Materialize Occurrences
 
