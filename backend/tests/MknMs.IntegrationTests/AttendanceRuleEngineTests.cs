@@ -243,6 +243,7 @@ public class AttendanceRuleEngineTests : IntegrationTestBase
     // Matrix row 13.0:689811309a11: A rule with TriggerType = AbsenceDays, TriggerValue = 90, and a member absent exactly 90 calendar days | The scheduled run executes
     [Fact]
     [Trait("MatrixRow", "13.0:689811309a11")]
+    [Trait("MatrixRow", "13.0:698c7ce4ae88")]
     public async Task AbsenceDays_ExactBoundary_AttendanceOnBoundaryDay_DoesNotFire()
     {
         var f = await SeedAsync();
@@ -341,6 +342,7 @@ public class AttendanceRuleEngineTests : IntegrationTestBase
     // Matrix row 13.0:d1ff8223b96f: Two SetStatus rules for the same member on the same run | The scheduled run executes
     [Fact]
     [Trait("MatrixRow", "13.0:d1ff8223b96f")]
+    [Trait("MatrixRow", "13.0:5917acdffe55")]
     public async Task TwoSetStatusRules_LaterWins()
     {
         var f = await SeedAsync();
@@ -617,6 +619,7 @@ public class AttendanceRuleEngineTests : IntegrationTestBase
     // Matrix row 13.0:03b8644a1859: A rule with TriggerType = ReadmissionCount, TriggerValue = 3, and a member with 3 Readmission rows | The scheduled run executes
     [Fact]
     [Trait("MatrixRow", "13.0:03b8644a1859")]
+    [Trait("MatrixRow", "13.0:30cd8865ba27")]
     public async Task ReadmissionCount_AtThreshold_Fires()
     {
         var f = await SeedAsync();
@@ -835,5 +838,34 @@ public class AttendanceRuleEngineTests : IntegrationTestBase
 
         var member = await Db.Members.FirstAsync();
         member.MemberStatusId.Should().Be(f.DefaultStatusId);
+    }
+
+    // Matrix row 13.0:04bf409e4bab: A rule with `TriggerType = Manual` and `TriggerValue` set | The rule is invoked | `TriggerValue` is ignored; the Manual trigger fires unconditionally
+    [Fact]
+    [Trait("MatrixRow", "13.0:04bf409e4bab")]
+    public async Task ManualInvocation_TriggerValueIgnored_FiresUnconditionally()
+    {
+        var f = await SeedAsync();
+
+        // A Manual rule whose TriggerValue would be nonsensical for any
+        // other trigger type. Manual fires unconditionally regardless.
+        var ruleId = await AddRuleAsync("manual", "Manual", "999",
+            "SetStatus", f.OtherStatusId);
+
+        var service = new AttendanceRuleEngineService(Db, _notification, _clock);
+        var result = await service.RunAsync(new AttendanceRuleEngineCommand
+        {
+            TriggerType = "Manual",
+            RuleId = ruleId,
+            ActingAdminId = f.AdminId,
+        });
+
+        result.Status.Should().Be("Success");
+        result.StatusChangesApplied.Should().Be(1,
+            "Manual fires unconditionally; TriggerValue is unused");
+
+        var member = await Db.Members.AsNoTracking()
+            .FirstAsync(m => m.MemberId == f.MemberId);
+        member.MemberStatusId.Should().Be(f.OtherStatusId);
     }
 }
