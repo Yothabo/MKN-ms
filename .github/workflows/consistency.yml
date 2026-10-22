@@ -33,7 +33,7 @@ jobs:
       # switching the invocation to `--strict` makes this a gate. Until
       # then a green job means the tool ran, not that the map is closed.
       - name: Run traceability check
-        run: python3 scripts/matrix_tool.py
+        run: python3 scripts/matrix_tool.py --strict
 
   build:
     name: Build

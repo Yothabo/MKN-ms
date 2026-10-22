@@ -186,6 +186,19 @@ def parse_traits() -> dict:
     return traits
 
 
+DEFERRED_ORPHANS = {
+    # Six rows the matrix marks (deferred). Each is a schema statement
+    # of absence, or a property that would need a seam the process does
+    # not expose. Full reasons in docs/processes/acceptance-matrix.md.
+    "3.0:3da3de879df8",   # CardNumber permanence — schema invariant
+    "3.0:6a82840d2987",   # Readmission no lifecycle flags — schema
+    "8.0:298d3ad2d2b4",   # EventDuty eligibility — no consumer yet
+    "8.0:a51426b497d6",   # EventDuty.AssignedMemberId — column absent
+    "9.0:fe55dee9cb5d",   # post-dispatch pre-persist — no SaveChanges seam
+    "10.0:685233dd0f9f",  # concurrent write during 10.0 — race property
+}
+
+
 def report(strict: bool) -> int:
     matrix = parse_matrix()
     traits = parse_traits()
@@ -233,7 +246,13 @@ def report(strict: bool) -> int:
         print("Map is closed — every matrix row has a fact and every "
               "trait resolves to a row.")
 
-    if strict and (orphans_row or orphans_trait):
+    # Strict mode fails on any non-deferred orphan. Deferred orphans
+    # remain visible in the counts above but do not fail the check —
+    # each is marked (deferred) in the matrix with a stated reason.
+    non_deferred_row_orphans = [
+        r for r in orphans_row if r["identity"] not in DEFERRED_ORPHANS
+    ]
+    if strict and (non_deferred_row_orphans or orphans_trait):
         return 1
     return 0
 
