@@ -162,4 +162,62 @@ public class ConfigureDutyRulesServiceTests : IntegrationTestBase
         result.IsSuccess.Should().BeFalse();
         result.Error!.Code.Should().Be(ConfigurationErrorCodes.AlreadyActive);
     }
+
+    // Matrix row 2.0:d15c5d74cebd: A Duty Rule whose `CriteriaType` is outside the vocabulary | The write is rejected with `ValidationFailed`
+    [Fact]
+    [Trait("MatrixRow", "2.0:d15c5d74cebd")]
+    public async Task Create_WithInvalidCriteriaType_Rejected()
+    {
+        var (_, adminId) = await SeedAsync();
+        var service = MakeService();
+
+        var duty = await Db.Duties.FirstAsync();
+
+        var result = await service.CreateAsync(
+            duty.DutyId,
+            tierOrder: 2,
+            criteriaType: "NonexistentCriterion",
+            criteriaValue: "anything",
+            actingAdminId: adminId);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error!.Code.Should().Be(ConfigurationErrorCodes.InvalidValue);
+
+        var exists = await Db.DutyRules
+            .AnyAsync(r => r.TierOrder == 2 && r.CriteriaType == "NonexistentCriterion");
+        exists.Should().BeFalse("the write was rejected");
+    }
+
+    // Matrix row 2.0:ece684b64688: A Duty Rule whose `CriteriaValue` does not match its criterion's grammar | The write succeeds; at evaluation, the rule produces no candidates and the run continues
+    [Fact]
+    [Trait("MatrixRow", "2.0:ece684b64688")]
+    public async Task Create_WithMalformedCriteriaValue_WritesInertRule()
+    {
+        var (_, adminId) = await SeedAsync();
+        var service = MakeService();
+
+        var duty = await Db.Duties.FirstAsync();
+
+        // The AgeRange grammar is "min-max". "not-a-range" does not
+        // parse. Write succeeds; the rule is inert at evaluation. §10.1.5
+        // states that a criterion that produces no candidate does not
+        // fail the run.
+        var result = await service.CreateAsync(
+            duty.DutyId,
+            tierOrder: 2,
+            criteriaType: "AgeRange",
+            criteriaValue: "not-a-range",
+            actingAdminId: adminId);
+
+        result.IsSuccess.Should().BeTrue(
+            $"write is permitted; grammar is checked at evaluation time; error: {result.Error?.Message}");
+
+        var persisted = await Db.DutyRules
+            .AsNoTracking()
+            .FirstOrDefaultAsync(r => r.TierOrder == 2
+                && r.CriteriaType == "AgeRange"
+                && r.CriteriaValue == "not-a-range");
+        persisted.Should().NotBeNull(
+            "the write succeeded even though the value is malformed");
+    }
 }
