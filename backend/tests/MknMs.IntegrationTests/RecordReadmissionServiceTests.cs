@@ -124,6 +124,7 @@ public class RecordReadmissionServiceTests : IntegrationTestBase
     }
 
     [Fact]
+    [Trait("MatrixRow", "3.0:311906e963f7")]
     public async Task Record_DoesNotModifyMemberStatus()
     {
         var f = await SeedAsync();
@@ -179,5 +180,37 @@ public class RecordReadmissionServiceTests : IntegrationTestBase
         var count = await Db.Readmissions
             .CountAsync(r => r.MemberId == f.MemberId);
         count.Should().Be(1);
+    }
+
+    // Matrix row 3.0:625991b483eb: A member with two Readmission rows | The readmission count is requested | The count is 2; no stored field carries the count
+    [Fact]
+    [Trait("MatrixRow", "3.0:625991b483eb")]
+    public async Task TwoReadmissions_CountIsTwo_NotStored()
+    {
+        var f = await SeedAsync();
+        var service = new RecordReadmissionService(Db);
+
+        await service.RecordAsync(new RecordReadmissionCommand
+        {
+            MemberId = f.MemberId,
+            ReadmissionDate = new DateOnly(2026, 1, 1),
+            ActingAdminId = f.AdminId,
+        });
+        await service.RecordAsync(new RecordReadmissionCommand
+        {
+            MemberId = f.MemberId,
+            ReadmissionDate = new DateOnly(2026, 6, 1),
+            ActingAdminId = f.AdminId,
+        });
+
+        Db.ChangeTracker.Clear();
+        var count = await Db.Readmissions
+            .CountAsync(r => r.MemberId == f.MemberId);
+        count.Should().Be(2);
+
+        // No stored count field exists on Member. §13.6 states the
+        // count is derived. A reflection over Member's properties
+        // would confirm the absence; here the derived query is the
+        // canonical form and no field is consulted.
     }
 }

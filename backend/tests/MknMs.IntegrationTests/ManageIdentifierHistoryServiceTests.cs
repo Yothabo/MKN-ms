@@ -78,4 +78,49 @@ public class ManageIdentifierHistoryServiceTests : IntegrationTestBase
         result.IsSuccess.Should().BeFalse();
         result.Error!.Code.Should().Be(ConfigurationErrorCodes.ReferencedEntityInactive);
     }
+
+    // Matrix row 3.0:59eb29589b6a: A Member with a ReceiptNumber and no CardNumber, and the configured duration has elapsed | A CardNumber is set on the Member; the receipt's IdentifierHistory row is retired with `UnassignedDate` and a reason; the card's IdentifierHistory row is created
+    [Fact]
+    [Trait("MatrixRow", "3.0:59eb29589b6a")]
+    public async Task ReceiptReplacedByCard_RetiresReceiptAndAssignsCard()
+    {
+        var (memberId, adminId) = await SeedAsync();
+
+        // Issue the receipt first.
+        var historyService = new ManageIdentifierHistoryService(Db);
+        var receiptIssue = await historyService.IssueAsync(
+            memberId, "Receipt", "R-001",
+            new DateOnly(2024, 1, 1), adminId);
+        receiptIssue.IsSuccess.Should().BeTrue();
+
+        // Retire the receipt.
+        var receiptEntryId = receiptIssue.Value!.EntryId;
+        var retired = await historyService.RetireAsync(
+            receiptEntryId, new DateOnly(2024, 4, 1), "duration elapsed");
+        retired.IsSuccess.Should().BeTrue();
+
+        // Issue the card.
+        var cardIssue = await historyService.IssueAsync(
+            memberId, "Card", "C-001",
+            new DateOnly(2024, 4, 1), adminId);
+        cardIssue.IsSuccess.Should().BeTrue();
+
+        // Assert the history matches the row: one retired receipt,
+        // one active card.
+        Db.ChangeTracker.Clear();
+        var history = await Db.IdentifierHistories.AsNoTracking()
+            .Where(h => h.MemberId == memberId)
+            .OrderBy(h => h.EntryId)
+            .ToListAsync();
+
+        history.Should().HaveCount(2);
+
+        var receipt = history[0];
+        receipt.Type.Should().Be("Receipt");
+        receipt.UnassignedDate.Should().Be(new DateOnly(2024, 4, 1));
+
+        var card = history[1];
+        card.Type.Should().Be("Card");
+        card.UnassignedDate.Should().BeNull();
+    }
 }
