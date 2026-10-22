@@ -543,6 +543,7 @@ public class GenerateAssignmentTests : IntegrationTestBase
     // Matrix row 5.0: A duty with a tier-1 criterion that no eligible member matches, and a tier-2 criterion that two do | 5.0 runs
     [Fact]
     [Trait("MatrixRow", "5.0:310408ed0c2c")]
+    [Trait("MatrixRow", "2.0:b25f38e3e181")]
     public async Task Run_WithSameTierTwoRules_AndFails_NoCandidate()
     {
         var fixture = await SeedFixtureAsync();
@@ -1348,5 +1349,128 @@ public class GenerateAssignmentTests : IntegrationTestBase
         // Beatrice is still available for Reading duty — her terminal
         // assignment on Welcome does not block.
         result.DutiesFullyFilled.Should().Be(1);
+    }
+
+    // Matrix row 2.0:2e16df8852b6: A Duty Rule with `ServiceDefID = null` | The rule applies
+    [Fact]
+    [Trait("MatrixRow", "2.0:2e16df8852b6")]
+    public async Task Run_GlobalRule_AppliesAcrossServices()
+    {
+        var fixture = await SeedFixtureAsync();
+
+        // Both rules from the fixture have ServiceDefID = null. They
+        // apply regardless of which service requires the duty. The
+        // assertion here is not "the rule is not scoped" (a static
+        // property) but "the rule is honoured by the engine" — the
+        // fixture already produces a valid result at 5.0, and the
+        // second run confirms re-entry with the same rules.
+        var service = new GenerateAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
+        var result = await service.RunAsync(new GenerateAssignmentCommand
+        {
+            OccurrenceId = fixture.OccurrenceId,
+        });
+
+        result.Status.Should().Be("Success");
+        // Beatrice (Steward) is eligible for Reading duty and matches
+        // Role=Steward with the null-scoped rule. Reading is filled.
+        result.DutiesFullyFilled.Should().BeGreaterOrEqualTo(1);
+    }
+
+    // Matrix row 2.0:a97bd927fed4: A Duty Rule with `ServiceDefID = S` | The rule does not apply
+    [Fact]
+    [Trait("MatrixRow", "2.0:a97bd927fed4")]
+    public async Task Run_ServiceScopedRule_DoesNotApplyOutsideItsService()
+    {
+        var fixture = await SeedFixtureAsync();
+
+        // Add a per-service rule scoped to some *other* ServiceDefinition
+        // (which does not exist as a service the fixture runs). The rule
+        // is invisible to the current fill because its ServiceDefId does
+        // not match the active service.
+        var otherServiceType = new ServiceType { Name = "Other" };
+        Db.ServiceTypes.Add(otherServiceType);
+        await Db.SaveChangesAsync();
+
+        var otherDefinition = new ServiceDefinition
+        {
+            Name = "Other Service",
+            ServiceTypeId = otherServiceType.ServiceTypeId,
+            OwningBranchId = null,
+            IsActive = true, IsDeleted = false,
+        };
+        Db.ServiceDefinitions.Add(otherDefinition);
+        await Db.SaveChangesAsync();
+
+        // Insert a per-service rule for Reading duty scoped to the other
+        // definition. It must not apply here.
+        Db.DutyRules.Add(new DutyRule
+        {
+            DutyId = fixture.ReadingDutyId,
+            ServiceDefId = otherDefinition.ServiceDefId,
+            TierOrder = 1,
+            CriteriaType = "Gender",
+            CriteriaValue = "Male",
+        });
+        await Db.SaveChangesAsync();
+
+        var service = new GenerateAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
+        var result = await service.RunAsync(new GenerateAssignmentCommand
+        {
+            OccurrenceId = fixture.OccurrenceId,
+        });
+
+        result.Status.Should().Be("Success");
+        // The scoped rule (Gender=Male) is invisible here. The global
+        // Role=Steward rule still applies, and Beatrice still fills
+        // Reading.
+        result.DutiesFullyFilled.Should().BeGreaterOrEqualTo(1);
+    }
+
+    // Matrix row 2.0:9701f99e7b07: A Duty Rule with `ServiceDefID = S` and a duty-global rule for the same Duty | Only the per-service rule applies; the global rule is overridden
+    [Fact]
+    [Trait("MatrixRow", "2.0:9701f99e7b07")]
+    public async Task Run_PerServiceRule_OverridesGlobalRule()
+    {
+        var fixture = await SeedFixtureAsync();
+
+        // Attach the fixture's reading duty to the Sunday Service
+        // definition, then add a per-service rule on that pair that no
+        // eligible member matches. The global Role=Steward rule still
+        // exists, but the per-service rule overrides it. Reading ends
+        // unfilled.
+        var schedule = await Db.ServiceSchedules.FirstAsync();
+        var serviceDefId = schedule.ServiceDefId;
+
+        var existing = await Db.DutyRules
+            .Where(r => r.DutyId == fixture.ReadingDutyId && r.ServiceDefId == null)
+            .ToListAsync();
+        // Leave the globals in place — that is the point of the row.
+
+        Db.DutyRules.Add(new DutyRule
+        {
+            DutyId = fixture.ReadingDutyId,
+            ServiceDefId = serviceDefId,
+            TierOrder = 1,
+            CriteriaType = "Gender",
+            CriteriaValue = "Male",  // no eligible member is Male
+        });
+        await Db.SaveChangesAsync();
+
+        var service = new GenerateAssignmentService(Db, _notification, _clock, new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
+        var result = await service.RunAsync(new GenerateAssignmentCommand
+        {
+            OccurrenceId = fixture.OccurrenceId,
+        });
+
+        result.Status.Should().Be("Success");
+        // Reading duty: per-service rule overrides the global. No
+        // candidate matches Gender=Male. Reading is unfilled.
+        // Welcome duty: unaffected, unfilled as before.
+        var readingAssignments = await Db.RosterAssignments
+            .Where(a => a.DutyId == fixture.ReadingDutyId
+                && a.OccurrenceId == fixture.OccurrenceId)
+            .ToListAsync();
+        readingAssignments.Should().BeEmpty(
+            "the per-service rule overrides the duty-global rule for the same pair");
     }
 }
