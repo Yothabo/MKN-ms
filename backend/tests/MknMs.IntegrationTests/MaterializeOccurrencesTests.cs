@@ -554,6 +554,8 @@ public class MaterializeOccurrencesTests : IntegrationTestBase
         });
 
         result.Status.Should().Be("Success");
+        
+        result.Status.Should().Be("Success");
         result.OccurrencesCreated.Should().Be(3);
 
         Db.ChangeTracker.Clear();
@@ -611,6 +613,8 @@ public class MaterializeOccurrencesTests : IntegrationTestBase
             TriggerType = "Scheduled",
         });
 
+        result.Status.Should().Be("Success");
+        
         result.Status.Should().Be("Success");
         result.OccurrencesCreated.Should().Be(4);
 

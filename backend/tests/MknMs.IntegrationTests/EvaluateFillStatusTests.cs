@@ -546,6 +546,8 @@ public class EvaluateFillStatusTests : IntegrationTestBase
         });
 
         result.Status.Should().Be("Success");
+        
+        result.Status.Should().Be("Success");
         result.OccurrencesEvaluated.Should().Be(1);
 
         var untouched = await Db.ServiceOccurrences

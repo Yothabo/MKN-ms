@@ -240,8 +240,22 @@ def report(strict: bool) -> int:
                 print(f"      Then:  {r['then'][:80]}")
         print()
 
-    if orphans_row or orphans_trait:
-        print(f"Run --strict to fail on any orphan.")
+    if orphans_trait:
+        print(f"Run --strict to fail on any orphan trait.")
+    elif orphans_row:
+        if strict:
+            non_deferred_count = len(
+                [r for r in orphans_row if r["identity"] not in DEFERRED_ORPHANS]
+            )
+            if non_deferred_count == 0:
+                print(
+                    f"Map is closed for non-deferred rows. "
+                    f"{len(orphans_row)} deferred row(s) whitelisted."
+                )
+            else:
+                print(f"Run --strict to fail on any non-deferred orphan.")
+        else:
+            print(f"Run --strict to fail on any orphan.")
     else:
         print("Map is closed — every matrix row has a fact and every "
               "trait resolves to a row.")

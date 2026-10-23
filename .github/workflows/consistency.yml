@@ -26,12 +26,13 @@ jobs:
       - name: Run consistency check
         run: python3 scripts/consistency_check.py
 
-      # Report-only. matrix_tool.py exits 0 even when it finds orphaned
-      # matrix rows (rows without a fact) or orphaned traits (traits
-      # naming a row not in the matrix). It is a coverage report, not a
-      # gate. Phase D reconciles the residual; when it is closed,
-      # switching the invocation to `--strict` makes this a gate. Until
-      # then a green job means the tool ran, not that the map is closed.
+      # Strict gate. matrix_tool.py exits 1 on any orphaned matrix row
+      # (row without a fact) or orphaned trait (trait naming a row not
+      # in the matrix), except for the six identities whitelisted in
+      # DEFERRED_ORPHANS — those are marked (deferred) in the matrix
+      # itself, remain visible in every run's coverage counts, and are
+      # excluded from the strict failure check. A green job means the
+      # map is closed for non-deferred rows.
       - name: Run traceability check
         run: python3 scripts/matrix_tool.py --strict
 

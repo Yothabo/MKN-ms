@@ -461,6 +461,8 @@ public class ManageConfirmationTests : IntegrationTestBase
         });
 
         result.Status.Should().Be("Success");
+        
+        result.Status.Should().Be("Success");
         result.AssignmentsTransitioned.Should().Be(0);
         result.ReplacementsCreated.Should().Be(0);
 
@@ -710,6 +712,8 @@ public class ManageConfirmationTests : IntegrationTestBase
             AssignmentId = fixture.AssignmentId,
         });
 
+        result.Status.Should().Be("Success");
+        
         result.Status.Should().Be("Success");
         result.AssignmentsTransitioned.Should().Be(1);
         result.ReplacementsCreated.Should().Be(0);

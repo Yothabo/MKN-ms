@@ -232,6 +232,8 @@ public class AuthorityNotificationSweepTests : IntegrationTestBase
         var service = MakeService();
         var result = await service.RunAsync();
 
+        result.Status.Should().Be("Success");
+        
         result.NotificationsDispatched.Should().Be(0);
         result.AuditRowsProcessed.Should().Be(1);
     }
@@ -320,6 +322,8 @@ public class AuthorityNotificationSweepTests : IntegrationTestBase
         var service = MakeService();
         var result = await service.RunAsync();
 
+        result.Status.Should().Be("Success");
+        
         result.NotificationsDispatched.Should().Be(0);
     }
 
@@ -347,6 +351,8 @@ public class AuthorityNotificationSweepTests : IntegrationTestBase
         var service = MakeService();
         var result = await service.RunAsync();
 
+        result.Status.Should().Be("Success");
+        
         result.NotificationsDispatched.Should().Be(0);
         result.AuditRowsProcessed.Should().Be(1);
     }
@@ -368,6 +374,8 @@ public class AuthorityNotificationSweepTests : IntegrationTestBase
         var service = MakeService();
         var result = await service.RunAsync();
 
+        result.Status.Should().Be("Success");
+        
         result.Status.Should().Be("Success");
         result.AuditRowsProcessed.Should().Be(0);
         result.NotificationsDispatched.Should().Be(0);

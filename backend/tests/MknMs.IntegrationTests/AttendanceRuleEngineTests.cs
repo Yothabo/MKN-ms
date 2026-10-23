@@ -262,6 +262,8 @@ public class AttendanceRuleEngineTests : IntegrationTestBase
         });
 
         result.Status.Should().Be("Success");
+
+        result.Status.Should().Be("Success");
         result.StatusChangesApplied.Should().Be(0);
 
         var member = await Db.Members.FirstAsync();
@@ -305,12 +307,15 @@ public class AttendanceRuleEngineTests : IntegrationTestBase
         await AddRuleAsync("absent", "AbsenceDays", "90", "SetStatus", f.OtherStatusId);
 
         var service = new AttendanceRuleEngineService(Db, _notification, _clock);
-        await service.RunAsync(new AttendanceRuleEngineCommand
+        var result = await service.RunAsync(new AttendanceRuleEngineCommand
         {
             TriggerType = "Scheduled",
         });
 
+        result.Status.Should().Be("Success");
+
         var member = await Db.Members.FirstAsync();
+
         member.MemberStatusId.Should().Be(f.DefaultStatusId);
     }
 
@@ -469,6 +474,8 @@ public class AttendanceRuleEngineTests : IntegrationTestBase
         {
             TriggerType = "Scheduled",
         });
+
+        result.Status.Should().Be("Success");
 
         result.Status.Should().Be("Success");
         result.RulesEvaluated.Should().Be(0);
@@ -677,6 +684,8 @@ public class AttendanceRuleEngineTests : IntegrationTestBase
         });
 
         result.Status.Should().Be("Success");
+
+        result.Status.Should().Be("Success");
         result.StatusChangesApplied.Should().Be(0);
     }
 
@@ -802,6 +811,8 @@ public class AttendanceRuleEngineTests : IntegrationTestBase
         {
             TriggerType = "Scheduled",
         });
+
+        result.Status.Should().Be("Success");
 
         result.Status.Should().Be("Success");
         result.RulesEvaluated.Should().Be(0);
