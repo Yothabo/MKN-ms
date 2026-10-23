@@ -2,6 +2,8 @@ import { Bot } from "grammy";
 import { loadConfig } from "./config.js";
 import { ApiClient } from "./api-client.js";
 import { registerPing } from "./commands/ping.js";
+import { registerRolesCreate } from "./commands/roles_create.js";
+import { registerRolesList } from "./commands/roles_list.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -10,8 +12,12 @@ async function main(): Promise<void> {
 
   const isAllowed = (userId: number): boolean =>
     config.adminMap.has(userId);
+  const resolveAdminId = (userId: number): number | undefined =>
+    config.adminMap.get(userId);
 
   registerPing(bot, api, isAllowed);
+  registerRolesCreate(bot, api, resolveAdminId);
+  registerRolesList(bot, api, isAllowed);
 
   bot.catch(async (botErr) => {
     const message =
