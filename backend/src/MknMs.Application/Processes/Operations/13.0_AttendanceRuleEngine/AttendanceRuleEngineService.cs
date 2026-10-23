@@ -484,9 +484,22 @@ public sealed class AttendanceRuleEngineService : IAttendanceRuleEngineService
 
             case "Notify":
                 // Fire-and-forget. A failure does not roll back or
-                // fail the run.
-                await _notification.DispatchAttendanceRuleNoticeAsync(
-                    member, rule, cancellationToken);
+                // fail the run. Matches 5.0 / 7.0 / 12.0 shape: the
+                // 9.0 invocation is wrapped so a transport fault
+                // (e.g. missing required NotificationChannel) does
+                // not escape mid-run after earlier SetStatus
+                // outcomes have committed.
+                try
+                {
+                    await _notification.DispatchAttendanceRuleNoticeAsync(
+                        member, rule, cancellationToken);
+                }
+                catch (Exception)
+                {
+                    // Swallow: the run continues; another rule may
+                    // still apply; a future sweep retries any Notify
+                    // rule whose trigger still holds.
+                }
                 return OutcomeApplied.Notification;
 
             case "NoOp":

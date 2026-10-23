@@ -537,4 +537,61 @@ public class CreateManualAssignmentTests : IntegrationTestBase
         var count = await Db.RosterAssignments.CountAsync();
         count.Should().Be(0);
     }
+
+    // Regression test for defect D2: when 9.0 rethrows on a missing
+    // required NotificationChannel, 12.0 must still report Success
+    // with the committed assignment, and NotificationDispatched =
+    // false. Before the fix, the outer try/catch converted the throw
+    // to Failure with AssignmentId = 0, and a retry hit the duplicate
+    // check.
+    [Fact]
+    public async Task Create_WithMissingChannel_AssignmentCommittedNotificationSkipped()
+    {
+        // Seed the fixture, then remove any NotificationChannel
+        // (whether required or not) and re-create it with Required =
+        // true and no value — the exact condition that makes 9.0
+        // throw.
+        var f = await SeedFixtureAsync();
+        var existing = Db.SystemSettings
+            .Where(s => s.Key == "NotificationChannel")
+            .ToList();
+        Db.SystemSettings.RemoveRange(existing);
+        Db.SystemSettings.Add(new MknMs.Domain.D11_SystemSetting.SystemSetting
+        {
+            Key = "NotificationChannel",
+            Value = null,
+            Required = true,
+        });
+        await Db.SaveChangesAsync();
+
+        // The real DispatchNotificationService, not the Fake. It is
+        // what rethrows on the missing required setting.
+        var realDispatch = new MknMs.Application.Processes.Operations.DispatchNotification
+            .DispatchNotificationService(Db, new CapturingLogger<MknMs.Application.Processes.Operations.DispatchNotification.DispatchNotificationService>());
+
+        var service = new CreateManualAssignmentService(
+            Db, realDispatch, _clock, new OccurrenceLockService(Db));
+
+        var result = await service.RunAsync(new CreateManualAssignmentCommand
+        {
+            MemberId = f.EligibleMemberId,
+            DutyId = f.DutyId,
+            OccurrenceId = f.OccurrenceId,
+            TargetStatusId = null,
+            ActingAdminId = f.AdminId,
+        });
+
+        result.Status.Should().Be("Success",
+            "the row is committed; the notification's throw must not fail the run (B7)");
+        result.AssignmentId.Should().BeGreaterThan(0);
+        result.NotificationDispatched.Should().BeFalse(
+            "the notification's throw leaves NotificationDispatched false");
+
+        Db.ChangeTracker.Clear();
+        var rowCount = await Db.RosterAssignments
+            .CountAsync(a => a.MemberId == f.EligibleMemberId
+                && a.DutyId == f.DutyId
+                && a.OccurrenceId == f.OccurrenceId);
+        rowCount.Should().Be(1, "the assignment is committed exactly once");
+    }
 }

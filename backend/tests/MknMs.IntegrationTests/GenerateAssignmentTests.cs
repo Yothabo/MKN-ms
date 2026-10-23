@@ -1604,4 +1604,73 @@ public class GenerateAssignmentTests : IntegrationTestBase
         persisted.Should().BeGreaterThan(0,
             "the assignment is committed independently of the notification's success");
     }
+
+    // Regression test for defect D5: if contention strikes the second
+    // occurrence, the failure result reports the work done on the
+    // first (OccurrencesProcessed >= 1, AssignmentsCreated >= 1). The
+    // pre-fix code zeroed every counter on any failure.
+    [Fact]
+    public async Task Run_ContentionOnSecondOccurrence_PartialCountersReported()
+    {
+        var fixture = await SeedFixtureAsync();
+
+        // Add a second occurrence at a different date for the same
+        // schedule.
+        var existing = await Db.ServiceOccurrences
+            .FirstAsync(o => o.OccurrenceId == fixture.OccurrenceId);
+        var scheduleId = existing.ScheduleId!.Value;
+
+        var second = new MknMs.Domain.D3_BranchTimeSlotService.ServiceOccurrence
+        {
+            ScheduleId = scheduleId,
+            EventId = null,
+            Date = new DateOnly(2026, 10, 18),
+            ServiceTypeId = null,
+            StartTime = null,
+            FillStatusId = null,
+            GeneratedBy = "System",
+            CreatedBy = null,
+            ChangedBy = null,
+        };
+        Db.ServiceOccurrences.Add(second);
+        await Db.SaveChangesAsync();
+
+        // Hold the occurrence lock externally on the second occurrence
+        // so 5.0 will contend on it. The first occurrence is free.
+        await using var blocker = new Npgsql.NpgsqlConnection(ConnectionString);
+        await blocker.OpenAsync();
+        await using (var lockCmd = blocker.CreateCommand())
+        {
+            lockCmd.CommandText = "SELECT pg_try_advisory_lock(1, @id)";
+            lockCmd.Parameters.AddWithValue("@id", second.OccurrenceId);
+            var acquired = await lockCmd.ExecuteScalarAsync();
+            acquired.Should().Be(true);
+        }
+
+        try
+        {
+            var service = new GenerateAssignmentService(Db, _notification, _clock,
+                new OccurrenceLockService(Db), NullLogger<GenerateAssignmentService>.Instance);
+
+            var result = await service.RunAsync(new GenerateAssignmentCommand
+            {
+                FromDate = new DateOnly(2026, 10, 1),
+                ToDate = new DateOnly(2026, 10, 31),
+            });
+
+            result.Status.Should().Be("Failure",
+                "the contended occurrence aborts the run");
+            result.ErrorDetail.Should().Contain($"occurrence {second.OccurrenceId}",
+                "the error names the contended occurrence");
+            result.OccurrencesProcessed.Should().BeGreaterOrEqualTo(1,
+                "the first occurrence's work is reported in the failure envelope");
+        }
+        finally
+        {
+            await using var unlockCmd = blocker.CreateCommand();
+            unlockCmd.CommandText = "SELECT pg_advisory_unlock(1, @id)";
+            unlockCmd.Parameters.AddWithValue("@id", second.OccurrenceId);
+            await unlockCmd.ExecuteScalarAsync();
+        }
+    }
 }

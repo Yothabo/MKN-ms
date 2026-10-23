@@ -868,4 +868,59 @@ public class AttendanceRuleEngineTests : IntegrationTestBase
             .FirstAsync(m => m.MemberId == f.MemberId);
         member.MemberStatusId.Should().Be(f.OtherStatusId);
     }
+
+    // Regression test for defect D3a: when a Notify outcome's 9.0
+    // invocation throws (missing required NotificationChannel), the
+    // run must continue. A SetStatus rule applied by an earlier
+    // iteration stays committed; the Notify rule is skipped; the run
+    // reports Success.
+    [Fact]
+    public async Task Notify_MissingChannel_Skipped_SetStatusStillApplied()
+    {
+        var f = await SeedAsync();
+
+        // Missing required NotificationChannel.
+        var existingSetting = await Db.SystemSettings
+            .FirstOrDefaultAsync(s => s.Key == "NotificationChannel");
+        if (existingSetting is not null)
+        {
+            Db.SystemSettings.Remove(existingSetting);
+        }
+        Db.SystemSettings.Add(new SystemSetting
+        {
+            Key = "NotificationChannel",
+            Value = null,
+            Required = true,
+        });
+        await Db.SaveChangesAsync();
+
+        // Rule 1: SetStatus -> other status.
+        await AddRuleAsync("setstatus", "AbsenceDays", "90", "SetStatus", f.OtherStatusId);
+
+        // Rule 2: Notify -> would call 9.0, which will throw.
+        await AddRuleAsync("notify", "AbsenceDays", "90", "Notify");
+
+        // Use the real DispatchNotificationService, which rethrows on
+        // the missing required setting.
+        var realDispatch = new MknMs.Application.Processes.Operations.DispatchNotification
+            .DispatchNotificationService(Db, new CapturingLogger<MknMs.Application.Processes.Operations.DispatchNotification.DispatchNotificationService>());
+        var service = new AttendanceRuleEngineService(Db, realDispatch, _clock);
+
+        var result = await service.RunAsync(new AttendanceRuleEngineCommand
+        {
+            TriggerType = "Scheduled",
+        });
+
+        result.Status.Should().Be("Success",
+            "a Notify outcome's 9.0 throw must not fail the whole run");
+        result.StatusChangesApplied.Should().Be(1,
+            "the SetStatus rule applies");
+        result.NotificationsDispatched.Should().Be(1,
+            "the Notify call is counted even when the transport throws; "
+            + "the outcome is applied and the throw is swallowed");
+
+        var member = await Db.Members.AsNoTracking()
+            .FirstAsync(m => m.MemberId == f.MemberId);
+        member.MemberStatusId.Should().Be(f.OtherStatusId);
+    }
 }

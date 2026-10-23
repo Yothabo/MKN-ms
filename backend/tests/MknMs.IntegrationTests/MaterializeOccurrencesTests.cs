@@ -865,6 +865,88 @@ public class MaterializeOccurrencesTests : IntegrationTestBase
         run.Status.Should().Be("Failure");
         run.ErrorDetail.Should().NotBeNull();
     }
+
+    // Regression test for defect D4: if an occurrence insert fails,
+    // the failure MaterializerRun record must still be written. Before
+    // the fix, the failed entity stayed tracked and the failure save
+    // re-attempted it, throwing and swallowing, so no run record was
+    // written. The fix clears the tracker before adding the failure
+    // row.
+    [Fact]
+    public async Task Run_InsertFailure_WritesMaterializerRunFailureRecord()
+    {
+        await SeedMinimalConfigurationAsync();
+
+        // Seed an existing occurrence for the candidate date, then
+        // remove it from the tracker. The materializer's existence
+        // check filters by Date range; we insert a row that the
+        // read filter will not see because it is inside an
+        // uncommitted state that only the unique index will catch.
+        //
+        // Simpler approach: force a save failure by placing a
+        // bad-value row on the schedule. Wrap the insert in a
+        // transaction on a second connection that conflicts.
+        //
+        // The cleanest deterministic approach: hold the
+        // (ScheduleId, Date) unique-key slot from an external
+        // transaction that has not yet committed.
+        var scheduleId = await Db.ServiceSchedules
+            .Select(s => s.ScheduleId)
+            .FirstAsync();
+
+        await using var blocker = new Npgsql.NpgsqlConnection(ConnectionString);
+        await blocker.OpenAsync();
+        await using var tx = await blocker.BeginTransactionAsync();
+        await using (var cmd = blocker.CreateCommand())
+        {
+            cmd.Transaction = tx;
+            cmd.CommandText = @"
+                INSERT INTO service_occurrence
+                    (schedule_id, event_id, date, service_type_id, start_time,
+                     fill_status_id, generated_by, created_by, changed_by)
+                VALUES (@sid, NULL, @d, NULL, NULL, NULL, 'System', NULL, NULL)";
+            cmd.Parameters.AddWithValue("@sid", scheduleId);
+            cmd.Parameters.AddWithValue("@d", new DateOnly(2026, 10, 11));
+            await cmd.ExecuteNonQueryAsync();
+        }
+        // Leave the transaction open so the row is visible to the
+        // unique index but not to the materializer's read filter
+        // (READ COMMITTED default: uncommitted rows are invisible).
+
+        try
+        {
+            var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero));
+            var service = new MaterializeOccurrencesService(Db, clock);
+
+            var result = await service.RunAsync(new MaterializeOccurrencesCommand
+            {
+                TriggerType = "Scheduled",
+            });
+
+            result.Status.Should().Be("Failure",
+                "the unique-index collision on (schedule_id, date) aborts the run");
+
+            // Wait for the blocking transaction to release before
+            // asserting on the MaterializerRun row, so the failure
+            // record is not itself blocked.
+            await tx.RollbackAsync();
+
+            Db.ChangeTracker.Clear();
+            var run = await Db.MaterializerRuns
+                .AsNoTracking()
+                .OrderByDescending(r => r.RunId)
+                .FirstOrDefaultAsync();
+
+            run.Should().NotBeNull(
+                "the failure record must be written even when an occurrence insert fails");
+            run!.Status.Should().Be("Failure");
+            run.ErrorDetail.Should().NotBeNullOrWhiteSpace();
+        }
+        finally
+        {
+            try { await tx.RollbackAsync(); } catch { }
+        }
+    }
 }
 
 /// <summary>

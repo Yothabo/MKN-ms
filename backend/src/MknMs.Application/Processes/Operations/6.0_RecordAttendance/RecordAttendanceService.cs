@@ -126,7 +126,38 @@ public sealed class RecordAttendanceService : IRecordAttendanceService
         };
 
         _db.AttendanceRecords.Add(record);
-        await _db.SaveChangesAsync(cancellationToken);
+
+        try
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        catch (Npgsql.PostgresException ex) when (ex.SqlState == "23505")
+        {
+            // Unique violation on (member_id, occurrence_id). This is
+            // the concurrent-duplicate case: another writer inserted
+            // the same pair between our existence check and this
+            // insert. §13.1.2 requires idempotent success. Detach
+            // the failed entity, reload the existing row, return it.
+            _db.ChangeTracker.Clear();
+
+            var concurrent = await _db.AttendanceRecords
+                .AsNoTracking()
+                .FirstOrDefaultAsync(a => a.MemberId == command.MemberId
+                    && a.OccurrenceId == command.OccurrenceId,
+                    cancellationToken);
+
+            if (concurrent is not null)
+            {
+                return new RecordAttendanceResult
+                {
+                    Status = "Success",
+                    Recorded = false,
+                    RecordId = concurrent.RecordId,
+                };
+            }
+
+            throw;
+        }
 
         return new RecordAttendanceResult
         {

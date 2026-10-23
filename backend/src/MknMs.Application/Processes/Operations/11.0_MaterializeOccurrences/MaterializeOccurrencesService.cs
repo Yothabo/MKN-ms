@@ -247,6 +247,14 @@ public sealed class MaterializeOccurrencesService : IMaterializeOccurrencesServi
             run.Status = "Failure";
             run.ErrorDetail = ex.Message;
 
+            // Clear any in-flight entity before writing the failure
+            // record. Without this, the entity that caused the save
+            // failure is still tracked and re-attempted when the
+            // failure record is saved, causing that save to fail too
+            // and the failure record to be lost. The failed entity's
+            // loss is intentional — the run record is the artifact.
+            _db.ChangeTracker.Clear();
+
             _db.MaterializerRuns.Add(run);
 
             try

@@ -53,6 +53,15 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
         GenerateAssignmentCommand command,
         CancellationToken cancellationToken = default)
     {
+        // §10.3 / review D5: counters reflect committed work so that a
+        // mid-run failure (contention or exception) reports the partial
+        // total, not zero. Prior code zeroed them on any failure.
+        var totalCreated = 0;
+        var fullyFilled = 0;
+        var partiallyFilled = 0;
+        var unfilled = 0;
+        var occurrencesProcessed = 0;
+
         if (!command.IsValid)
         {
             return new GenerateAssignmentResult
@@ -123,13 +132,9 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
 
             var today = TimeZoneResolver.ToDateInTimeZone(_clock.GetUtcNow(), timeZoneResult.Zone!);
 
-            var totalCreated = 0;
-            var fullyFilled = 0;
-            var partiallyFilled = 0;
-            var unfilled = 0;
-
             foreach (var occurrence in occurrences)
             {
+                occurrencesProcessed++;
                 var outcome = await FillOccurrenceAsync(
                     occurrence,
                     today,
@@ -141,11 +146,11 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
                     return new GenerateAssignmentResult
                     {
                         Status = "Failure",
-                        OccurrencesProcessed = 0,
-                        AssignmentsCreated = 0,
-                        DutiesFullyFilled = 0,
-                        DutiesPartiallyFilled = 0,
-                        DutiesUnfilled = 0,
+                        OccurrencesProcessed = occurrencesProcessed - 1,
+                        AssignmentsCreated = totalCreated,
+                        DutiesFullyFilled = fullyFilled,
+                        DutiesPartiallyFilled = partiallyFilled,
+                        DutiesUnfilled = unfilled,
                         ErrorDetail = outcome.ContentionDetail,
                     };
                 }
@@ -193,11 +198,11 @@ public sealed class GenerateAssignmentService : IGenerateAssignmentService
             return new GenerateAssignmentResult
             {
                 Status = "Failure",
-                OccurrencesProcessed = 0,
-                AssignmentsCreated = 0,
-                DutiesFullyFilled = 0,
-                DutiesPartiallyFilled = 0,
-                DutiesUnfilled = 0,
+                OccurrencesProcessed = occurrencesProcessed,
+                AssignmentsCreated = totalCreated,
+                DutiesFullyFilled = fullyFilled,
+                DutiesPartiallyFilled = partiallyFilled,
+                DutiesUnfilled = unfilled,
                 ErrorDetail = ex.Message,
             };
         }

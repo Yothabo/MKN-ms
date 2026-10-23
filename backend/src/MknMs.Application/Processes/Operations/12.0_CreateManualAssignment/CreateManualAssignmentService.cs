@@ -187,11 +187,20 @@ public sealed class CreateManualAssignmentService : ICreateManualAssignmentServi
             var notified = false;
 
             // 9.0 invoked only when the created row's status is null.
-            // §17.1 C2.
+            // §17.1 C2. B7: the invocation is fire-and-forget. A
+            // throw from 9.0 does not roll back the committed
+            // assignment. Shape matches 5.0 and 7.0.
             if (command.TargetStatusId is null)
             {
-                await _notification.DispatchAssignmentNoticeAsync(assignment, cancellationToken);
-                notified = true;
+                try
+                {
+                    await _notification.DispatchAssignmentNoticeAsync(assignment, cancellationToken);
+                    notified = true;
+                }
+                catch (Exception)
+                {
+                    notified = false;
+                }
             }
 
             return new CreateManualAssignmentResult

@@ -392,4 +392,44 @@ public class RecordAttendanceTests : IntegrationTestBase
         result.Status.Should().Be("Success");
         result.Recorded.Should().BeTrue();
     }
+
+    // Regression test for defect D3b: two concurrent 6.0 runs for the
+    // same (member, occurrence) must not surface a 500 from the
+    // unique-index violation. One run records; the other treats the
+    // concurrent insert as an idempotent no-op and returns the
+    // existing RecordId.
+    [Fact]
+    public async Task Record_TwoConcurrentSamePair_OneRowRecordedOnce()
+    {
+        var f = await SeedFixtureAsync();
+
+        await using var dbA = CreateContext();
+        await using var dbB = CreateContext();
+
+        var serviceA = new RecordAttendanceService(dbA, _clock);
+        var serviceB = new RecordAttendanceService(dbB, _clock);
+
+        var command = new RecordAttendanceCommand
+        {
+            MemberId = f.MemberId,
+            OccurrenceId = f.OccurrenceId,
+        };
+
+        var taskA = serviceA.RunAsync(command);
+        var taskB = serviceB.RunAsync(command);
+
+        var results = await Task.WhenAll(taskA, taskB);
+
+        results.Should().HaveCount(2);
+        results.Select(r => r.Status).Should().AllBeEquivalentTo("Success",
+            "a concurrent duplicate insert is an idempotent no-op, not a 500");
+
+        results.Count(r => r.Recorded).Should().Be(1,
+            "exactly one writer creates the row");
+
+        Db.ChangeTracker.Clear();
+        var total = await Db.AttendanceRecords
+            .CountAsync(a => a.MemberId == f.MemberId && a.OccurrenceId == f.OccurrenceId);
+        total.Should().Be(1);
+    }
 }
