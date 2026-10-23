@@ -274,7 +274,7 @@ public class MaterializeOccurrencesTests : IntegrationTestBase
 
         await using (var lockCmd = externalConnection.CreateCommand())
         {
-            lockCmd.CommandText = "SELECT pg_try_advisory_lock(1100)";
+            lockCmd.CommandText = "SELECT pg_try_advisory_lock(2, 1)";
             var acquired = await lockCmd.ExecuteScalarAsync();
             acquired.Should().Be(true);
         }
@@ -296,7 +296,7 @@ public class MaterializeOccurrencesTests : IntegrationTestBase
         finally
         {
             await using var unlockCmd = externalConnection.CreateCommand();
-            unlockCmd.CommandText = "SELECT pg_advisory_unlock(1100)";
+            unlockCmd.CommandText = "SELECT pg_advisory_unlock(2, 1)";
             await unlockCmd.ExecuteScalarAsync();
         }
     }
@@ -316,13 +316,13 @@ public class MaterializeOccurrencesTests : IntegrationTestBase
 
         await using (var lockCmd = externalConnection.CreateCommand())
         {
-            lockCmd.CommandText = "SELECT pg_try_advisory_lock(1100)";
+            lockCmd.CommandText = "SELECT pg_try_advisory_lock(2, 1)";
             await lockCmd.ExecuteScalarAsync();
         }
 
         await using (var unlockCmd = externalConnection.CreateCommand())
         {
-            unlockCmd.CommandText = "SELECT pg_advisory_unlock(1100)";
+            unlockCmd.CommandText = "SELECT pg_advisory_unlock(2, 1)";
             await unlockCmd.ExecuteScalarAsync();
         }
 

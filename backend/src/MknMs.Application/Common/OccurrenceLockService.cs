@@ -49,6 +49,15 @@ public interface IOccurrenceLockService
 
 public sealed class OccurrenceLockService : IOccurrenceLockService
 {
+    /// <summary>
+    /// PostgreSQL advisory lock class ID for occurrence locks. The
+    /// materializer uses class ID 2 for its mutual-exclusion lock;
+    /// class ID 1 and class ID 2 are disjoint keyspaces, so an
+    /// occurrence lock on OccurrenceId 1100 cannot collide with the
+    /// materializer's lock. See MaterializeOccurrencesService for the
+    /// materializer's class constant.
+    /// </summary>
+    internal const int LockClassId = 1;
     private readonly MknDbContext _db;
 
     public OccurrenceLockService(MknDbContext db)
@@ -78,10 +87,10 @@ public sealed class OccurrenceLockService : IOccurrenceLockService
         try
         {
             await using var command = connection.CreateCommand();
-            command.CommandText = "SELECT pg_try_advisory_lock(@key)";
+            command.CommandText = "SELECT pg_try_advisory_lock(1, @key)";
             var parameter = command.CreateParameter();
             parameter.ParameterName = "@key";
-            parameter.Value = (long)occurrenceId;
+            parameter.Value = occurrenceId;
             command.Parameters.Add(parameter);
 
             var result = await command.ExecuteScalarAsync(cancellationToken);
@@ -152,10 +161,10 @@ public sealed class OccurrenceLockService : IOccurrenceLockService
                 if (_connection.State == ConnectionState.Open)
                 {
                     await using var command = _connection.CreateCommand();
-                    command.CommandText = "SELECT pg_advisory_unlock(@key)";
+                    command.CommandText = "SELECT pg_advisory_unlock(1, @key)";
                     var parameter = command.CreateParameter();
                     parameter.ParameterName = "@key";
-                    parameter.Value = (long)_occurrenceId;
+                    parameter.Value = _occurrenceId;
                     command.Parameters.Add(parameter);
                     await command.ExecuteScalarAsync(CancellationToken.None);
                 }

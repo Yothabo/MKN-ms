@@ -27,11 +27,20 @@ public sealed class MaterializeOccurrencesService : IMaterializeOccurrencesServi
     private const string HorizonSettingKey = "OccurrenceHorizonDays";
 
     /// <summary>
-    /// The PostgreSQL advisory lock key identifying the materializer's
-    /// mutual-exclusion lock. An arbitrary constant, chosen to be clear
-    /// of any identity sequence. It is not exposed as configuration.
+    /// PostgreSQL advisory lock class ID for the materializer's
+    /// mutual-exclusion lock. Class ID 1 is used by occurrence locks
+    /// (see OccurrenceLockService.LockClassId); the two-int advisory
+    /// lock form used here puts the materializer in a disjoint
+    /// keyspace, so it cannot collide with an occurrence lock even
+    /// when the occurrence ID equals the materializer's object ID.
     /// </summary>
-    private const long MaterializerLockKey = 1100;
+    private const int MaterializerLockClassId = 2;
+
+    /// <summary>
+    /// PostgreSQL advisory lock object ID for the materializer. A
+    /// single fixed object under class 2. Not exposed as configuration.
+    /// </summary>
+    private const int MaterializerLockObjectId = 1;
 
     private readonly MknDbContext _db;
     private readonly TimeProvider _clock;
@@ -63,10 +72,14 @@ public sealed class MaterializeOccurrencesService : IMaterializeOccurrencesServi
         {
             await using (var lockCommand = connection.CreateCommand())
             {
-                lockCommand.CommandText = "SELECT pg_try_advisory_lock(@key)";
+                lockCommand.CommandText = "SELECT pg_try_advisory_lock(@class, @key)";
+                var classParam = lockCommand.CreateParameter();
+                classParam.ParameterName = "@class";
+                classParam.Value = MaterializerLockClassId;
+                lockCommand.Parameters.Add(classParam);
                 var parameter = lockCommand.CreateParameter();
                 parameter.ParameterName = "@key";
-                parameter.Value = MaterializerLockKey;
+                parameter.Value = MaterializerLockObjectId;
                 lockCommand.Parameters.Add(parameter);
 
                 var result = await lockCommand.ExecuteScalarAsync(cancellationToken);
@@ -94,10 +107,14 @@ public sealed class MaterializeOccurrencesService : IMaterializeOccurrencesServi
                 try
                 {
                     await using var unlockCommand = connection.CreateCommand();
-                    unlockCommand.CommandText = "SELECT pg_advisory_unlock(@key)";
+                    unlockCommand.CommandText = "SELECT pg_advisory_unlock(@class, @key)";
+                    var classParam = unlockCommand.CreateParameter();
+                    classParam.ParameterName = "@class";
+                    classParam.Value = MaterializerLockClassId;
+                    unlockCommand.Parameters.Add(classParam);
                     var parameter = unlockCommand.CreateParameter();
                     parameter.ParameterName = "@key";
-                    parameter.Value = MaterializerLockKey;
+                    parameter.Value = MaterializerLockObjectId;
                     unlockCommand.Parameters.Add(parameter);
                     await unlockCommand.ExecuteScalarAsync(CancellationToken.None);
                 }
