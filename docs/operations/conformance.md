@@ -1,12 +1,12 @@
 # Conformance Declaration
 
-*At HEAD `f2a7fda`. Supersedes any earlier unversioned copy of this declaration.*
+*At HEAD `a8aa79b`. Supersedes any earlier unversioned copy of this declaration.*
 
 ---
 
 ## Statement
 
-The implementation at commit `f2a7fda` conforms to the frozen specification at `5601ed5` (tag `spec-v1.0-freeze`) as amended by the specification's §15.8 register, subject to the deferred items listed below.
+The implementation at commit `a8aa79b` conforms to the frozen specification at `5601ed5` (tag `spec-v1.0-freeze`) as amended by the specification's §15.8 register, subject to the deferred items listed below.
 
 Every process defined by the specification is implemented. Every required setting and its consumer behaves as the specification states. Every schema amendment listed in §15.1–§15.4 and §15.8 is present. No behaviour is present in the implementation that the specification does not define.
 
@@ -72,7 +72,7 @@ Conformance is not the same as completeness:
 
 - **Build**: 0 errors.
 - **Unit tests**: 36 of 36 pass.
-- **Integration tests**: 395 of 395 pass, on the developer environment. The CI workflow runs the same suite against a postgres service on the Ubuntu runner.
+- **Integration tests**: 435 of 435 pass, on the developer environment. The CI workflow runs the same suite against a postgres service on the Ubuntu runner.
 - **Consistency check**: green. No stale references in the `docs/` tree; no undefined decision labels; no removed columns outside a removal context.
 - **CI**: build, unit, and integration jobs green on the PR that merged this commit. Required checks are enforced on `main` via a repository ruleset.
 
@@ -142,4 +142,4 @@ The amendment ritual is recorded in `FREEZE.md`. No deferred item in this declar
 
 ---
 
-*Source: the frozen specification, the implementation at `9c2accb`, the acceptance matrix, and the runbook. Subordinate to the specification.*
+*Source: the frozen specification, the implementation at `a8aa79b`, the acceptance matrix, and the runbook. Subordinate to the specification.*
