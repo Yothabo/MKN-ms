@@ -9,6 +9,9 @@ export function registerPing(
   bot.command("ping", async (ctx) => {
     const userId = ctx.from?.id;
     if (userId === undefined || !isAllowed(userId)) {
+      console.warn(
+        `/ping rejected: Telegram userId ${userId ?? "<unknown>"} is not in MKN_ADMIN_MAP`,
+      );
       await ctx.reply("You are not on the operator allowlist.");
       return;
     }
