@@ -4,6 +4,9 @@ import { ApiClient } from "./api-client.js";
 import { registerPing } from "./commands/ping.js";
 import { registerRolesCreate } from "./commands/roles_create.js";
 import { registerRolesList } from "./commands/roles_list.js";
+import { registerDutiesCreate } from "./commands/duties_create.js";
+import { registerBranchesCreate } from "./commands/branches_create.js";
+import { registerMembersCreate } from "./commands/members_create.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -18,6 +21,9 @@ async function main(): Promise<void> {
   registerPing(bot, api, isAllowed);
   registerRolesCreate(bot, api, resolveAdminId);
   registerRolesList(bot, api, isAllowed);
+  registerDutiesCreate(bot, api, resolveAdminId);
+  registerBranchesCreate(bot, api, resolveAdminId);
+  registerMembersCreate(bot, api, resolveAdminId);
 
   bot.catch(async (botErr) => {
     const message =

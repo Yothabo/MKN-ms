@@ -1,5 +1,5 @@
 import type { Bot } from "grammy";
-import { ApiClient, renderFailure } from "../api-client.js";
+import { ApiClient, renderFailure, singleLine } from "../api-client.js";
 
 export function registerRolesCreate(
   bot: Bot,
@@ -18,9 +18,14 @@ export function registerRolesCreate(
       await ctx.reply("Usage: /roles_create <name>");
       return;
     }
+    const name = singleLine(args);
+    if (name === null) {
+      await ctx.reply("Name must be a single line. One command per message.");
+      return;
+    }
 
     const actingAdminId = resolveAdminId(userId)!;
-    const result = await api.createRole(args, actingAdminId);
+    const result = await api.createRole(name, actingAdminId);
 
     if (!result.ok) {
       await ctx.reply(renderFailure(result));

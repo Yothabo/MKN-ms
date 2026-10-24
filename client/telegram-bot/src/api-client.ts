@@ -12,6 +12,51 @@ export interface Role {
   isDeleted: boolean;
 }
 
+export interface Duty {
+  dutyId: number;
+  name: string;
+  isActive: boolean;
+  isDeleted: boolean;
+}
+
+export interface Branch {
+  branchId: number;
+  name: string;
+  location: string;
+  usesAttendanceRegister: boolean | null;
+  isActive: boolean;
+  isDeleted: boolean;
+}
+
+export interface Member {
+  memberId: number;
+  name: string;
+  surname: string;
+  joinDate: string;
+  dateOfBirth: string;
+  membershipStage: string;
+  gender: string;
+  phone: string;
+  email: string | null;
+  branchId: number;
+  roleId: number;
+  memberStatusId: number;
+}
+
+export interface CreateMemberBody {
+  name: string;
+  surname: string;
+  joinDate: string;
+  dateOfBirth: string;
+  membershipStage: string;
+  gender: string;
+  phone: string;
+  branchId: number;
+  roleId: number;
+  memberStatusId: number;
+  actingAdminId: number;
+}
+
 export interface ApiFailure {
   ok: false;
   status: number;
@@ -36,6 +81,18 @@ export class ApiClient {
 
   async createRole(name: string, actingAdminId: number): Promise<ApiResult<Role>> {
     return this.postJson<Role>("/api/config/1.0/roles", { name, actingAdminId });
+  }
+
+  async createDuty(name: string, actingAdminId: number): Promise<ApiResult<Duty>> {
+    return this.postJson<Duty>("/api/config/1.0/duties", { name, actingAdminId });
+  }
+
+  async createBranch(name: string, location: string, actingAdminId: number): Promise<ApiResult<Branch>> {
+    return this.postJson<Branch>("/api/config/1.0/branches", { name, location, actingAdminId });
+  }
+
+  async createMember(body: CreateMemberBody): Promise<ApiResult<Member>> {
+    return this.postJson<Member>("/api/config/3.0/members", body);
   }
 
   async listRoles(): Promise<Role[]> {
@@ -104,6 +161,22 @@ const OPERATOR_HINTS: Record<string, (m: string) => string> = {
     `Referenced entity is inactive or soft-deleted: ${m}`,
   lifecycle_violation: (m) => `Operation not permitted: ${m}`,
 };
+
+/**
+ * Returns the value if it contains no newline characters, null otherwise.
+ * Telegram command handlers receive the raw message body after the command
+ * word. A multi-line paste — the operator typing two commands in one message,
+ * or forwarding a block — would land all of it in ctx.match, and each
+ * handler would store the whole block as if it were a single field. Every
+ * handler that takes a name-like field calls this; a null response means
+ * "reject the command, do not write a corrupt row."
+ */
+export function singleLine(value: string): string | null {
+  if (value.includes("\n") || value.includes("\r")) {
+    return null;
+  }
+  return value;
+}
 
 export function renderFailure(failure: ApiFailure): string {
   if (failure.status >= 500) {
