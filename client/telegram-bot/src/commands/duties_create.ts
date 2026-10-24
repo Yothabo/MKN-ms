@@ -1,5 +1,5 @@
 import type { Bot } from "grammy";
-import { ApiClient, renderFailure, singleLine } from "../api-client.js";
+import { ApiClient, renderFailure, singleLine, commandArgument } from "../api-client.js";
 
 export function registerDutiesCreate(
   bot: Bot,
@@ -14,14 +14,15 @@ export function registerDutiesCreate(
       return;
     }
 
-    const raw = ctx.match.trim();
-    if (raw === "") {
-      await ctx.reply("Usage: /duties_create <name>");
+    const text = ctx.message?.text;
+    if (singleLine(text) === null) {
+      await ctx.reply("One command per message. Do not paste multiple lines.");
       return;
     }
-    const name = singleLine(raw);
-    if (name === null) {
-      await ctx.reply("Name must be a single line. One command per message.");
+
+    const name = commandArgument(text);
+    if (name === "") {
+      await ctx.reply("Usage: /duties_create <name>");
       return;
     }
 

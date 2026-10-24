@@ -1,5 +1,5 @@
 import type { Bot } from "grammy";
-import { ApiClient, renderFailure, singleLine } from "../api-client.js";
+import { ApiClient, renderFailure, singleLine, commandArgument } from "../api-client.js";
 
 export function registerBranchesCreate(
   bot: Bot,
@@ -14,28 +14,28 @@ export function registerBranchesCreate(
       return;
     }
 
-    const match = ctx.match.trim();
-    if (match === "") {
+    const text = ctx.message?.text;
+    if (singleLine(text) === null) {
+      await ctx.reply("One command per message. Do not paste multiple lines.");
+      return;
+    }
+
+    const arg = commandArgument(text);
+    if (arg === "") {
       await ctx.reply("Usage: /branches_create <name> | <location>");
       return;
     }
 
-    const sep = match.indexOf("|");
+    const sep = arg.indexOf("|");
     if (sep < 0) {
       await ctx.reply("Usage: /branches_create <name> | <location>");
       return;
     }
 
-    const nameRaw = match.slice(0, sep).trim();
-    const locationRaw = match.slice(sep + 1).trim();
-    if (nameRaw === "" || locationRaw === "") {
+    const name = arg.slice(0, sep).trim();
+    const location = arg.slice(sep + 1).trim();
+    if (name === "" || location === "") {
       await ctx.reply("Usage: /branches_create <name> | <location>");
-      return;
-    }
-    const name = singleLine(nameRaw);
-    const location = singleLine(locationRaw);
-    if (name === null || location === null) {
-      await ctx.reply("Name and location must each be one line. One command per message.");
       return;
     }
 
@@ -44,8 +44,6 @@ export function registerBranchesCreate(
       await ctx.reply(renderFailure(result));
       return;
     }
-    await ctx.reply(
-      `Branch created: ${result.data.name} (id ${result.data.branchId}).`,
-    );
+    await ctx.reply(`Branch created: ${result.data.name} (id ${result.data.branchId}).`);
   });
 }

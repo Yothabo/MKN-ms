@@ -163,19 +163,42 @@ const OPERATOR_HINTS: Record<string, (m: string) => string> = {
 };
 
 /**
- * Returns the value if it contains no newline characters, null otherwise.
- * Telegram command handlers receive the raw message body after the command
- * word. A multi-line paste — the operator typing two commands in one message,
- * or forwarding a block — would land all of it in ctx.match, and each
- * handler would store the whole block as if it were a single field. Every
- * handler that takes a name-like field calls this; a null response means
- * "reject the command, do not write a corrupt row."
+ * Enforces the bot's one-line-per-message rule.
+ *
+ * Takes the raw message text as Telegram delivered it (ctx.message.text),
+ * not ctx.match. grammY consumes the separator between the command word
+ * and its argument, so a message of "/roles_create\nThirdTest" arrives
+ * with ctx.match = "ThirdTest" and no newline visible on that field. The
+ * newline is only in the full text. Checking ctx.match silently accepted
+ * multi-line pastes; checking ctx.message.text rejects them.
+ *
+ * Returns null if the message contains a newline anywhere. Otherwise
+ * returns the message text trimmed of leading and trailing whitespace.
  */
-export function singleLine(value: string): string | null {
-  if (value.includes("\n") || value.includes("\r")) {
+export function singleLine(rawMessageText: string | undefined): string | null {
+  if (rawMessageText === undefined) {
     return null;
   }
-  return value;
+  if (rawMessageText.includes("\n") || rawMessageText.includes("\r")) {
+    return null;
+  }
+  return rawMessageText.trim();
+}
+
+/**
+ * Extracts the argument part of a command line given the raw message text
+ * and the command word. The command line is "\command arg". Returns the
+ * text after the command word and a single separating space, trimmed.
+ */
+export function commandArgument(rawMessageText: string | undefined): string {
+  if (rawMessageText === undefined) {
+    return "";
+  }
+  const space = rawMessageText.indexOf(" ");
+  if (space < 0) {
+    return "";
+  }
+  return rawMessageText.slice(space + 1).trim();
 }
 
 export function renderFailure(failure: ApiFailure): string {

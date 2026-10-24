@@ -1,5 +1,5 @@
 import type { Bot } from "grammy";
-import { ApiClient, renderFailure } from "../api-client.js";
+import { ApiClient, renderFailure, singleLine, commandArgument } from "../api-client.js";
 
 const USAGE =
   "Usage: /members_create <name>|<surname>|<joinDate>|<dob>|<stage>|<gender>|<phone>|<branchId>|<roleId>|<statusId>\n" +
@@ -19,25 +19,24 @@ export function registerMembersCreate(
       return;
     }
 
-    const raw = ctx.match.trim();
-    if (raw === "") {
+    const text = ctx.message?.text;
+    if (singleLine(text) === null) {
+      await ctx.reply("One command per message. Do not paste multiple lines.");
+      return;
+    }
+
+    const arg = commandArgument(text);
+    if (arg === "") {
       await ctx.reply(USAGE);
       return;
     }
 
-    const parts = raw.split("|").map((p) => p.trim());
+    const parts = arg.split("|").map((p) => p.trim());
     if (parts.length !== 10) {
       await ctx.reply(
         `Expected 10 pipe-separated fields, got ${parts.length}.\n${USAGE}`,
       );
       return;
-    }
-
-    for (const part of parts) {
-      if (part.includes("\n") || part.includes("\r")) {
-        await ctx.reply("Each field must be a single line. One command per message.");
-        return;
-      }
     }
 
     const [name, surname, joinDate, dob, stage, gender, phone, branchIdStr, roleIdStr, statusIdStr] = parts;
@@ -59,17 +58,9 @@ export function registerMembersCreate(
     }
 
     const result = await api.createMember({
-      name,
-      surname,
-      joinDate,
-      dateOfBirth: dob,
-      membershipStage: stage,
-      gender,
-      phone,
-      branchId,
-      roleId,
-      memberStatusId,
-      actingAdminId,
+      name, surname, joinDate, dateOfBirth: dob,
+      membershipStage: stage, gender, phone,
+      branchId, roleId, memberStatusId, actingAdminId,
     });
 
     if (!result.ok) {

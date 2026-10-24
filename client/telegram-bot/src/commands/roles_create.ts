@@ -1,5 +1,5 @@
 import type { Bot } from "grammy";
-import { ApiClient, renderFailure, singleLine } from "../api-client.js";
+import { ApiClient, renderFailure, singleLine, commandArgument } from "../api-client.js";
 
 export function registerRolesCreate(
   bot: Bot,
@@ -8,32 +8,29 @@ export function registerRolesCreate(
 ): void {
   bot.command("roles_create", async (ctx) => {
     const userId = ctx.from?.id;
-    if (userId === undefined || resolveAdminId(userId) === undefined) {
+    const actingAdminId = userId !== undefined ? resolveAdminId(userId) : undefined;
+    if (actingAdminId === undefined) {
       await ctx.reply("You are not on the operator allowlist.");
       return;
     }
 
-    const args = ctx.match.trim();
-    if (args === "") {
+    const text = ctx.message?.text;
+    if (singleLine(text) === null) {
+      await ctx.reply("One command per message. Do not paste multiple lines.");
+      return;
+    }
+
+    const name = commandArgument(text);
+    if (name === "") {
       await ctx.reply("Usage: /roles_create <name>");
       return;
     }
-    const name = singleLine(args);
-    if (name === null) {
-      await ctx.reply("Name must be a single line. One command per message.");
-      return;
-    }
 
-    const actingAdminId = resolveAdminId(userId)!;
     const result = await api.createRole(name, actingAdminId);
-
     if (!result.ok) {
       await ctx.reply(renderFailure(result));
       return;
     }
-
-    await ctx.reply(
-      `Role created: ${result.data.name} (id ${result.data.roleId}).`,
-    );
+    await ctx.reply(`Role created: ${result.data.name} (id ${result.data.roleId}).`);
   });
 }
