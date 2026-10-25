@@ -83,6 +83,16 @@ The bot renders errors using the codes in `docs/database/errors.md`. Common ones
 
 A `500` from the API is a server fault. Check the API log.
 
+**Reserved criteria are inert.** The criteria types `AcceptanceRate`,
+`DutiesCarried`, and `DaysSinceLastAssignment` are in the write-time vocabulary but
+are not evaluated. A duty rule using one of them writes successfully and has no
+effect on candidate selection. Do not rely on them; the specification reserves them
+for a future revision that will define their evaluation. All other criteria types
+(Role, Gender, AgeRange, Tenure, MembershipStage, BranchAttendanceRecency,
+EligibilityFlag, MemberAttribute, MemberStatus, Youth) are evaluated.
+
+**Duplicate name submissions.** Every vocabulary entity — Role, Duty, Branch, PermissionTier, MemberStatus, TimeOfDay, ServiceType, OutcomeState, AssignmentStatus, Capability, AttributeType — enforces case-insensitive name uniqueness among live rows. ServiceDefinition enforces the same, scoped by OwningBranchId. When the operator submits a duplicate name, the API returns `duplicate_name` / `Conflict`, and the bot renders it as `Already exists: ...`. The system does not silently create a second row. Member is exempt from this rule; two members may share a name and a date of birth, and the operator resolves the conflict by setting the unwanted member's status to a non-rosterable status (member rows are never deleted). The amendment is §15.8.40; the constraint is enforced by the database, not by the API or the bot.
+
 Do not read `configuration_missing` as a permission failure. It is the required-setting rule (§2 of the specification): a process that depends on a required setting refuses to run when the setting is absent.
 
 ---

@@ -1,12 +1,12 @@
 # Conformance Declaration
 
-*At HEAD `a8aa79b`. Supersedes any earlier unversioned copy of this declaration.*
+*At HEAD `100693a`. Supersedes any earlier unversioned copy of this declaration.*
 
 ---
 
 ## Statement
 
-The implementation at commit `a8aa79b` conforms to the frozen specification at `5601ed5` (tag `spec-v1.0-freeze`) as amended by the specification's §15.8 register, subject to the deferred items listed below.
+The implementation at commit `100693a` conforms to the frozen specification at `5601ed5` (tag `spec-v1.0-freeze`) as amended by the specification's §15.8 register — including §15.8.40, case-insensitive vocabulary name uniqueness — subject to the deferred items listed below.
 
 Every process defined by the specification is implemented. Every required setting and its consumer behaves as the specification states. Every schema amendment listed in §15.1–§15.4 and §15.8 is present. No behaviour is present in the implementation that the specification does not define.
 
@@ -80,6 +80,12 @@ Conformance is not the same as completeness:
 
 ## The deferred list
 
+**Note.** §15.8.40 (vocabulary name uniqueness) was added after the freeze as the first
+amendment since `5601ed5`. It is not a deferral — it is a rule, enforced at the database
+and translated at the API boundary. Its presence does not change the deferred list below;
+it narrows what the API accepts, which is orthogonal to what the specification defers.
+
+
 Each of the following is a specification-stated deferral or a documented decision. None is a defect. The full statement and the operator workaround for each is in `docs/operations/runbook.md`.
 
 1. **Health / last-N endpoint.** Requires a specification amendment introducing a job-run entity.
@@ -142,4 +148,4 @@ The amendment ritual is recorded in `FREEZE.md`. No deferred item in this declar
 
 ---
 
-*Source: the frozen specification, the implementation at `a8aa79b`, the acceptance matrix, and the runbook. Subordinate to the specification.*
+*Source: the frozen specification, the implementation at `100693a`, the acceptance matrix, and the runbook. Subordinate to the specification.*
