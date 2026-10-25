@@ -132,16 +132,40 @@ export class ApiClient {
     }
 
     // The API's failure envelope is { error: { code, message } }.
+    //
+    // A server 500 in a non-translating case may return a non-JSON body
+    // (development exception page) or a very long JSON message. Either
+    // way, an unbounded string must never reach a Telegram reply: at
+    // 4000+ characters it exceeds Telegram's 4096-character limit and
+    // the reply fails, masking the original error. Cap the message at
+    // 300 characters and log the full body to the bot's terminal, where
+    // the operator can read it.
     const asRecord = parsed as Record<string, unknown> | undefined;
     const errField = asRecord?.["error"] as
       | { code?: unknown; message?: unknown }
       | undefined;
     const code =
       typeof errField?.code === "string" ? errField.code : "http_" + String(response.status);
-    const message =
+
+    const rawMessage =
       typeof errField?.message === "string"
         ? errField.message
         : response.statusText || "Request failed.";
+
+    let message: string;
+    if (rawMessage.length > 300) {
+      message =
+        rawMessage.slice(0, 300) +
+        " … (truncated; full body in bot terminal)";
+      console.error(
+        `postJson: ${path} returned an oversized message ` +
+          `(${rawMessage.length} chars); truncated to 300. Full body:`,
+        rawMessage,
+      );
+    } else {
+      message = rawMessage;
+    }
+
     return { ok: false, status: response.status, code, message };
   }
 }
