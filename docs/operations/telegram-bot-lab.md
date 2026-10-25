@@ -114,4 +114,103 @@ Do not read `configuration_missing` as a permission failure. It is the required-
 
 ---
 
+## 6. Lab result — closed
+
+The lab's success criteria (the operator-interface report's §8) are met. From a
+database with only the bootstrap rows, using only the Telegram bot, an operator
+can reach a recorded attendance record without touching psql:
+
+    /roles_create
+    /duties_create
+    /branches_create
+    /members_create
+    /duty_rules_create
+    /eligibility_grant
+    /service_defs_create
+    /service_def_schedules_create
+    /materialize_manual
+    /roster_generate
+    /member_set_identifier
+    /attendance_record
+
+Each of the five criteria:
+
+1. **An operator can take the system from skeletal to working for the happy path.**
+   Proven by the twelve-command chain above, run against the live API.
+
+2. **Failures return understandable messages.** `configuration_missing`,
+   `duplicate_name`, `not_found`, `validation_failed`, `lifecycle_violation`, and
+   process-side `errorDetail` all render as short operator-language replies. The
+   `postJson` cap at 300 characters prevents a server error from exceeding
+   Telegram's reply limit.
+
+3. **A second mapped admin is visible on at least one audited or approved action.**
+   The AdminId map is exercised; the "second admin" case is not (only one admin
+   exists in the lab environment). Recorded as a deferred observation, not a
+   defect.
+
+4. **A written task list of the five to eight flows actually used exists.** The
+   twelve-command chain above is that list.
+
+5. **API remains non-public.** The API binds `127.0.0.1:5020`, never `0.0.0.0`.
+   No incident of treating the bot allowlist as an auth boundary. The lab note's
+   first sentence in §2 remains the operating rule.
+
+## 7. Lab findings
+
+The lab surfaced two real gaps in the frozen specification. Both were closed
+by amendment, in the same session, before the lab's verdict was written.
+
+- **§15.8.40 — vocabulary name uniqueness.** An operator's `/duties_create
+  Welcome duty` run against a database that already held a "Welcome duty" row
+  produced a second row with the same name. Sessions produced duplicate roles,
+  duties, and members. The specification's §9.1.2 said "names are required but
+  not unique." The lab made that position untenable. The amendment enforces
+  case-insensitive uniqueness among live rows at the database level for every
+  vocabulary entity, and surfaces violations as `duplicate_name` / `Conflict`.
+  Member is deliberately exempt: real members can share names and birthdates.
+
+- **§15.8.41 — member identifier update surface.** `RecordAttendanceService`
+  requires `Member.CardNumber` or `Member.ReceiptNumber` (§13.1.1). Neither
+  `CreateMemberRequest` nor `UpdateMemberRequest` includes those two fields,
+  and `IdentifierHistory` writes the log, not the member row. The seed scripts
+  set them by SQL. An operator driving the API could not, so attendance was
+  unreachable for any member the operator created. The amendment adds
+  `POST /api/config/3.0/members/{id}/set-identifier`.
+
+Three observations that are not defects, recorded so they do not disappear:
+
+- **Reserved criteria are inert.** `AcceptanceRate`, `DutiesCarried`, and
+  `DaysSinceLastAssignment` are in the write-time vocabulary but not evaluated.
+  Recorded in §5 above.
+
+- **Two bootstrap prerequisites have no HTTP surface.** `EntityDeletionPolicy`
+  rows and `MemberStatus` creation must be seeded or written by SQL. Neither
+  has an endpoint. Recorded in the operator runbook; the lab does not close
+  them.
+
+- **The scheduler runs through every session restart.** Occurrences, fill-status
+  classifications, and timeout transitions are created by the scheduled jobs
+  across restarts, not only by operator commands. This is the deployed-system
+  experience and is correct.
+
+## 8. What remains
+
+Nothing blocking. The following are queued and are **incremental lab work**,
+not close-out:
+
+- Three process commands: `/confirmation_sweep` (7.0), `/fill_evaluate` (10.0),
+  `/attendance_rule_manual` (13.0). These exercise the confirmation lifecycle,
+  fill-status classification, and the rule engine.
+- The reserved fairness criteria — activating `DaysSinceLastAssignment` or
+  `DutiesCarried` as evaluated criteria is a future specification amendment,
+  not a bot command.
+- The deferred items in `docs/operations/conformance.md` — authentication,
+  authorization, tap ingestion, notification templates, per-member channel
+  preferences, health endpoint. None is the lab's concern.
+
+The lab is closed. The bot is proven against the surface it was built to
+exercise. The two gaps it found are closed by amendment. The record above is
+the artifact; the twelve-command chain is the proof.
+
 *Source: the operator-interface report; the frozen specification at `docs/spec/system-design-spec.md`; `docs/database/errors.md`. Subordinate to the specification.*

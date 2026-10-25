@@ -1,12 +1,12 @@
 # Conformance Declaration
 
-*At HEAD `100693a`. Supersedes any earlier unversioned copy of this declaration.*
+*At HEAD `bec2f7a`. Supersedes any earlier unversioned copy of this declaration.*
 
 ---
 
 ## Statement
 
-The implementation at commit `100693a` conforms to the frozen specification at `5601ed5` (tag `spec-v1.0-freeze`) as amended by the specification's §15.8 register — including §15.8.40, case-insensitive vocabulary name uniqueness — subject to the deferred items listed below.
+The implementation at commit `bec2f7a` conforms to the frozen specification at `5601ed5` (tag `spec-v1.0-freeze`) as amended by the specification's §15.8 register — including §15.8.40, case-insensitive vocabulary name uniqueness, and §15.8.41, the member identifier update surface — subject to the deferred items listed below.
 
 Every process defined by the specification is implemented. Every required setting and its consumer behaves as the specification states. Every schema amendment listed in §15.1–§15.4 and §15.8 is present. No behaviour is present in the implementation that the specification does not define.
 
@@ -80,10 +80,18 @@ Conformance is not the same as completeness:
 
 ## The deferred list
 
-**Note.** §15.8.40 (vocabulary name uniqueness) was added after the freeze as the first
-amendment since `5601ed5`. It is not a deferral — it is a rule, enforced at the database
-and translated at the API boundary. Its presence does not change the deferred list below;
-it narrows what the API accepts, which is orthogonal to what the specification defers.
+**Note.** Two amendments have been added after the freeze since `5601ed5`, both during the
+Telegram-bot lab's close-out:
+
+- §15.8.40 (vocabulary name uniqueness) — a rule, enforced at the database and translated
+  at the API boundary. Narrows what the API accepts.
+- §15.8.41 (member identifier update surface) — a new endpoint that sets
+  `Member.CardNumber` and `Member.ReceiptNumber`. Closes the gap where §13.1.1 read those
+  columns but no HTTP surface could set them.
+
+Neither changes the deferred list below. Both are corrective: the specification named the
+behavior, the implementation lacked the surface or constraint, the lab found the gap, and
+the amendment records the fix.
 
 
 Each of the following is a specification-stated deferral or a documented decision. None is a defect. The full statement and the operator workaround for each is in `docs/operations/runbook.md`.
@@ -148,4 +156,4 @@ The amendment ritual is recorded in `FREEZE.md`. No deferred item in this declar
 
 ---
 
-*Source: the frozen specification, the implementation at `100693a`, the acceptance matrix, and the runbook. Subordinate to the specification.*
+*Source: the frozen specification, the implementation at `bec2f7a`, the acceptance matrix, and the runbook. Subordinate to the specification.*
