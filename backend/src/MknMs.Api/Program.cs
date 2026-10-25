@@ -32,6 +32,7 @@ using MknMs.Application.Processes.Operations.GenerateAssignment;
 using MknMs.Application.Processes.Operations.ManageConfirmation;
 using MknMs.Application.Processes.Operations.MaterializeOccurrences;
 using MknMs.Infrastructure.Scheduling;
+using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -142,6 +143,48 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+// Translate the one class of database exception the API has a
+// defined answer for: a unique-constraint violation on a vocabulary
+// name. Every write endpoint (role, duty, branch, member, service
+// definition, attendance rule, capability, attribute type) goes
+// through this pipeline, so the translation is applied once, at the
+// data boundary, not duplicated per service.
+//
+// §15.8.40 makes name uniqueness a database-enforced invariant. The
+// services do not pre-check for duplicates; the database is the
+// authority. When a duplicate is attempted, Postgres raises 23505
+// (unique_violation), EF wraps it in DbUpdateException, and this
+// middleware returns the documented Conflict / duplicate_name
+// envelope instead of a 500 with a development exception page.
+//
+// Other uncaught exceptions continue to surface as before (500 in
+// production, the development exception page in Development).
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next(context);
+    }
+    catch (DbUpdateException ex)
+        when (ex.InnerException is PostgresException pg && pg.SqlState == "23505")
+    {
+        if (context.Response.HasStarted)
+        {
+            throw;
+        }
+        context.Response.StatusCode = StatusCodes.Status409Conflict;
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsJsonAsync(new
+        {
+            error = new
+            {
+                code = "duplicate_name",
+                message = "A row with the same unique name already exists.",
+            },
+        });
+    }
+});
 
 app.UseHttpsRedirection();
 
