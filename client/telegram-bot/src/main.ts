@@ -26,13 +26,19 @@ async function main(): Promise<void> {
   registerMembersCreate(bot, api, resolveAdminId);
 
   bot.catch(async (botErr) => {
-    const message =
-      botErr.error instanceof Error
-        ? botErr.error.message
-        : String(botErr.error);
-    console.error("Bot error:", message);
+    // Full detail goes to the terminal. The chat gets a short message.
+    // A stack trace is not useful to an operator and, at 4000+
+    // characters, exceeds Telegram's reply limit and causes a second
+    // failure that masks the first.
+    if (botErr.error instanceof Error) {
+      console.error("Bot error:", botErr.error.stack ?? botErr.error.message);
+    } else {
+      console.error("Bot error:", String(botErr.error));
+    }
     try {
-      await botErr.ctx.reply(`Bot error: ${message}`);
+      await botErr.ctx.reply(
+        "Something went wrong. Check the bot's terminal output for the trace.",
+      );
     } catch {
       // Reply failed too; nothing further to do.
     }
