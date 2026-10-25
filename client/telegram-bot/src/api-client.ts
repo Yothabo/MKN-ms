@@ -57,6 +57,19 @@ export interface CreateMemberBody {
   actingAdminId: number;
 }
 
+export interface ServiceOccurrence {
+  occurrenceId: number;
+  scheduleId: number | null;
+  eventId: number | null;
+  date: string;
+  serviceTypeId: number | null;
+  startTime: string | null;
+  fillStatusId: number | null;
+  generatedBy: string;
+  createdBy: number | null;
+  changedBy: number | null;
+}
+
 export interface ApiFailure {
   ok: false;
   status: number;
@@ -95,6 +108,17 @@ export class ApiClient {
     return this.postJson<Member>("/api/config/3.0/members", body);
   }
 
+  async listOccurrences(fromDate?: string, toDate?: string): Promise<ServiceOccurrence[]> {
+    const params = new URLSearchParams();
+    if (fromDate) params.set("fromDate", fromDate);
+    if (toDate) params.set("toDate", toDate);
+    const qs = params.toString();
+    const url = qs === ""
+      ? "/api/config/1.0/occurrences"
+      : "/api/config/1.0/occurrences?" + qs;
+    return this.getJson<ServiceOccurrence[]>(url);
+  }
+
   async listRoles(): Promise<Role[]> {
     const response = await fetch(`${this.baseUrl}/api/config/1.0/roles`);
     if (!response.ok) {
@@ -103,6 +127,18 @@ export class ApiClient {
       );
     }
     return (await response.json()) as Role[];
+  }
+
+  // Shared JSON GET helper. Every list command reuses it.
+  private async getJson<T>(path: string): Promise<T> {
+    const response = await fetch(`${this.baseUrl}${path}`);
+    const text = await response.text();
+    if (!response.ok) {
+      throw new Error(
+        `GET ${path} returned HTTP ${response.status} ${response.statusText}: ${text.slice(0, 200)}`,
+      );
+    }
+    return JSON.parse(text) as T;
   }
 
   // Shared JSON POST helper. Every write command reuses it.

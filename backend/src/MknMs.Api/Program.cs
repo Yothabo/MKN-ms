@@ -23,6 +23,7 @@ using MknMs.Application.Processes.Configuration.ManageMemberStatus;
 using MknMs.Application.Processes.Configuration.RecordReadmission;
 using MknMs.Application.Processes.Configuration.ManageProgram;
 using MknMs.Application.Processes.Configuration.ManageProgramItem;
+using MknMs.Application.Processes.Configuration.OccurrenceRead;
 using MknMs.Application.Processes.Operations.AttendanceRuleEngine;
 using MknMs.Application.Processes.Operations.DispatchNotification;
 using MknMs.Application.Processes.Operations.EvaluateFillStatus;
@@ -88,6 +89,7 @@ builder.Services.AddScoped<IManageEligibilityService, ManageEligibilityService>(
 builder.Services.AddScoped<IManageEventService, ManageEventService>();
 builder.Services.AddScoped<IManageProgramService, ManageProgramService>();
 builder.Services.AddScoped<IManageProgramItemService, ManageProgramItemService>();
+builder.Services.AddScoped<IOccurrenceReadService, OccurrenceReadService>();
 builder.Services.AddScoped<IManageEventDutyService, ManageEventDutyService>();
 
 // ---------------------------------------------------------------------

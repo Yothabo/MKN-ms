@@ -7,6 +7,7 @@ import { registerRolesList } from "./commands/roles_list.js";
 import { registerDutiesCreate } from "./commands/duties_create.js";
 import { registerBranchesCreate } from "./commands/branches_create.js";
 import { registerMembersCreate } from "./commands/members_create.js";
+import { registerOccurrencesList } from "./commands/occurrences_list.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -24,6 +25,7 @@ async function main(): Promise<void> {
   registerDutiesCreate(bot, api, resolveAdminId);
   registerBranchesCreate(bot, api, resolveAdminId);
   registerMembersCreate(bot, api, resolveAdminId);
+  registerOccurrencesList(bot, api, isAllowed);
 
   bot.catch(async (botErr) => {
     // Full detail goes to the terminal. The chat gets a short message.

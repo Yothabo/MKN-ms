@@ -23,6 +23,7 @@ using MknMs.Application.Processes.Configuration.ManageMemberStatus;
 using MknMs.Application.Processes.Configuration.RecordReadmission;
 using MknMs.Application.Processes.Configuration.ManageProgram;
 using MknMs.Application.Processes.Configuration.ManageProgramItem;
+using MknMs.Application.Processes.Configuration.OccurrenceRead;
 
 namespace MknMs.Api.Endpoints;
 
@@ -53,6 +54,7 @@ public static class ConfigurationEndpoints
         MapSetMemberAttribute(routes);
         MapManageLookups(routes);
         MapManageNotificationSubscription(routes);
+        MapOccurrenceRead(routes);
         return routes;
     }
 
@@ -1127,6 +1129,63 @@ public static class ConfigurationEndpoints
                 id, request.ActingAdminId, request.ApprovedByAdminId,
                 request.ConsequencesAcknowledged, request.Reason ?? string.Empty,
                 cancellationToken)));
+    }
+
+    // -----------------------------------------------------------------
+    // 1.0 Occurrence read surface
+    // -----------------------------------------------------------------
+
+    private static void MapOccurrenceRead(IEndpointRouteBuilder routes)
+    {
+        routes.MapGet("/api/config/1.0/occurrences", async (
+            string? fromDate,
+            string? toDate,
+            IOccurrenceReadService service,
+            CancellationToken cancellationToken) =>
+        {
+            DateOnly? from = null;
+            DateOnly? to = null;
+
+            if (!string.IsNullOrWhiteSpace(fromDate))
+            {
+                if (!IsoDate.TryParse(fromDate, out var parsedFrom))
+                {
+                    return Results.BadRequest(new
+                    {
+                        error = new ConfigurationError(
+                            ConfigurationErrorCodes.ValidationFailed,
+                            "FromDate must be an ISO 8601 date (yyyy-MM-dd)."),
+                    });
+                }
+                from = parsedFrom;
+            }
+
+            if (!string.IsNullOrWhiteSpace(toDate))
+            {
+                if (!IsoDate.TryParse(toDate, out var parsedTo))
+                {
+                    return Results.BadRequest(new
+                    {
+                        error = new ConfigurationError(
+                            ConfigurationErrorCodes.ValidationFailed,
+                            "ToDate must be an ISO 8601 date (yyyy-MM-dd)."),
+                    });
+                }
+                to = parsedTo;
+            }
+
+            if (from is DateOnly f && to is DateOnly tt && f > tt)
+            {
+                return Results.BadRequest(new
+                {
+                    error = new ConfigurationError(
+                        ConfigurationErrorCodes.ValidationFailed,
+                        "FromDate must not be after ToDate."),
+                });
+            }
+
+            return Results.Ok(await service.ListAsync(from, to, cancellationToken));
+        });
     }
 }
 
