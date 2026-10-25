@@ -19,6 +19,11 @@ import { registerDutyRulesCreate } from "./commands/duty_rules_create.js";
 import { registerEligibilityGrant } from "./commands/eligibility_grant.js";
 import { registerServiceDefsCreate } from "./commands/service_defs_create.js";
 import { registerServiceDefSchedulesCreate } from "./commands/service_def_schedules_create.js";
+import { registerMaterializeManual } from "./commands/materialize_manual.js";
+import { registerRosterGenerate } from "./commands/roster_generate.js";
+import { registerAttendanceRecord } from "./commands/attendance_record.js";
+import { registerIdentifierIssue } from "./commands/identifier_issue.js";
+import { registerMemberSetIdentifier } from "./commands/member_set_identifier.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -48,6 +53,11 @@ async function main(): Promise<void> {
   registerEligibilityGrant(bot, api, resolveAdminId);
   registerServiceDefsCreate(bot, api, resolveAdminId);
   registerServiceDefSchedulesCreate(bot, api, resolveAdminId);
+  registerMaterializeManual(bot, api, resolveAdminId);
+  registerRosterGenerate(bot, api, isAllowed);
+  registerAttendanceRecord(bot, api, isAllowed);
+  registerIdentifierIssue(bot, api, resolveAdminId);
+  registerMemberSetIdentifier(bot, api, resolveAdminId);
 
   bot.catch(async (botErr) => {
     // Full detail goes to the terminal. The chat gets a short message.

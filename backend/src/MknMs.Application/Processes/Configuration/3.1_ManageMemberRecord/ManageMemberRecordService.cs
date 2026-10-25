@@ -41,6 +41,30 @@ public interface IManageMemberRecordService
         int memberId,
         int memberStatusId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sets the member's current CardNumber and/or ReceiptNumber without
+    /// touching any other field. At least one of the two must be supplied.
+    /// Passing a null leaves the corresponding column unchanged. Passing an
+    /// empty string clears the column (rare; reserved for a correction that
+    /// must explicitly unset a value that was recorded in error).
+    /// </summary>
+    /// <remarks>
+    /// Separate from UpdateAsync because UpdateAsync carries demographics
+    /// and relations — the operator setting a card number should not have to
+    /// resend all ten fields. Separate from IdentifierHistory issuance
+    /// because they are two different facts: the history log records "an
+    /// identifier was issued or retired"; the member row records "this is
+    /// the current value." Both are meaningful independently.
+    ///
+    /// Specification: §4 (Member), §9.1.7, §13.1.1, §15.8.41.
+    /// </remarks>
+    Task<ConfigurationResult<Member>> SetIdentifierAsync(
+        int memberId,
+        string? cardNumber,
+        string? receiptNumber,
+        int actingAdminId,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed record CreateMemberRequest
@@ -200,6 +224,52 @@ public sealed class ManageMemberRecordService : IManageMemberRecordService
         }
 
         entity.MemberStatusId = memberStatusId;
+        await _db.SaveChangesAsync(cancellationToken);
+        return ConfigurationResult<Member>.Success(entity);
+    }
+
+    public async Task<ConfigurationResult<Member>> SetIdentifierAsync(
+        int memberId,
+        string? cardNumber,
+        string? receiptNumber,
+        int actingAdminId,
+        CancellationToken cancellationToken = default)
+    {
+        var adminError = await AdminResolver.ResolveActiveAsync(
+            _db, actingAdminId, cancellationToken);
+        if (adminError is not null)
+        {
+            return ConfigurationResult<Member>.Failure(adminError);
+        }
+
+        if (cardNumber is null && receiptNumber is null)
+        {
+            return ConfigurationResult<Member>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.InvalidValue,
+                    "At least one of CardNumber or ReceiptNumber must be supplied."));
+        }
+
+        var entity = await _db.Members
+            .FirstOrDefaultAsync(m => m.MemberId == memberId, cancellationToken);
+        if (entity is null)
+        {
+            return ConfigurationResult<Member>.Failure(
+                new ConfigurationError(
+                    ConfigurationErrorCodes.NotFound,
+                    $"Member {memberId} does not exist."));
+        }
+
+        // Null leaves unchanged. Empty string clears. Non-empty sets.
+        if (cardNumber is not null)
+        {
+            entity.CardNumber = cardNumber.Trim() == "" ? null : cardNumber.Trim();
+        }
+        if (receiptNumber is not null)
+        {
+            entity.ReceiptNumber = receiptNumber.Trim() == "" ? null : receiptNumber.Trim();
+        }
+
         await _db.SaveChangesAsync(cancellationToken);
         return ConfigurationResult<Member>.Success(entity);
     }

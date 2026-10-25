@@ -91,6 +91,23 @@ for a future revision that will define their evaluation. All other criteria type
 (Role, Gender, AgeRange, Tenure, MembershipStage, BranchAttendanceRecency,
 EligibilityFlag, MemberAttribute, MemberStatus, Youth) are evaluated.
 
+**Identifier workflow.** Attendance-register eligibility (§13.1.1) reads
+`Member.CardNumber` or `Member.ReceiptNumber`. Two operations touch those
+columns and they are not the same:
+
+  - `/member_set_identifier <memberId>|<card>|<receipt>` — sets the current
+    value on the member. Use `-` for either slot to leave it unchanged. This
+    is what attendance reads.
+  - `/identifier_issue <memberId>|<type>|<number>|<assignedDate>` — writes
+    an IdentifierHistory row. A historical log entry. Does not set the
+    member columns.
+
+A member who has only had an identifier issued (history) but has not had
+`/member_set_identifier` run against them cannot attend. Both operations
+are meaningful independently — the history log records that an identifier
+was issued or retired; the member columns record the current value — so
+they remain separate. The common lab workflow runs both in order.
+
 **Duplicate name submissions.** Every vocabulary entity — Role, Duty, Branch, PermissionTier, MemberStatus, TimeOfDay, ServiceType, OutcomeState, AssignmentStatus, Capability, AttributeType — enforces case-insensitive name uniqueness among live rows. ServiceDefinition enforces the same, scoped by OwningBranchId. When the operator submits a duplicate name, the API returns `duplicate_name` / `Conflict`, and the bot renders it as `Already exists: ...`. The system does not silently create a second row. Member is exempt from this rule; two members may share a name and a date of birth, and the operator resolves the conflict by setting the unwanted member's status to a non-rosterable status (member rows are never deleted). The amendment is §15.8.40; the constraint is enforced by the database, not by the API or the bot.
 
 Do not read `configuration_missing` as a permission failure. It is the required-setting rule (§2 of the specification): a process that depends on a required setting refuses to run when the setting is absent.

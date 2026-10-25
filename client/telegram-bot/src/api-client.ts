@@ -41,6 +41,11 @@ export interface Member {
   branchId: number;
   roleId: number;
   memberStatusId: number;
+  // The two columns §13.1.1 reads for attendance-register eligibility.
+  // Settable via POST /api/config/3.0/members/{id}/set-identifier
+  // (§15.8.41). Absent or null = not currently issued.
+  cardNumber: string | null;
+  receiptNumber: string | null;
 }
 
 export interface CreateMemberBody {
@@ -148,6 +153,42 @@ export interface EligibilityCreated {
   revokedReason: string | null;
 }
 
+export interface MaterializeResult {
+  runId: number;
+  status: string;
+  schedulesEvaluated: number;
+  occurrencesCreated: number;
+  errorDetail: string | null;
+}
+
+export interface GenerateAssignmentResult {
+  status: string;
+  occurrencesProcessed: number;
+  assignmentsCreated: number;
+  dutiesFullyFilled: number;
+  dutiesPartiallyFilled: number;
+  dutiesUnfilled: number;
+  errorDetail: string | null;
+}
+
+export interface RecordAttendanceResult {
+  status: string;
+  recorded: boolean;
+  recordId: number;
+  errorDetail: string | null;
+}
+
+export interface IdentifierHistory {
+  entryId: number;
+  memberId: number;
+  type: string;
+  number: string;
+  assignedDate: string;
+  unassignedDate: string | null;
+  reason: string | null;
+  authorizedBy: number;
+}
+
 export interface ApiFailure {
   ok: false;
   status: number;
@@ -246,6 +287,71 @@ export class ApiClient {
     );
   }
 
+  async materializeManual(
+    actingAdminId: number,
+    horizonDaysOverride?: number,
+  ): Promise<ApiResult<MaterializeResult>> {
+    const body: Record<string, unknown> = {
+      triggerType: "Manual",
+      triggeredByAdminId: actingAdminId,
+    };
+    if (horizonDaysOverride !== undefined) {
+      body.horizonDaysOverride = horizonDaysOverride;
+    }
+    return this.postJson<MaterializeResult>("/api/processes/11.0/materialize", body);
+  }
+
+  async generateAssignment(
+    occurrenceId?: number,
+    fromDate?: string,
+    toDate?: string,
+  ): Promise<ApiResult<GenerateAssignmentResult>> {
+    const body: Record<string, unknown> = {};
+    if (occurrenceId !== undefined) body.occurrenceId = occurrenceId;
+    if (fromDate !== undefined) body.fromDate = fromDate;
+    if (toDate !== undefined) body.toDate = toDate;
+    return this.postJson<GenerateAssignmentResult>(
+      "/api/processes/5.0/generate", body);
+  }
+
+  async recordAttendance(
+    memberId: number,
+    occurrenceId: number,
+  ): Promise<ApiResult<RecordAttendanceResult>> {
+    return this.postJson<RecordAttendanceResult>(
+      "/api/processes/6.0/record",
+      { memberId, occurrenceId },
+    );
+  }
+
+  async setMemberIdentifier(
+    memberId: number,
+    cardNumber: string | null,
+    receiptNumber: string | null,
+    actingAdminId: number,
+  ): Promise<ApiResult<Member>> {
+    const body: Record<string, unknown> = { actingAdminId };
+    if (cardNumber !== null) body.cardNumber = cardNumber;
+    if (receiptNumber !== null) body.receiptNumber = receiptNumber;
+    return this.postJson<Member>(
+      `/api/config/3.0/members/${memberId}/set-identifier`,
+      body,
+    );
+  }
+
+  async issueIdentifier(
+    memberId: number,
+    type: string,
+    number: string,
+    assignedDate: string,
+    authorizedByAdminId: number,
+  ): Promise<ApiResult<IdentifierHistory>> {
+    return this.postJson<IdentifierHistory>(
+      `/api/config/3.0/members/${memberId}/identifiers`,
+      { type, number, assignedDate, authorizedByAdminId },
+    );
+  }
+
   async listDuties(): Promise<Duty[]> {
     return this.getJson<Duty[]>("/api/config/1.0/duties");
   }
@@ -329,26 +435,56 @@ export class ApiClient {
       return { ok: true, data: parsed as T };
     }
 
-    // The API's failure envelope is { error: { code, message } }.
+    // The API uses two failure envelopes.
     //
-    // A server 500 in a non-translating case may return a non-JSON body
-    // (development exception page) or a very long JSON message. Either
-    // way, an unbounded string must never reach a Telegram reply: at
-    // 4000+ characters it exceeds Telegram's 4096-character limit and
-    // the reply fails, masking the original error. Cap the message at
-    // 300 characters and log the full body to the bot's terminal, where
-    // the operator can read it.
+    // Config endpoints (1.0, 2.0, 3.0, 4.0, 8.0) return:
+    //   { "error": { "code": "...", "message": "..." } }
+    //
+    // Process endpoints (5.0, 6.0, 7.0, 10.0, 11.0, 12.0, 13.0) return
+    // their own result envelope with status "Failure" and a free-text
+    // errorDetail:
+    //   { "status": "Failure", ...processFields, "errorDetail": "..." }
+    //
+    // The bot must render both. Without this, a process failure
+    // surfaces as a bare "http_422: Unprocessable Entity" and the
+    // errorDetail — the actual diagnosis — is invisible to the operator.
+    //
+    // A server 500 may return a non-JSON body (development exception
+    // page) or a very long message. Either way, an unbounded string
+    // must never reach a Telegram reply: at 4000+ chars it exceeds
+    // Telegram's 4096 limit and the reply fails, masking the error.
+    // Cap at 300 and log the full body to the terminal.
     const asRecord = parsed as Record<string, unknown> | undefined;
+
     const errField = asRecord?.["error"] as
       | { code?: unknown; message?: unknown }
       | undefined;
-    const code =
-      typeof errField?.code === "string" ? errField.code : "http_" + String(response.status);
 
-    const rawMessage =
-      typeof errField?.message === "string"
-        ? errField.message
-        : response.statusText || "Request failed.";
+    const configShape =
+      typeof errField?.code === "string" || typeof errField?.message === "string";
+    const processShape =
+      typeof asRecord?.["errorDetail"] === "string"
+        && asRecord?.["status"] === "Failure";
+
+    let code: string;
+    let rawMessage: string;
+
+    if (configShape) {
+      code =
+        typeof errField?.code === "string"
+          ? errField.code
+          : "http_" + String(response.status);
+      rawMessage =
+        typeof errField?.message === "string"
+          ? errField.message
+          : response.statusText || "Request failed.";
+    } else if (processShape) {
+      code = "process_failure";
+      rawMessage = asRecord!["errorDetail"] as string;
+    } else {
+      code = "http_" + String(response.status);
+      rawMessage = response.statusText || "Request failed.";
+    }
 
     let message: string;
     if (rawMessage.length > 300) {
@@ -424,6 +560,12 @@ export function commandArgument(rawMessageText: string | undefined): string {
 }
 
 export function renderFailure(failure: ApiFailure): string {
+  // Process endpoints carry their diagnosis in errorDetail, which the
+  // postJson adapter has already put into failure.message. Surface it
+  // verbatim: the process's message is already operator-language.
+  if (failure.code === "process_failure") {
+    return failure.message;
+  }
   if (failure.status >= 500) {
     return `API returned a server error (${failure.status}). Check the API log. ${failure.message}`;
   }

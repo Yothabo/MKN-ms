@@ -588,6 +588,23 @@ public static class ConfigurationEndpoints
             CancellationToken cancellationToken) =>
             ToHttpResult(await service.SetStatusAsync(id, request.MemberStatusId, cancellationToken)));
 
+        // §15.8.41: set-identifier writes Member.CardNumber and/or
+        // Member.ReceiptNumber without touching any other member field.
+        // Closes the gap where CreateMemberRequest and UpdateMemberRequest
+        // omit the two columns that §13.1.1 reads for attendance-register
+        // eligibility.
+        routes.MapPost("/api/config/3.0/members/{id:int}/set-identifier", async (
+            int id,
+            [FromBody] SetMemberIdentifierRequest request,
+            IManageMemberRecordService service,
+            CancellationToken cancellationToken) =>
+            ToHttpResult(await service.SetIdentifierAsync(
+                id,
+                request.CardNumber,
+                request.ReceiptNumber,
+                request.ActingAdminId,
+                cancellationToken)));
+
         // Identifier history
         routes.MapGet("/api/config/3.0/members/{memberId:int}/identifiers", async (
             int memberId,
@@ -1348,6 +1365,13 @@ public sealed record LifecycleActionRequest
 public sealed record SetMemberStatusRequest
 {
     public required int MemberStatusId { get; init; }
+}
+
+public sealed record SetMemberIdentifierRequest
+{
+    public string? CardNumber { get; init; }
+    public string? ReceiptNumber { get; init; }
+    public required int ActingAdminId { get; init; }
 }
 
 public sealed record RecordReadmissionRequest
