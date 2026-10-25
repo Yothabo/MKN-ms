@@ -850,7 +850,7 @@ Entities without lifecycle state: IdentifierHistory, Eligibility, SystemSetting,
 
 Role and Duty are pure names plus an active flag. Neither carries any reference to the other. The relationship — when one exists — is created in 2.0 as a DutyRule row, and lives on the Duty side.
 
-- Names are required but not unique.
+- Names are required. Among live rows (`is_deleted = false`), each vocabulary entity enforces a case-insensitive unique name at the database level (§15.8.40). Soft-deleted rows are excluded — a retired name may be reused for a new live row. The administrator cannot create two live rows with the same name.
 - Role and Duty cannot be linked at creation time by any means other than a subsequent DutyRule row.
 - An unreferenced Role or Duty is valid, inert, and harmless.
 
@@ -2380,6 +2380,7 @@ The following amendments were added after the original fifteen.
 | 15.8.37 | NotificationSubscription soft-delete clarification: the §9.7 row "removed; not soft-deleted independently" meant the cascade has no dependents, not that the operation is absent. §9.7 row rewritten to say so; §14.1.9 already relies on the operation | Amendment | §9.7, §14.1.9 |
 | 15.8.38 | Attribute Type create and list in scope: Set Member Attribute (§3.x) requires a live AttributeType as its only usable target; without a create path the AttributeType vocabulary is seed-only. No base-doc sentence is amended — the note that Attribute Type CRUD is out of E4 scope appears nowhere in the current tree. | Amendment | §4, §9.1.7 |
 | 15.8.39 | §15.8.36 supersession pointer: the endpoint families added in a61fc57 (Capability, AttributeType, Set Member Attribute, Record Readmission, Notification Subscription) are not enumerated in §15.8.36. The current inventory is in adapter-contract.md "Since the freeze" and in MknMs.Api/Endpoints/. §15.8.36 remains historically accurate at its own commit. | Amendment | §14, §16 |
+| 15.8.40 | Case-insensitive vocabulary name uniqueness: every vocabulary entity (Role, Duty, Branch, PermissionTier, MemberStatus, TimeOfDay, ServiceType, OutcomeState, AssignmentStatus, Capability, AttributeType) enforces a case-insensitive unique name among live rows (`is_deleted = false`). ServiceDefinition enforces case-insensitive name uniqueness scoped by OwningBranchId: at most one live global service per name, and at most one live branch-scoped service per (branch, name). Member is exempt — no natural-key constraint is imposed. Uniqueness is enforced at the database level via filtered unique indexes; the API surfaces violations as `duplicate_name`/`Conflict`. Soft-deleted rows are excluded from the invariant: the invariant is about live names, not historical ones. | Amendment | §9.1.2, §9.7, §10.1 |
 
 ---
 
