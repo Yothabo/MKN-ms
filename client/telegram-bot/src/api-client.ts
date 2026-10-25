@@ -70,6 +70,45 @@ export interface ServiceOccurrence {
   changedBy: number | null;
 }
 
+export interface ServiceDefinition {
+  serviceDefId: number;
+  name: string;
+  serviceTypeId: number;
+  owningBranchId: number | null;
+  isActive: boolean;
+  isDeleted: boolean;
+}
+
+export interface ServiceSchedule {
+  scheduleId: number;
+  serviceDefId: number;
+  timeSlotId: number;
+  startTime: string;
+  isActive: boolean;
+  isDeleted: boolean;
+}
+
+export interface DutyRule {
+  ruleId: number;
+  dutyId: number;
+  serviceDefId: number | null;
+  tierOrder: number;
+  criteriaType: string;
+  criteriaValue: string;
+  isActive: boolean;
+  isDeleted: boolean;
+}
+
+export interface Eligibility {
+  eligibilityId: number;
+  memberId: number;
+  dutyId: number;
+  grantedDate: string;
+  grantedBy: number;
+  revokedDate: string | null;
+  revokedReason: string | null;
+}
+
 export interface ApiFailure {
   ok: false;
   status: number;
@@ -117,6 +156,41 @@ export class ApiClient {
       ? "/api/config/1.0/occurrences"
       : "/api/config/1.0/occurrences?" + qs;
     return this.getJson<ServiceOccurrence[]>(url);
+  }
+
+  async listDuties(): Promise<Duty[]> {
+    return this.getJson<Duty[]>("/api/config/1.0/duties");
+  }
+
+  async listBranches(): Promise<Branch[]> {
+    return this.getJson<Branch[]>("/api/config/1.0/branches");
+  }
+
+  async listMembers(branchId?: number): Promise<Member[]> {
+    const url = branchId !== undefined
+      ? `/api/config/3.0/members?branchId=${branchId}`
+      : "/api/config/3.0/members";
+    return this.getJson<Member[]>(url);
+  }
+
+  async listServiceDefinitions(): Promise<ServiceDefinition[]> {
+    return this.getJson<ServiceDefinition[]>("/api/config/1.0/service-definitions");
+  }
+
+  async listServiceSchedules(serviceDefId?: number): Promise<ServiceSchedule[]> {
+    const url = serviceDefId !== undefined
+      ? `/api/config/1.0/service-schedules?serviceDefId=${serviceDefId}`
+      : "/api/config/1.0/service-schedules";
+    return this.getJson<ServiceSchedule[]>(url);
+  }
+
+  async listDutyRules(dutyId: number): Promise<DutyRule[]> {
+    return this.getJson<DutyRule[]>(`/api/config/2.0/duties/${dutyId}/rules`);
+  }
+
+  async listEligibility(memberId: number): Promise<Eligibility[]> {
+    return this.getJson<Eligibility[]>(
+      `/api/config/4.0/members/${memberId}/eligibility`);
   }
 
   async listRoles(): Promise<Role[]> {

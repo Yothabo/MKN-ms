@@ -8,6 +8,13 @@ import { registerDutiesCreate } from "./commands/duties_create.js";
 import { registerBranchesCreate } from "./commands/branches_create.js";
 import { registerMembersCreate } from "./commands/members_create.js";
 import { registerOccurrencesList } from "./commands/occurrences_list.js";
+import { registerDutiesList } from "./commands/duties_list.js";
+import { registerBranchesList } from "./commands/branches_list.js";
+import { registerMembersList } from "./commands/members_list.js";
+import { registerServiceDefsList } from "./commands/service_defs_list.js";
+import { registerSchedulesList } from "./commands/schedules_list.js";
+import { registerDutyRulesList } from "./commands/duty_rules_list.js";
+import { registerEligibilityList } from "./commands/eligibility_list.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -26,6 +33,13 @@ async function main(): Promise<void> {
   registerBranchesCreate(bot, api, resolveAdminId);
   registerMembersCreate(bot, api, resolveAdminId);
   registerOccurrencesList(bot, api, isAllowed);
+  registerDutiesList(bot, api, isAllowed);
+  registerBranchesList(bot, api, isAllowed);
+  registerMembersList(bot, api, isAllowed);
+  registerServiceDefsList(bot, api, isAllowed);
+  registerSchedulesList(bot, api, isAllowed);
+  registerDutyRulesList(bot, api, isAllowed);
+  registerEligibilityList(bot, api, isAllowed);
 
   bot.catch(async (botErr) => {
     // Full detail goes to the terminal. The chat gets a short message.
