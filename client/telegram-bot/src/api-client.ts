@@ -109,6 +109,45 @@ export interface Eligibility {
   revokedReason: string | null;
 }
 
+export interface ServiceDefinitionCreated {
+  serviceDefId: number;
+  name: string;
+  serviceTypeId: number;
+  owningBranchId: number | null;
+  isActive: boolean;
+  isDeleted: boolean;
+}
+
+export interface ServiceScheduleCreated {
+  scheduleId: number;
+  serviceDefId: number;
+  timeSlotId: number;
+  startTime: string;
+  isActive: boolean;
+  isDeleted: boolean;
+}
+
+export interface DutyRuleCreated {
+  ruleId: number;
+  dutyId: number;
+  serviceDefId: number | null;
+  tierOrder: number;
+  criteriaType: string;
+  criteriaValue: string;
+  isActive: boolean;
+  isDeleted: boolean;
+}
+
+export interface EligibilityCreated {
+  eligibilityId: number;
+  memberId: number;
+  dutyId: number;
+  grantedDate: string;
+  grantedBy: number;
+  revokedDate: string | null;
+  revokedReason: string | null;
+}
+
 export interface ApiFailure {
   ok: false;
   status: number;
@@ -156,6 +195,55 @@ export class ApiClient {
       ? "/api/config/1.0/occurrences"
       : "/api/config/1.0/occurrences?" + qs;
     return this.getJson<ServiceOccurrence[]>(url);
+  }
+
+  async createDutyRule(
+    dutyId: number,
+    tierOrder: number,
+    criteriaType: string,
+    criteriaValue: string,
+    actingAdminId: number,
+  ): Promise<ApiResult<DutyRuleCreated>> {
+    return this.postJson<DutyRuleCreated>(
+      `/api/config/2.0/duties/${dutyId}/rules`,
+      { tierOrder, criteriaType, criteriaValue, actingAdminId },
+    );
+  }
+
+  async grantEligibility(
+    memberId: number,
+    dutyId: number,
+    grantedDate: string,
+    grantedByAdminId: number,
+  ): Promise<ApiResult<EligibilityCreated>> {
+    return this.postJson<EligibilityCreated>(
+      `/api/config/4.0/members/${memberId}/eligibility`,
+      { dutyId, grantedDate, grantedByAdminId },
+    );
+  }
+
+  async createServiceDefinition(
+    name: string,
+    serviceTypeId: number,
+    owningBranchId: number | null,
+    actingAdminId: number,
+  ): Promise<ApiResult<ServiceDefinitionCreated>> {
+    return this.postJson<ServiceDefinitionCreated>(
+      "/api/config/1.0/service-definitions",
+      { name, serviceTypeId, owningBranchId, actingAdminId },
+    );
+  }
+
+  async createServiceSchedule(
+    serviceDefId: number,
+    timeSlotId: number,
+    startTime: string,
+    actingAdminId: number,
+  ): Promise<ApiResult<ServiceScheduleCreated>> {
+    return this.postJson<ServiceScheduleCreated>(
+      "/api/config/1.0/service-schedules",
+      { serviceDefId, timeSlotId, startTime, actingAdminId },
+    );
   }
 
   async listDuties(): Promise<Duty[]> {

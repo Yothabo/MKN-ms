@@ -15,6 +15,10 @@ import { registerServiceDefsList } from "./commands/service_defs_list.js";
 import { registerSchedulesList } from "./commands/schedules_list.js";
 import { registerDutyRulesList } from "./commands/duty_rules_list.js";
 import { registerEligibilityList } from "./commands/eligibility_list.js";
+import { registerDutyRulesCreate } from "./commands/duty_rules_create.js";
+import { registerEligibilityGrant } from "./commands/eligibility_grant.js";
+import { registerServiceDefsCreate } from "./commands/service_defs_create.js";
+import { registerServiceDefSchedulesCreate } from "./commands/service_def_schedules_create.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -40,6 +44,10 @@ async function main(): Promise<void> {
   registerSchedulesList(bot, api, isAllowed);
   registerDutyRulesList(bot, api, isAllowed);
   registerEligibilityList(bot, api, isAllowed);
+  registerDutyRulesCreate(bot, api, resolveAdminId);
+  registerEligibilityGrant(bot, api, resolveAdminId);
+  registerServiceDefsCreate(bot, api, resolveAdminId);
+  registerServiceDefSchedulesCreate(bot, api, resolveAdminId);
 
   bot.catch(async (botErr) => {
     // Full detail goes to the terminal. The chat gets a short message.
