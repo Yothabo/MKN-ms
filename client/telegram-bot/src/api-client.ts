@@ -169,6 +169,16 @@ export interface ConfirmationSweepResult {
   errorDetail: string | null;
 }
 
+export interface FillStatusResult {
+  status: string;
+  occurrencesEvaluated: number;
+  unfilledCount: number;
+  partiallyFilledCount: number;
+  filledCount: number;
+  skippedCancelledCount: number;
+  errorDetail: string | null;
+}
+
 export interface GenerateAssignmentResult {
   status: string;
   occurrencesProcessed: number;
@@ -313,6 +323,21 @@ export class ApiClient {
     return this.postJson<ConfirmationSweepResult>(
       "/api/processes/7.0/sweep",
       {},
+    );
+  }
+
+  async evaluateFillStatus(
+    occurrenceId?: number,
+    fromDate?: string,
+    toDate?: string,
+  ): Promise<ApiResult<FillStatusResult>> {
+    const body: Record<string, unknown> = {};
+    if (occurrenceId !== undefined) body.occurrenceId = occurrenceId;
+    if (fromDate !== undefined) body.fromDate = fromDate;
+    if (toDate !== undefined) body.toDate = toDate;
+    return this.postJson<FillStatusResult>(
+      "/api/processes/10.0/evaluate",
+      body,
     );
   }
 
