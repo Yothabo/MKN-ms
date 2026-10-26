@@ -359,4 +359,46 @@ public class ManageProgramItemServiceTests : IntegrationTestBase
         occurrencesAfter.Should().Be(1,
             "removing the ServiceDefID does not remove the event-sourced occurrence");
     }
+    // Regression for D1: ProgramItem.ScheduledStart / ScheduledEnd are
+    // DateTimeOffset on 'timestamp with time zone'. Npgsql rejects a
+    // non-zero offset. The service must normalise to UTC on write so
+    // callers can supply a local-time offset and the row persists.
+    [Fact]
+    public async Task Create_WithNonUtcOffset_StoresUtcInstant()
+    {
+        var f = await SeedAsync();
+        var service = MakeService();
+
+        var programId = await Db.Programs
+            .Select(p => p.ProgramId)
+            .FirstAsync();
+
+        // 2026-11-01T09:00:00+02:00 == 2026-11-01T07:00:00Z
+        var start = new DateTimeOffset(2026, 11, 1, 9, 0, 0, TimeSpan.FromHours(2));
+        var end = new DateTimeOffset(2026, 11, 1, 10, 30, 0, TimeSpan.FromHours(2));
+
+        var result = await service.CreateAsync(
+            programId,
+            sequenceOrder: 99,
+            title: "UTC-offset item",
+            scheduledStart: start,
+            scheduledEnd: end,
+            serviceDefId: null,
+            actingAdminId: f.AdminId);
+
+        result.IsSuccess.Should().BeTrue($"error: {result.Error?.Message}");
+
+        Db.ChangeTracker.Clear();
+        var persisted = await Db.ProgramItems
+            .AsNoTracking()
+            .FirstAsync(i => i.Title == "UTC-offset item");
+
+        persisted.ScheduledStart.Offset.Should().Be(TimeSpan.Zero,
+            "DateTimeOffset columns store instants; the write must be UTC");
+        persisted.ScheduledStart.UtcDateTime.Should().Be(
+            new DateTime(2026, 11, 1, 7, 0, 0, DateTimeKind.Utc));
+        persisted.ScheduledEnd.UtcDateTime.Should().Be(
+            new DateTime(2026, 11, 1, 8, 30, 0, DateTimeKind.Utc));
+    }
+
 }

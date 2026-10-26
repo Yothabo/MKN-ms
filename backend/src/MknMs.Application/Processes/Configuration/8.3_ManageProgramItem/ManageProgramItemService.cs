@@ -122,13 +122,20 @@ public sealed class ManageProgramItemService : IManageProgramItemService
                     "Program does not exist."));
         }
 
+        // §C7: DateTimeOffset columns are instants, persisted in UTC.
+        // Npgsql rejects non-UTC offsets on 'timestamp with time zone'.
+        // Normalise the caller's offset here so every caller — HTTP,
+        // bot, tests — writes the same UTC instant.
+        var startUtc = scheduledStart.ToUniversalTime();
+        var endUtc = scheduledEnd.ToUniversalTime();
+
         var entity = new ProgramItem
         {
             ProgramId = programId,
             SequenceOrder = sequenceOrder,
             Title = title.Trim(),
-            ScheduledStart = scheduledStart,
-            ScheduledEnd = scheduledEnd,
+            ScheduledStart = startUtc,
+            ScheduledEnd = endUtc,
             ServiceDefId = serviceDefId,
         };
         _db.ProgramItems.Add(entity);
@@ -173,10 +180,11 @@ public sealed class ManageProgramItemService : IManageProgramItemService
 
         var previousServiceDefId = entity.ServiceDefId;
 
+        // §C7: DateTimeOffset columns are instants, persisted in UTC.
         entity.SequenceOrder = sequenceOrder;
         entity.Title = title.Trim();
-        entity.ScheduledStart = scheduledStart;
-        entity.ScheduledEnd = scheduledEnd;
+        entity.ScheduledStart = scheduledStart.ToUniversalTime();
+        entity.ScheduledEnd = scheduledEnd.ToUniversalTime();
         entity.ServiceDefId = serviceDefId;
 
         // If the ServiceDefId transitioned from null to a value, create
