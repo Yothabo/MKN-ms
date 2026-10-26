@@ -179,6 +179,16 @@ export interface FillStatusResult {
   errorDetail: string | null;
 }
 
+export interface AttendanceRuleEngineResult {
+  status: string;
+  rulesEvaluated: number;
+  membersEvaluated: number;
+  statusChangesApplied: number;
+  notificationsDispatched: number;
+  errorCode: string | null;
+  errorDetail: string | null;
+}
+
 export interface GenerateAssignmentResult {
   status: string;
   occurrencesProcessed: number;
@@ -338,6 +348,16 @@ export class ApiClient {
     return this.postJson<FillStatusResult>(
       "/api/processes/10.0/evaluate",
       body,
+    );
+  }
+
+  async attendanceRuleManual(
+    ruleId: number,
+    actingAdminId: number,
+  ): Promise<ApiResult<AttendanceRuleEngineResult>> {
+    return this.postJson<AttendanceRuleEngineResult>(
+      "/api/processes/13.0/manual",
+      { ruleId, actingAdminId },
     );
   }
 
