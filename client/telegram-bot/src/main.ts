@@ -24,6 +24,7 @@ import { registerRosterGenerate } from "./commands/roster_generate.js";
 import { registerAttendanceRecord } from "./commands/attendance_record.js";
 import { registerIdentifierIssue } from "./commands/identifier_issue.js";
 import { registerMemberSetIdentifier } from "./commands/member_set_identifier.js";
+import { registerConfirmationSweep } from "./commands/confirmation_sweep.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -58,6 +59,7 @@ async function main(): Promise<void> {
   registerAttendanceRecord(bot, api, isAllowed);
   registerIdentifierIssue(bot, api, resolveAdminId);
   registerMemberSetIdentifier(bot, api, resolveAdminId);
+  registerConfirmationSweep(bot, api, isAllowed);
 
   bot.catch(async (botErr) => {
     // Full detail goes to the terminal. The chat gets a short message.

@@ -161,6 +161,14 @@ export interface MaterializeResult {
   errorDetail: string | null;
 }
 
+export interface ConfirmationSweepResult {
+  status: string;
+  assignmentsTransitioned: number;
+  replacementsCreated: number;
+  slotsLeftVacant: number;
+  errorDetail: string | null;
+}
+
 export interface GenerateAssignmentResult {
   status: string;
   occurrencesProcessed: number;
@@ -299,6 +307,13 @@ export class ApiClient {
       body.horizonDaysOverride = horizonDaysOverride;
     }
     return this.postJson<MaterializeResult>("/api/processes/11.0/materialize", body);
+  }
+
+  async confirmationSweep(): Promise<ApiResult<ConfirmationSweepResult>> {
+    return this.postJson<ConfirmationSweepResult>(
+      "/api/processes/7.0/sweep",
+      {},
+    );
   }
 
   async generateAssignment(
