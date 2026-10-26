@@ -142,7 +142,8 @@ public sealed class ManageProgramItemService : IManageProgramItemService
 
         if (serviceDefId is int defId)
         {
-            await CreateEventSourcedOccurrenceAsync(entity, program.EventId, defId, actingAdminId, cancellationToken);
+            await CreateEventSourcedOccurrenceAsync(
+                entity, scheduledStart, program.EventId, defId, actingAdminId, cancellationToken);
         }
 
         // §9.8: the ProgramItem and the event-sourced occurrence are one
@@ -196,7 +197,8 @@ public sealed class ManageProgramItemService : IManageProgramItemService
         {
             var program = await _db.Programs
                 .FirstAsync(p => p.ProgramId == entity.ProgramId, cancellationToken);
-            await CreateEventSourcedOccurrenceAsync(entity, program.EventId, defId, actingAdminId, cancellationToken);
+            await CreateEventSourcedOccurrenceAsync(
+                entity, scheduledStart, program.EventId, defId, actingAdminId, cancellationToken);
         }
 
         // §9.8: the ProgramItem field changes and the occurrence (when
@@ -332,6 +334,7 @@ public sealed class ManageProgramItemService : IManageProgramItemService
 
     private async Task CreateEventSourcedOccurrenceAsync(
         ProgramItem item,
+        DateTimeOffset wallClockStart,
         int eventId,
         int serviceDefId,
         int actingAdminId,
@@ -340,15 +343,20 @@ public sealed class ManageProgramItemService : IManageProgramItemService
         var definition = await _db.ServiceDefinitions
             .FirstAsync(s => s.ServiceDefId == serviceDefId, cancellationToken);
 
-        var scheduledStart = item.ScheduledStart;
-
+        // §C7: StartTime is a wall-clock time. It is the caller's
+        // local time as written in the ProgramItem request, NOT the
+        // UTC wall-clock derived from the normalised instant. Date is
+        // the calendar date that the caller's wall-clock falls on.
+        // The stored ProgramItem.ScheduledStart remains a UTC instant
+        // (D1, commit d105622); only the derived ServiceOccurrence
+        // fields use the caller's wall-clock.
         var occurrence = new ServiceOccurrence
         {
             ScheduleId = null,
             EventId = eventId,
-            Date = DateOnly.FromDateTime(scheduledStart.Date),
+            Date = DateOnly.FromDateTime(wallClockStart.Date),
             ServiceTypeId = definition.ServiceTypeId,
-            StartTime = TimeOnly.FromDateTime(scheduledStart.DateTime),
+            StartTime = TimeOnly.FromDateTime(wallClockStart.DateTime),
             FillStatusId = null,
             GeneratedBy = "Administrator",
             CreatedBy = actingAdminId,

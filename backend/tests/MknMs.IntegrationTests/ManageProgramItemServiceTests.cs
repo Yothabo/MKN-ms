@@ -401,4 +401,77 @@ public class ManageProgramItemServiceTests : IntegrationTestBase
             new DateTime(2026, 11, 1, 8, 30, 0, DateTimeKind.Utc));
     }
 
+    // Regression for F2: StartTime on an event-sourced occurrence must
+    // be the caller's wall-clock time, not the UTC wall-clock derived
+    // from the normalised instant. §C7.
+    [Fact]
+    public async Task Create_WithNonUtcOffset_SetsOccurrenceStartTimeFromCallerWallClock()
+    {
+        var f = await SeedAsync();
+        var service = MakeService();
+
+        var programId = await Db.Programs
+            .Select(p => p.ProgramId)
+            .FirstAsync();
+
+        // SeedAsync does not create a ServiceDefinition; seed one with
+        // its referenced ServiceType so the ProgramItem->occurrence
+        // derivation can resolve the definition.
+        var serviceType = new ServiceType
+        {
+            Name = "WallClockTestType", IsActive = true, IsDeleted = false,
+        };
+        Db.ServiceTypes.Add(serviceType);
+        await Db.SaveChangesAsync();
+
+        var serviceDefinition = new ServiceDefinition
+        {
+            Name = "WallClockTestService",
+            ServiceTypeId = serviceType.ServiceTypeId,
+            OwningBranchId = null,
+            IsActive = true,
+            IsDeleted = false,
+        };
+        Db.ServiceDefinitions.Add(serviceDefinition);
+        await Db.SaveChangesAsync();
+
+        var serviceDefId = serviceDefinition.ServiceDefId;
+
+        // 2026-11-01T09:00:00+02:00 is 2026-11-01T07:00:00Z.
+        // The occurrence's StartTime must read 09:00 — the caller's
+        // wall-clock — not 07:00 — the UTC wall-clock.
+        var start = new DateTimeOffset(2026, 11, 1, 9, 0, 0, TimeSpan.FromHours(2));
+        var end = new DateTimeOffset(2026, 11, 1, 10, 30, 0, TimeSpan.FromHours(2));
+
+        var result = await service.CreateAsync(
+            programId,
+            sequenceOrder: 100,
+            title: "Wall-clock-start item",
+            scheduledStart: start,
+            scheduledEnd: end,
+            serviceDefId: serviceDefId,
+            actingAdminId: f.AdminId);
+
+        result.IsSuccess.Should().BeTrue($"error: {result.Error?.Message}");
+
+        Db.ChangeTracker.Clear();
+
+        // The stored ProgramItem is a UTC instant (D1's contract).
+        var item = await Db.ProgramItems.AsNoTracking()
+            .FirstAsync(i => i.Title == "Wall-clock-start item");
+        item.ScheduledStart.Offset.Should().Be(TimeSpan.Zero);
+        item.ScheduledStart.UtcDateTime.Should().Be(
+            new DateTime(2026, 11, 1, 7, 0, 0, DateTimeKind.Utc));
+
+        // The event-sourced occurrence carries the caller's wall-clock.
+        var occurrence = await Db.ServiceOccurrences.AsNoTracking()
+            .Where(o => o.EventId != null && o.ScheduleId == null
+                && o.Date == new DateOnly(2026, 11, 1))
+            .OrderByDescending(o => o.OccurrenceId)
+            .FirstAsync();
+        occurrence.StartTime.Should().Be(new TimeOnly(9, 0),
+            "§C7: StartTime is a wall-clock time, not a UTC-derived one");
+        occurrence.GeneratedBy.Should().Be("Administrator");
+    }
+
 }
