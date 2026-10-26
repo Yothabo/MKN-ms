@@ -482,12 +482,29 @@ export class ApiClient {
     try {
       parsed = text === "" ? undefined : JSON.parse(text);
     } catch {
-      // Non-JSON body; surface as an unknown error.
+      // Non-JSON body. The API returns plain-text stack traces on
+      // unhandled exceptions; those can exceed Telegram's 4096-char
+      // reply limit and cause bot.catch to fail while trying to reply
+      // to the original failure, masking it. Cap at 300, same as the
+      // JSON path, and log the full body to the terminal.
+      const raw = text || response.statusText || "Request failed.";
+      let message: string;
+      if (raw.length > 300) {
+        message =
+          raw.slice(0, 300) + " … (truncated; full body in bot terminal)";
+        console.error(
+          `postJson: ${path} returned a non-JSON error body ` +
+            `(${raw.length} chars); truncated to 300. Full body:`,
+          raw,
+        );
+      } else {
+        message = raw;
+      }
       return {
         ok: false,
         status: response.status,
         code: "http_" + String(response.status),
-        message: text || response.statusText,
+        message,
       };
     }
 
