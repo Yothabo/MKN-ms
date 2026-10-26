@@ -76,10 +76,11 @@ public class MknDbContext : DbContext
     // D12 — Materializer Run
     public DbSet<MaterializerRun> MaterializerRuns => Set<MaterializerRun>();
 
-    // D13 — Attendance Rule / Scope / Readmission
+    // D13 — Attendance Rule / Scope / Readmission / Correction
     public DbSet<AttendanceRule> AttendanceRules => Set<AttendanceRule>();
     public DbSet<AttendanceRuleScope> AttendanceRuleScopes => Set<AttendanceRuleScope>();
     public DbSet<Readmission> Readmissions => Set<Readmission>();
+    public DbSet<AttendanceCorrection> AttendanceCorrections => Set<AttendanceCorrection>();
 
     // D14 — Configuration Audit
     public DbSet<ConfigurationAuditLog> ConfigurationAuditLogs => Set<ConfigurationAuditLog>();

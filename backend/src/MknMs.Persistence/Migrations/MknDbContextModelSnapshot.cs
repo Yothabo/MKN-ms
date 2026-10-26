@@ -303,6 +303,43 @@ namespace MknMs.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("MknMs.Domain.D13_AttendanceRule.AttendanceCorrection", b =>
+                {
+                    b.Property<int>("CorrectionId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("correction_id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("CorrectionId"));
+
+                    b.Property<int>("AttendanceRecordId")
+                        .HasColumnType("integer")
+                        .HasColumnName("attendance_record_id");
+
+                    b.Property<DateTimeOffset>("CorrectedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("corrected_at");
+
+                    b.Property<int>("CorrectedBy")
+                        .HasColumnType("integer")
+                        .HasColumnName("corrected_by");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("reason");
+
+                    b.HasKey("CorrectionId");
+
+                    b.HasIndex("AttendanceRecordId")
+                        .IsUnique()
+                        .HasDatabaseName("uq_attendance_correction_record");
+
+                    b.HasIndex("CorrectedBy");
+
+                    b.ToTable("attendance_correction");
+                });
+
             modelBuilder.Entity("MknMs.Domain.D13_AttendanceRule.AttendanceRule", b =>
                 {
                     b.Property<int>("AttendanceRuleId")
@@ -1249,6 +1286,12 @@ namespace MknMs.Infrastructure.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("MemberStatusId"));
 
+                    b.Property<bool>("CanAttendRegister")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("can_attend_register");
+
                     b.Property<string>("Description")
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)")
@@ -1716,6 +1759,27 @@ namespace MknMs.Infrastructure.Migrations
                         .HasConstraintName("fk_materializer_run_admins_triggered_by_admin_admin_id");
 
                     b.Navigation("TriggeredByAdmin");
+                });
+
+            modelBuilder.Entity("MknMs.Domain.D13_AttendanceRule.AttendanceCorrection", b =>
+                {
+                    b.HasOne("MknMs.Domain.D8_AttendanceRecord.AttendanceRecord", "AttendanceRecord")
+                        .WithMany()
+                        .HasForeignKey("AttendanceRecordId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_attendance_correction_attendance_records_attendance_record_id");
+
+                    b.HasOne("MknMs.Domain.D4_Member.Admin", "CorrectedByAdmin")
+                        .WithMany()
+                        .HasForeignKey("CorrectedBy")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_attendance_correction_admins_corrected_by_admin_admin_id");
+
+                    b.Navigation("AttendanceRecord");
+
+                    b.Navigation("CorrectedByAdmin");
                 });
 
             modelBuilder.Entity("MknMs.Domain.D13_AttendanceRule.AttendanceRule", b =>

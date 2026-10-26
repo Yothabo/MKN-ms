@@ -78,13 +78,17 @@ WHERE NOT EXISTS (SELECT 1 FROM permission_tier WHERE name = 'Roster Admin');
 -- D4 Member Status
 -- ---------------------------------------------------------------------
 
-INSERT INTO member_status (name, is_rosterable, description, is_default, is_active, is_deleted)
-SELECT 'Active', TRUE, 'Default member status', TRUE, TRUE, FALSE
+INSERT INTO member_status (name, is_rosterable, can_attend_register, description, is_default, is_active, is_deleted)
+SELECT 'Active', TRUE, TRUE, 'Default member status', TRUE, TRUE, FALSE
 WHERE NOT EXISTS (SELECT 1 FROM member_status WHERE name = 'Active');
 
-INSERT INTO member_status (name, is_rosterable, description, is_default, is_active, is_deleted)
-SELECT 'Inactive', FALSE, 'Not rosterable', FALSE, TRUE, FALSE
+INSERT INTO member_status (name, is_rosterable, can_attend_register, description, is_default, is_active, is_deleted)
+SELECT 'Inactive', FALSE, FALSE, 'Not rosterable', FALSE, TRUE, FALSE
 WHERE NOT EXISTS (SELECT 1 FROM member_status WHERE name = 'Inactive');
+
+INSERT INTO member_status (name, is_rosterable, can_attend_register, description, is_default, is_active, is_deleted)
+SELECT 'Deceased', FALSE, FALSE, 'Deceased members are not attendable', FALSE, TRUE, FALSE
+WHERE NOT EXISTS (SELECT 1 FROM member_status WHERE name = 'Deceased');
 
 -- ---------------------------------------------------------------------
 -- D1 Role and Duty

@@ -27,6 +27,10 @@ public class MemberStatusConfiguration : IEntityTypeConfiguration<MemberStatus>
         builder.Property(e => e.IsRosterable)
             .IsRequired();
 
+        builder.Property(e => e.CanAttendRegister)
+            .IsRequired()
+            .HasDefaultValue(true);
+
         builder.Property(e => e.Description)
             .HasMaxLength(1000);
 
