@@ -189,6 +189,56 @@ export interface AttendanceRuleEngineResult {
   errorDetail: string | null;
 }
 
+export interface EventRecord {
+  eventId: number;
+  name: string;
+  startDate: string;
+  endDate: string;
+  type: string;
+  hostBranchId: number;
+  usesAttendanceRegister: boolean | null;
+  isActive: boolean;
+  isDeleted: boolean;
+}
+
+export interface ProgramRecord {
+  programId: number;
+  eventId: number;
+  title: string;
+  isDeleted: boolean;
+}
+
+export interface ProgramItemRecord {
+  itemId: number;
+  programId: number;
+  sequenceOrder: number;
+  title: string;
+  scheduledStart: string;
+  scheduledEnd: string;
+  serviceDefId: number | null;
+  location: string | null;
+  isDeleted: boolean;
+}
+
+export interface CreateEventBody {
+  name: string;
+  startDate: string;
+  endDate: string;
+  type: string;
+  hostBranchId: number;
+  attendingBranchIds?: number[];
+  usesAttendanceRegister?: boolean | null;
+}
+
+export interface CreateProgramItemBody {
+  sequenceOrder: number;
+  title: string;
+  scheduledStart: string;
+  scheduledEnd: string;
+  serviceDefId: number | null;
+  actingAdminId: number;
+}
+
 export interface GenerateAssignmentResult {
   status: string;
   occurrencesProcessed: number;
@@ -358,6 +408,34 @@ export class ApiClient {
     return this.postJson<AttendanceRuleEngineResult>(
       "/api/processes/13.0/manual",
       { ruleId, actingAdminId },
+    );
+  }
+
+  async createEvent(body: CreateEventBody): Promise<ApiResult<EventRecord>> {
+    return this.postJson<EventRecord>("/api/config/8.0/events", body);
+  }
+
+  async listEvents(): Promise<EventRecord[]> {
+    return this.getJson<EventRecord[]>("/api/config/8.0/events");
+  }
+
+  async createProgram(
+    eventId: number,
+    title: string,
+  ): Promise<ApiResult<ProgramRecord>> {
+    return this.postJson<ProgramRecord>(
+      `/api/config/8.0/events/${eventId}/program`,
+      { title },
+    );
+  }
+
+  async createProgramItem(
+    programId: number,
+    body: CreateProgramItemBody,
+  ): Promise<ApiResult<ProgramItemRecord>> {
+    return this.postJson<ProgramItemRecord>(
+      `/api/config/8.0/programs/${programId}/items`,
+      body,
     );
   }
 

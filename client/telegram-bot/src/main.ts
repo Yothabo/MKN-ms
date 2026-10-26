@@ -27,6 +27,10 @@ import { registerMemberSetIdentifier } from "./commands/member_set_identifier.js
 import { registerConfirmationSweep } from "./commands/confirmation_sweep.js";
 import { registerFillEvaluate } from "./commands/fill_evaluate.js";
 import { registerAttendanceRuleManual } from "./commands/attendance_rule_manual.js";
+import { registerEventsCreate } from "./commands/events_create.js";
+import { registerEventsList } from "./commands/events_list.js";
+import { registerProgramsCreate } from "./commands/programs_create.js";
+import { registerProgramItemsCreate } from "./commands/program_items_create.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -64,6 +68,10 @@ async function main(): Promise<void> {
   registerConfirmationSweep(bot, api, isAllowed);
   registerFillEvaluate(bot, api, isAllowed);
   registerAttendanceRuleManual(bot, api, resolveAdminId);
+  registerEventsCreate(bot, api, resolveAdminId);
+  registerEventsList(bot, api, isAllowed);
+  registerProgramsCreate(bot, api, isAllowed);
+  registerProgramItemsCreate(bot, api, resolveAdminId);
 
   bot.catch(async (botErr) => {
     // Full detail goes to the terminal. The chat gets a short message.
