@@ -196,12 +196,13 @@ Three observations that are not defects, recorded so they do not disappear:
 
 ## 8. What remains
 
-Nothing blocking. The following are queued and are **incremental lab work**,
-not close-out:
+Nothing blocking. The three process commands named in an earlier revision
+of this section — `/confirmation_sweep` (7.0), `/fill_evaluate` (10.0), and
+`/attendance_rule_manual` (13.0) — are now implemented and operator-verified.
+The bot exposes all thirteen processes' entry points.
 
-- Three process commands: `/confirmation_sweep` (7.0), `/fill_evaluate` (10.0),
-  `/attendance_rule_manual` (13.0). These exercise the confirmation lifecycle,
-  fill-status classification, and the rule engine.
+The following remain queued and are **incremental work**, not close-out:
+
 - The reserved fairness criteria — activating `DaysSinceLastAssignment` or
   `DutiesCarried` as evaluated criteria is a future specification amendment,
   not a bot command.

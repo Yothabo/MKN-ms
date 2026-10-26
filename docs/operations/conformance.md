@@ -1,12 +1,12 @@
 # Conformance Declaration
 
-*At HEAD `bec2f7a`. Supersedes any earlier unversioned copy of this declaration.*
+*At HEAD `5fe051b`. Supersedes any earlier unversioned copy of this declaration.*
 
 ---
 
 ## Statement
 
-The implementation at commit `bec2f7a` conforms to the frozen specification at `5601ed5` (tag `spec-v1.0-freeze`) as amended by the specification's §15.8 register — including §15.8.40, case-insensitive vocabulary name uniqueness, and §15.8.41, the member identifier update surface — subject to the deferred items listed below.
+The implementation at commit `5fe051b` conforms to the frozen specification at `5601ed5` (tag `spec-v1.0-freeze`) as amended by the specification's §15.8 register — including §15.8.40, case-insensitive vocabulary name uniqueness, and §15.8.41, the member identifier update surface — subject to the deferred items listed below.
 
 Every process defined by the specification is implemented. Every required setting and its consumer behaves as the specification states. Every schema amendment listed in §15.1–§15.4 and §15.8 is present. No behaviour is present in the implementation that the specification does not define.
 
@@ -156,4 +156,4 @@ The amendment ritual is recorded in `FREEZE.md`. No deferred item in this declar
 
 ---
 
-*Source: the frozen specification, the implementation at `bec2f7a`, the acceptance matrix, and the runbook. Subordinate to the specification.*
+*Source: the frozen specification, the implementation at `5fe051b`, the acceptance matrix, and the runbook. Subordinate to the specification.*
